@@ -125,6 +125,10 @@ function holdsComponents(kind: string, status: string): boolean {
   return status === 'in_progress' || status === 'verifying'
 }
 
+/** A create or a stale editor naming a service that has since been deleted.
+ *  Worded for the dashboard and API callers alike. */
+const DELETED_SERVICE_MESSAGE = 'An affected service has been deleted. Choose the services again.'
+
 /** The subset of `ids` that are live (not soft-deleted) services. */
 async function liveComponentIds(
   ids: StatusComponentId[],
@@ -196,10 +200,7 @@ export async function createIncident(
     const requested = input.affectedComponents.map((c) => c.componentId)
     const live = await liveComponentIds(requested, tx)
     if (requested.some((id) => !live.has(id))) {
-      throw new ValidationError(
-        'VALIDATION_ERROR',
-        'An affected service no longer exists. Refresh the page and choose the services again.'
-      )
+      throw new ValidationError('VALIDATION_ERROR', DELETED_SERVICE_MESSAGE)
     }
 
     const [created] = await tx

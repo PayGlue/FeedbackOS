@@ -267,18 +267,21 @@ describe('status lifecycle (Postgres)', () => {
       const api = await service('API')
       await deleteStatusComponent(api)
 
-      await expect(
-        createIncident(
-          {
-            kind: 'incident',
-            title: 'Errors',
-            status: 'investigating',
-            body: 'Looking into it.',
-            affectedComponents: [{ componentId: api, componentStatus: 'major_outage' }],
-          },
-          { principalId: author }
-        )
-      ).rejects.toBeInstanceOf(ValidationError)
+      const attempt = createIncident(
+        {
+          kind: 'incident',
+          title: 'Errors',
+          status: 'investigating',
+          body: 'Looking into it.',
+          affectedComponents: [{ componentId: api, componentStatus: 'major_outage' }],
+        },
+        { principalId: author }
+      )
+      await expect(attempt).rejects.toBeInstanceOf(ValidationError)
+      // Worded for API callers as well as the dashboard: no "refresh the page".
+      await expect(attempt).rejects.toThrow(
+        'An affected service has been deleted. Choose the services again.'
+      )
       expect(await testDb.query.statusIncidents.findMany()).toEqual([])
     })
 
