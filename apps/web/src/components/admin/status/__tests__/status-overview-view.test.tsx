@@ -1,14 +1,19 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 
 let overview: unknown
+let overviewQuery: Record<string, unknown> = {}
+const refetch = vi.fn()
+let permissions: string[] = []
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: overview, isLoading: false }),
+  useQuery: () => ({ data: overview, isLoading: false, refetch, ...overviewQuery }),
 }))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
+  useRouteContext: ({ select }: { select: (context: unknown) => unknown }) =>
+    select({ permissions }),
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
     <a href={to}>{children}</a>
   ),
@@ -58,6 +63,9 @@ function makeOverview(overrides: Record<string, unknown> = {}) {
 describe('<StatusOverviewView>', () => {
   beforeEach(() => {
     overview = makeOverview()
+    overviewQuery = {}
+    refetch.mockReset()
+    permissions = ['status_page.publish', 'status_page.manage']
   })
 
   it('renders the standard page header with its actions', () => {
@@ -144,6 +152,30 @@ describe('<StatusOverviewView>', () => {
     renderOverview()
     expect(screen.queryByText('Maintenance in progress')).toBeNull()
     expect(screen.queryByText('Upcoming maintenance')).toBeNull()
+  })
+
+  it('offers a publisher only what it can do: no settings, and no managing services', () => {
+    permissions = ['status_page.publish']
+    overview = makeOverview({ ungroupedComponents: [], groups: [] })
+    const { container } = renderOverview()
+
+    const header = container.querySelector('[data-page-header]') as HTMLElement
+    expect(header.textContent).toContain('Report incident')
+    expect(header.textContent).toContain('Schedule maintenance')
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull()
+    expect(screen.getByText('No services yet')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Add a service' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Manage' })).toBeNull()
+  })
+
+  it('says the overview failed to load, with a retry, instead of an endless skeleton', () => {
+    overview = undefined
+    overviewQuery = { isError: true, isFetching: false }
+    renderOverview()
+
+    expect(screen.getByText("Couldn't load the overview")).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
   })
 
   it('offers to add the first service, without a paragraph', () => {

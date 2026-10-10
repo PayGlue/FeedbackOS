@@ -10,7 +10,12 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { ArrowTopRightOnSquareIcon, CheckCircleIcon, PencilIcon } from '@heroicons/react/24/outline'
+import {
+  ArrowTopRightOnSquareIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  PencilIcon,
+} from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { AnalyticsStatRow } from '@/components/admin/analytics/analytics-stat-row'
@@ -20,12 +25,14 @@ import { useFormatNumber } from '@/components/ui/format-number'
 import { TimeAgo } from '@/components/ui/time-ago'
 import { useLocalDateFormatter, type LocalDateFormatter } from '@/components/ui/local-date'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Route } from '@/routes/admin/status'
 import { statusOverviewQueries, type StatusOverview } from '@/lib/client/queries/status'
 import { useStartStatusMaintenanceNow } from '@/lib/client/mutations/status'
 import { LifecycleBadge } from './status-incident-fields'
 import { ReportIncidentDialog } from './status-report-incident-dialog'
 import { ScheduleMaintenanceDialog } from './status-schedule-maintenance-dialog'
+import { useStatusAccess } from './status-access'
 import { FormattedMessage } from 'react-intl'
 import { NewButton } from '@/components/shared/new-button'
 import {
@@ -41,7 +48,8 @@ import {
 type OverviewIncident = StatusOverview['activeIncidents'][number]
 
 export function StatusOverviewView() {
-  const { data, isLoading } = useQuery(statusOverviewQueries.get())
+  const { data, isLoading, isError, isFetching, refetch } = useQuery(statusOverviewQueries.get())
+  const { canPublish, canManage } = useStatusAccess()
 
   return (
     <div className="max-w-5xl w-full flex flex-col flex-1 min-h-0">
@@ -56,17 +64,45 @@ export function StatusOverviewView() {
                   View public page
                 </a>
               </Button>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/admin/settings/status">Settings</Link>
-              </Button>
-              <ScheduleMaintenanceDialog />
-              <ReportIncidentDialog />
+              {canManage && (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/admin/settings/status">Settings</Link>
+                </Button>
+              )}
+              {canPublish && (
+                <>
+                  <ScheduleMaintenanceDialog />
+                  <ReportIncidentDialog />
+                </>
+              )}
             </div>
           }
         />
       </div>
 
-      {isLoading || !data ? <OverviewSkeleton /> : <OverviewBody data={data} />}
+      {data ? (
+        <OverviewBody data={data} />
+      ) : isError && !isLoading ? (
+        // A failed read would otherwise leave the skeleton up for good.
+        <EmptyState
+          icon={ExclamationTriangleIcon}
+          title="Couldn't load the overview"
+          description="Something went wrong loading it. Check your connection and try again."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+            >
+              {isFetching ? 'Retrying…' : 'Try again'}
+            </Button>
+          }
+          className="flex-1"
+        />
+      ) : (
+        <OverviewSkeleton />
+      )}
     </div>
   )
 }
@@ -99,20 +135,23 @@ function OverviewBody({ data }: { data: StatusOverview }) {
 
 function DisabledNotice() {
   const navigate = useNavigate({ from: Route.fullPath })
+  const { canManage } = useStatusAccess()
   return (
     <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 flex items-center gap-3 text-sm">
       <span className="h-2 w-2 rounded-full bg-warning shrink-0" />
       <span className="text-foreground/90">
         The status page is turned off, so visitors can't see any of this yet.
       </span>
-      <Button
-        variant="outline"
-        size="sm"
-        className="ml-auto shrink-0"
-        onClick={() => void navigate({ to: '/admin/settings/status' })}
-      >
-        Settings
-      </Button>
+      {canManage && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto shrink-0"
+          onClick={() => void navigate({ to: '/admin/settings/status' })}
+        >
+          Settings
+        </Button>
+      )}
     </div>
   )
 }
@@ -465,18 +504,23 @@ function StatTiles({ data }: { data: StatusOverview }) {
 }
 
 function ServiceHealthCard({ data }: { data: StatusOverview }) {
+  // Services are managed on a page only status_page.manage can open.
+  const { canManage } = useStatusAccess()
   // A group with no services has nothing to report, so it is not listed.
   const groups = data.groups.filter((g) => g.components.length > 0)
   const hasAny = data.ungroupedComponents.length > 0 || groups.length > 0
 
   return (
-    <CardShell title="Service health" action={<ViewAllLink view="components" label="Manage" />}>
+    <CardShell
+      title="Service health"
+      action={canManage ? <ViewAllLink view="components" label="Manage" /> : undefined}
+    >
       {!hasAny ? (
         <div className="space-y-3 px-4 py-5">
           <div className="text-sm font-medium">
             <FormattedMessage id="admin.empty.status.title" defaultMessage="No services yet" />
           </div>
-          <AddServiceButton />
+          {canManage && <AddServiceButton />}
         </div>
       ) : (
         <div>
