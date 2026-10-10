@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Última atualização",
   "portal.status.subscribe.success": "Você assinou as atualizações de status",
   "portal.status.subscribe.error": "Não foi possível assinar. Tente novamente.",
+  "portal.status.subscribe.signInDescription": "Entre para receber as atualizações de status por e-mail.",
   "portal.status.subscribed": "Assinado",
   "portal.status.subscribe.cta": "Assinar",
   "portal.status.unsubscribe.success": "Assinatura das atualizações de status cancelada",

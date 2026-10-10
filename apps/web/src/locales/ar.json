@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "آخر تحديث",
   "portal.status.subscribe.success": "تم الاشتراك في تحديثات الحالة",
   "portal.status.subscribe.error": "تعذّر الاشتراك. يرجى المحاولة مرة أخرى.",
+  "portal.status.subscribe.signInDescription": "سجّل الدخول لتلقي تحديثات الحالة عبر البريد الإلكتروني.",
   "portal.status.subscribed": "مشترك",
   "portal.status.subscribe.cta": "اشتراك",
   "portal.status.unsubscribe.success": "تم إلغاء الاشتراك في تحديثات الحالة",

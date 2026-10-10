@@ -108,6 +108,10 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
     setOpen(false)
     authPopover?.openAuthPopover({
       mode: 'login',
+      description: intl.formatMessage({
+        id: 'portal.status.subscribe.signInDescription',
+        defaultMessage: 'Sign in to get status updates by email.',
+      }),
       // A sign-in that leaves the page (an SSO redirect, a magic link) comes
       // back here, marked as a return from subscribing.
       callbackUrl: resumeSubscribeUrl(),

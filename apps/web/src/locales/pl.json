@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Ostatnia aktualizacja",
   "portal.status.subscribe.success": "Zasubskrybowano aktualizacje statusu",
   "portal.status.subscribe.error": "Nie udało się zasubskrybować. Spróbuj ponownie.",
+  "portal.status.subscribe.signInDescription": "Zaloguj się, aby otrzymywać aktualizacje statusu e-mailem.",
   "portal.status.subscribed": "Subskrybujesz",
   "portal.status.subscribe.cta": "Subskrybuj",
   "portal.status.unsubscribe.success": "Anulowano subskrypcję aktualizacji statusu",

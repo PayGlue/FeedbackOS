@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "最近更新",
   "portal.status.subscribe.success": "已订阅状态更新",
   "portal.status.subscribe.error": "订阅失败，请重试。",
+  "portal.status.subscribe.signInDescription": "登录即可通过邮件接收状态更新。",
   "portal.status.subscribed": "已订阅",
   "portal.status.subscribe.cta": "订阅",
   "portal.status.unsubscribe.success": "已取消订阅状态更新",

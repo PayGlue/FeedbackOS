@@ -142,7 +142,12 @@ describe('signed out', () => {
 
     expect(hoisted.subscribeStatusFn).not.toHaveBeenCalled()
     expect(hoisted.openAuthPopover).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: 'login', callbackUrl: '/status?subscribe=resume' })
+      expect.objectContaining({
+        mode: 'login',
+        callbackUrl: '/status?subscribe=resume',
+        // Not the dialog's default "vote and comment on feedback".
+        description: 'Sign in to get status updates by email.',
+      })
     )
     expect(pendingSubscription()).toMatchObject({
       scope: 'components',

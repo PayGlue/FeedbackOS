@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Dernière mise à jour",
   "portal.status.subscribe.success": "Abonnement aux mises à jour d'état activé",
   "portal.status.subscribe.error": "Impossible de s'abonner. Veuillez réessayer.",
+  "portal.status.subscribe.signInDescription": "Connectez-vous pour recevoir les mises à jour d'état par e-mail.",
   "portal.status.subscribed": "Abonné",
   "portal.status.subscribe.cta": "S'abonner",
   "portal.status.unsubscribe.success": "Désabonné des mises à jour d'état",

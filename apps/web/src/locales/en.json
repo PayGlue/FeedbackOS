@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Last update",
   "portal.status.subscribe.success": "Subscribed to status updates",
   "portal.status.subscribe.error": "Could not subscribe. Please try again.",
+  "portal.status.subscribe.signInDescription": "Sign in to get status updates by email.",
   "portal.status.subscribed": "Subscribed",
   "portal.status.subscribe.cta": "Subscribe",
   "portal.status.unsubscribe.success": "Unsubscribed from status updates",

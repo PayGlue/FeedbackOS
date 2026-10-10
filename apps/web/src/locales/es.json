@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Última actualización",
   "portal.status.subscribe.success": "Te has suscrito a las actualizaciones de estado",
   "portal.status.subscribe.error": "No se ha podido completar la suscripción. Inténtalo de nuevo.",
+  "portal.status.subscribe.signInDescription": "Inicia sesión para recibir las actualizaciones de estado por correo.",
   "portal.status.subscribed": "Suscrito/a",
   "portal.status.subscribe.cta": "Suscribirse",
   "portal.status.unsubscribe.success": "Te has dado de baja de las actualizaciones de estado",

@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Letztes Update",
   "portal.status.subscribe.success": "Status-Updates abonniert",
   "portal.status.subscribe.error": "Das Abonnieren hat nicht geklappt. Bitte versuch es noch einmal.",
+  "portal.status.subscribe.signInDescription": "Melde dich an, um Status-Updates per E-Mail zu erhalten.",
   "portal.status.subscribed": "Abonniert",
   "portal.status.subscribe.cta": "Abonnieren",
   "portal.status.unsubscribe.success": "Status-Updates abbestellt",

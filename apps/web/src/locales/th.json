@@ -896,6 +896,7 @@
   "portal.status.incidentCard.lastUpdate": "อัปเดตล่าสุด",
   "portal.status.subscribe.success": "ติดตามอัปเดตสถานะแล้ว",
   "portal.status.subscribe.error": "ติดตามไม่ได้ กรุณาลองอีกครั้ง",
+  "portal.status.subscribe.signInDescription": "เข้าสู่ระบบเพื่อรับอัปเดตสถานะทางอีเมล",
   "portal.status.subscribed": "ติดตามแล้ว",
   "portal.status.subscribe.cta": "ติดตาม",
   "portal.status.unsubscribe.success": "เลิกติดตามอัปเดตสถานะแล้ว",

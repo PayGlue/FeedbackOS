@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Laatste update",
   "portal.status.subscribe.success": "Geabonneerd op statusupdates",
   "portal.status.subscribe.error": "Abonneren mislukt. Probeer het opnieuw.",
+  "portal.status.subscribe.signInDescription": "Log in om statusupdates per e-mail te ontvangen.",
   "portal.status.subscribed": "Geabonneerd",
   "portal.status.subscribe.cta": "Abonneren",
   "portal.status.unsubscribe.success": "Afgemeld voor statusupdates",

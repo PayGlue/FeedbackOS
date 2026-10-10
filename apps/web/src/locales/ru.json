@@ -702,6 +702,7 @@
   "portal.status.incidentCard.lastUpdate": "Последнее обновление",
   "portal.status.subscribe.success": "Вы подписались на обновления статуса",
   "portal.status.subscribe.error": "Не удалось подписаться. Попробуйте ещё раз.",
+  "portal.status.subscribe.signInDescription": "Войдите, чтобы получать обновления статуса по почте.",
   "portal.status.subscribed": "Вы подписаны",
   "portal.status.subscribe.cta": "Подписаться",
   "portal.status.unsubscribe.success": "Вы отписались от обновлений статуса",
