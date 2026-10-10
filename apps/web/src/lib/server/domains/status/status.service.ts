@@ -75,6 +75,11 @@ const LIFECYCLE_STATUSES: Record<'incident' | 'maintenance', readonly string[]> 
   maintenance: ['scheduled', 'in_progress', 'verifying', 'completed'],
 }
 
+const TERMINAL_STATUS: Record<'incident' | 'maintenance', string> = {
+  incident: 'resolved',
+  maintenance: 'completed',
+}
+
 /** The two kinds share one status column but not one vocabulary: a
  *  maintenance status on an incident (or the reverse) would never match any
  *  lifecycle check and strand the row, so reject it as bad input. */
@@ -165,15 +170,24 @@ export async function createIncident(
     )
   }
 
-  // started_at is when the row actually started. A window still 'scheduled'
-  // hasn't, so until it does the column (NOT NULL) holds its planned start;
+  // Created already resolved or completed (the API allows it): it is history
+  // from the start, so it is stamped resolved now and, holding nothing, never
+  // touches its services.
+  const now = new Date()
+  const terminal = input.status === TERMINAL_STATUS[input.kind]
+  const resolvedAt = input.backfill?.resolvedAt ?? (terminal ? now : null)
+
+  // started_at is when the row actually started. A window that hasn't run
+  // (still 'scheduled', or created already completed) holds its planned start
+  // in the column (NOT NULL), never later than it completed;
   // handleMaintenanceStart / a manual start overwrite it with the real one.
+  const plannedStart =
+    input.kind === 'maintenance' && (input.status === 'scheduled' || terminal)
+      ? input.scheduledStartAt
+      : null
   const startedAt =
     input.backfill?.startedAt ??
-    (input.kind === 'maintenance' && input.status === 'scheduled' && input.scheduledStartAt
-      ? input.scheduledStartAt
-      : new Date())
-  const resolvedAt = input.backfill?.resolvedAt ?? null
+    (plannedStart && (!resolvedAt || plannedStart <= resolvedAt) ? plannedStart : now)
 
   // One transaction: the row, its links, the first update and the component
   // statuses it applies land together or not at all, so a failure part-way
@@ -224,7 +238,9 @@ export async function createIncident(
       templateId: input.templateId ?? null,
     })
 
-    if (appliesComponentStatusNow({ kind: created.kind, status: created.status, backfilled })) {
+    // Only a row that holds its services applies them: not a backfill, a
+    // window still scheduled, or one created already resolved or completed.
+    if (!backfilled && holdsComponents(created.kind, created.status)) {
       const source = created.kind === 'incident' ? 'incident' : 'maintenance'
       await reconcileComponentStatuses(
         input.affectedComponents.map((c) => c.componentId),
@@ -391,11 +407,6 @@ export async function updateIncident(
 // ============================================================================
 // Post update / lifecycle
 // ============================================================================
-
-const TERMINAL_STATUS: Record<'incident' | 'maintenance', string> = {
-  incident: 'resolved',
-  maintenance: 'completed',
-}
 
 export async function postIncidentUpdate(
   id: StatusIncidentId,

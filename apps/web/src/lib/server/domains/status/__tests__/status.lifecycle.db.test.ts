@@ -40,7 +40,11 @@ vi.mock('@/lib/server/events/scheduler', () => ({
 }))
 
 import { scheduleDispatch } from '@/lib/server/events/scheduler'
-import { createStatusComponent, deleteStatusComponent } from '../status.components'
+import {
+  createStatusComponent,
+  deleteStatusComponent,
+  setComponentStatus,
+} from '../status.components'
 import {
   createIncident,
   createStatusIncidentTemplate,
@@ -276,6 +280,54 @@ describe('status lifecycle (Postgres)', () => {
         )
       ).rejects.toBeInstanceOf(ValidationError)
       expect(await testDb.query.statusIncidents.findMany()).toEqual([])
+    })
+
+    it('created already resolved, it is stamped resolved and leaves its services alone', async () => {
+      const api = await service('API')
+      await setComponentStatus(api, 'degraded_performance', 'manual')
+
+      const resolved = await createIncident(
+        {
+          kind: 'incident',
+          title: 'Blip',
+          status: 'resolved',
+          body: 'A short blip, already over.',
+          affectedComponents: [{ componentId: api, componentStatus: 'major_outage' }],
+          notifySubscribers: false,
+        },
+        { principalId: author }
+      )
+      expect(resolved.resolvedAt).not.toBeNull()
+      expect(isRecent(resolved.resolvedAt!)).toBe(true)
+      expect(resolved.startedAt.getTime()).toBeLessThanOrEqual(resolved.resolvedAt!.getTime())
+      // It never held the service, so neither outage nor restore applies.
+      expect(await statusOf(api)).toBe('degraded_performance')
+      expect((await listStatusIncidents({ kind: 'incident', state: 'active' })).items).toEqual([])
+      expect(
+        (await listStatusIncidents({ kind: 'incident', state: 'resolved' })).items.map((i) => i.id)
+      ).toEqual([resolved.id])
+    })
+
+    it('a window created already completed is stamped resolved, dated by its plan, and holds nothing', async () => {
+      const db = await service('Database')
+      const plan = new Date(Date.now() - 3 * HOUR)
+      const window = await createIncident(
+        {
+          kind: 'maintenance',
+          title: 'Upgrade',
+          status: 'completed',
+          body: 'Done last night.',
+          affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+          scheduledStartAt: plan,
+          scheduledEndAt: new Date(plan.getTime() + HOUR),
+          notifySubscribers: false,
+        },
+        { principalId: author }
+      )
+      expect(isRecent(window.resolvedAt!)).toBe(true)
+      expect(window.startedAt.getTime()).toBe(plan.getTime())
+      expect(await statusOf(db)).toBe('operational')
+      expect(await reconcileMaintenanceWindows()).toEqual({ started: 0, completed: 0 })
     })
 
     it('is atomic: a failure after the incident row is written leaves nothing behind', async () => {
