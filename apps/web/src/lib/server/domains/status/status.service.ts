@@ -237,6 +237,9 @@ export async function createIncident(
       body,
       createdBy: author.principalId,
       templateId: input.templateId ?? null,
+      // A logged past incident's summary belongs to its resolution, not to
+      // the moment it was logged, or the timeline dates it days late.
+      ...(input.backfill ? { createdAt: input.backfill.resolvedAt } : {}),
     })
 
     // Only a row that holds its services applies them: not a backfill, a

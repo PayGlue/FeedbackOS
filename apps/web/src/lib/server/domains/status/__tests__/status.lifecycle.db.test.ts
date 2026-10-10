@@ -767,6 +767,8 @@ describe('status lifecycle (Postgres)', () => {
 
       expect(logged.backfilled).toBe(true)
       expect(logged.startedAt.getTime()).toBe(start.getTime())
+      // Its summary is dated at the resolution, not at the moment it was logged.
+      expect(logged.updates.map((u) => u.createdAt.getTime())).toEqual([start.getTime() + HOUR])
       expect(await statusOf(api)).toBe('operational')
       // Uptime bars derive from this log; a backfill writes nothing to it.
       expect(
