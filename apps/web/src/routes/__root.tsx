@@ -134,7 +134,14 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         rel: 'stylesheet',
         href: appCss,
       },
-      rssAlternateLink(matches.map((match) => match.routeId)),
+      rssAlternateLink(
+        matches.map((match) => match.routeId),
+        {
+          statusPagePublic:
+            ((matches[0]?.context as RootContext | undefined)?.settings?.statusConfig?.audience ??
+              'public') === 'public',
+        }
+      ),
     ],
   }),
   component: RootComponent,
