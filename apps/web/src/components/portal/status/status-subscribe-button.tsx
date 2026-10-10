@@ -290,33 +290,27 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
                 defaultMessage: "We'll email you when incidents and maintenance are posted.",
               })}
             </DialogDescription>
-            {/* Said before the visitor picks a scope, not after Subscribe. A
-                page that isn't public has no feed to offer instead. */}
-            {!signedIn && (
+            {/* Said before the visitor picks a scope, not after Subscribe. Only
+                a signed-out visitor needs it, and a page they can see signed
+                out is public, so it always has a feed to offer. */}
+            {!signedIn && feedOffered && (
               <p className="text-xs text-muted-foreground">
-                {feedOffered ? (
-                  <FormattedMessage
-                    id="portal.status.subscribeDialog.accountNote"
-                    defaultMessage="Email updates need a free portal account. Or follow the <rss>RSS feed</rss>."
-                    values={{
-                      rss: (chunks) => (
-                        <a
-                          href="/status/feed"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-foreground"
-                        >
-                          {chunks}
-                        </a>
-                      ),
-                    }}
-                  />
-                ) : (
-                  <FormattedMessage
-                    id="portal.status.subscribeDialog.accountNoteWithoutFeed"
-                    defaultMessage="Email updates need a free portal account."
-                  />
-                )}
+                <FormattedMessage
+                  id="portal.status.subscribeDialog.accountNote"
+                  defaultMessage="Email updates need a free portal account. Or follow the <rss>RSS feed</rss>."
+                  values={{
+                    rss: (chunks) => (
+                      <a
+                        href="/status/feed"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        {chunks}
+                      </a>
+                    ),
+                  }}
+                />
               </p>
             )}
           </DialogHeader>

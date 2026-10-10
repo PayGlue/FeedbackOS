@@ -204,7 +204,7 @@ function StatusPage() {
           <h2 className="sr-only">
             <FormattedMessage
               id="portal.status.section.activeIncidents"
-              defaultMessage="Active incidents"
+              defaultMessage="Active incidents and maintenance"
             />
           </h2>
           {snapshot.activeIncidents.map((incident) => (

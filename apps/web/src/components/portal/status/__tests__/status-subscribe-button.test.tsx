@@ -114,7 +114,6 @@ it('offers no RSS feed when the page is not public, since a feed reader would ge
   hoisted.session = null
   hoisted.settings = { statusConfig: { audience: 'segments' } }
   await openDialog()
-  expect(screen.getByText('Email updates need a free portal account.')).toBeInTheDocument()
   expect(screen.queryByRole('link', { name: 'RSS feed' })).toBeNull()
 })
 

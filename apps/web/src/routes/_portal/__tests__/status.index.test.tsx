@@ -297,7 +297,7 @@ describe('heading order', () => {
     ])
     expect(headings).toEqual([
       [1, 'Status'],
-      [2, 'Active incidents'],
+      [2, 'Active incidents and maintenance'],
       [3, 'API errors'],
       [2, 'Current status by service'],
       [2, 'Scheduled maintenance'],
