@@ -217,6 +217,19 @@ describe('status lifecycle (Postgres)', () => {
       expect(await statusOf(web)).toBe('degraded_performance')
     })
 
+    it('tells a stale editor whose every service was deleted that, not that none was chosen', async () => {
+      const api = await service('API')
+      const incident = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
+      await deleteStatusComponent(api)
+
+      await expect(
+        updateIncident(incident.id, {
+          title: 'Elevated errors',
+          affectedComponents: [{ componentId: api, componentStatus: 'major_outage' }],
+        })
+      ).rejects.toThrow('An affected service has been deleted. Choose the services again.')
+    })
+
     it('maintenance auto-complete still completes the window and restores the rest', async () => {
       const db = await service('Database')
       const api = await service('API')

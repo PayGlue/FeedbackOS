@@ -332,8 +332,10 @@ export async function updateIncident(
         tx
       )
       nextComponents = input.affectedComponents.filter((c) => live.has(c.componentId))
+      // Every service sent has been deleted since the editor loaded: say so,
+      // rather than that none was chosen.
       if (nextComponents.length === 0) {
-        throw new ValidationError('VALIDATION_ERROR', 'At least one affected component is required')
+        throw new ValidationError('VALIDATION_ERROR', DELETED_SERVICE_MESSAGE)
       }
     }
 

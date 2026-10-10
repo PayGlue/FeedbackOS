@@ -31,7 +31,12 @@ import { useUrlModal } from '@/lib/client/hooks/use-url-modal'
 import { useKeyboardSubmit } from '@/lib/client/hooks/use-keyboard-submit'
 import { useDebouncedSave } from '@/lib/client/hooks/use-debounced-save'
 import { SidebarContainer, StatusSelect } from '@/components/shared/sidebar-primitives'
-import { statusIncidentQueries, type StatusIncidentAdminDetail } from '@/lib/client/queries/status'
+import {
+  statusComponentQueries,
+  statusIncidentQueries,
+  type StatusComponentChoices,
+  type StatusIncidentAdminDetail,
+} from '@/lib/client/queries/status'
 import { useUpdateStatusIncident, usePostStatusIncidentUpdate } from '@/lib/client/mutations/status'
 import {
   AffectedComponentsField,
@@ -92,6 +97,27 @@ function windowInOrder(details: Pick<DetailsState, 'scheduledStart' | 'scheduled
   return !scheduledStart || !scheduledEnd || scheduledEnd.getTime() > scheduledStart.getTime()
 }
 
+/** Id → name for every service in the picker's list. */
+function choiceNames(data: StatusComponentChoices | undefined): Array<[string, string]> {
+  if (!data) return []
+  return [...data.groups.flatMap((g) => g.components), ...data.ungrouped].map((c) => [c.id, c.name])
+}
+
+const SERVICE_LIST = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' })
+
+/** "Webhooks was deleted and removed from this incident." Names that are no
+ *  longer known are counted instead. */
+export function deletedServicesNotice(names: Array<string | undefined>): string {
+  const known = names.filter((n): n is string => !!n)
+  const subject =
+    known.length === names.length
+      ? SERVICE_LIST.format(known)
+      : names.length === 1
+        ? 'A service'
+        : `${names.length} services`
+  return `${subject} ${names.length === 1 ? 'was' : 'were'} deleted and removed from this incident.`
+}
+
 function formatDuration(startIso: string, endIso: string | null): string {
   const start = new Date(startIso).getTime()
   const end = endIso ? new Date(endIso).getTime() : Date.now()
@@ -150,13 +176,60 @@ function StatusIncidentEditorContent({
     }
   }, [incident, details])
 
+  // ── Services deleted while the editor is open ──
+  // The server leaves a deleted service out of the incident (its detail and
+  // every save response), but the sidebar, initialized once, would keep it
+  // ticked and every autosave would send it again only to be dropped. When
+  // the server's copy loses a service the sidebar still has, take it out of
+  // the sidebar too and say so. This is a sync, not an edit: nothing saves.
+  const [removedNotice, setRemovedNotice] = useState<string | null>(null)
+  const { data: serviceChoices } = useQuery(statusComponentQueries.choices())
+  const serviceNames = useRef(new Map<string, string>())
+  useEffect(() => {
+    for (const c of incident?.affectedComponents ?? []) {
+      serviceNames.current.set(c.componentId, c.name)
+    }
+  }, [incident])
+  useEffect(() => {
+    for (const [id, name] of choiceNames(serviceChoices)) serviceNames.current.set(id, name)
+  }, [serviceChoices])
+
+  function dropDeletedServices(ids: string[]) {
+    if (ids.length === 0) return
+    const gone = new Set(ids)
+    setDetails((prev) => {
+      if (!prev || !prev.affected.some((a) => gone.has(a.componentId))) return prev
+      const next = { ...prev, affected: prev.affected.filter((a) => !gone.has(a.componentId)) }
+      // A pending autosave would send the deleted service again.
+      if (detailsSave.hasPending()) detailsSave.queue(next)
+      return next
+    })
+    setRemovedNotice(deletedServicesNotice(ids.map((id) => serviceNames.current.get(id))))
+  }
+
+  // A refetch, or a response merged into the cache: a service the server had
+  // linked before and no longer has.
+  const linkedOnServer = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    if (!incident) return
+    const linked = new Set<string>(incident.affectedComponents.map((c) => c.componentId))
+    const before = linkedOnServer.current
+    linkedOnServer.current = linked
+    if (!before || !details) return
+    dropDeletedServices(
+      details.affected.map((a) => a.componentId).filter((id) => before.has(id) && !linked.has(id))
+    )
+    // Only a change in the server's copy can drop a service.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incident])
+
   const { mutateAsync: saveDetailsAsync } = updateMutation
   async function flushSave(next: DetailsState, kind: 'incident' | 'maintenance') {
     if (next.title.trim().length === 0 || next.affected.length === 0) return
     if (kind === 'maintenance' && !windowInOrder(next)) return
     setSaveState('saving')
     try {
-      await saveDetailsAsync({
+      const saved = await saveDetailsAsync({
         id: incidentId,
         title: next.title.trim(),
         ...(kind === 'incident'
@@ -172,10 +245,17 @@ function StatusIncidentEditorContent({
             }
           : {}),
       })
+      // A service sent but not linked in the response was deleted, including
+      // one ticked since the editor loaded.
+      const linked = new Set<string>(saved.affectedComponents.map((c) => c.componentId))
+      dropDeletedServices(next.affected.map((a) => a.componentId).filter((id) => !linked.has(id)))
       setSaveState('saved')
     } catch (error) {
       setSaveState('idle')
       toast.error(error instanceof Error ? error.message : 'Failed to save details')
+      // The save may have failed on a service deleted since; the server's
+      // copy says which.
+      void refetch()
     }
   }
 
@@ -190,6 +270,7 @@ function StatusIncidentEditorContent({
 
   function patchDetails(patch: Partial<DetailsState>) {
     if (!incident) return
+    if (patch.affected) setRemovedNotice(null)
     setDetails((prev) => {
       if (!prev) return prev
       const next = { ...prev, ...patch }
@@ -293,6 +374,7 @@ function StatusIncidentEditorContent({
       details={details}
       onPatch={patchDetails}
       saveState={saveState}
+      removedNotice={removedNotice}
     />
   )
 
@@ -459,11 +541,14 @@ function EditorSidebarContent({
   details,
   onPatch,
   saveState,
+  removedNotice,
 }: {
   incident: StatusIncidentAdminDetail
   details: DetailsState
   onPatch: (patch: Partial<DetailsState>) => void
   saveState: 'idle' | 'saving' | 'saved'
+  /** Services the server dropped because they were deleted. */
+  removedNotice: string | null
 }) {
   const lifecycle = incident.status as StatusIncidentLifecycle
 
@@ -573,6 +658,11 @@ function EditorSidebarContent({
           value={details.affected}
           onChange={(next) => onPatch({ affected: next })}
         />
+        {removedNotice && (
+          <p role="status" className="text-[11px] text-muted-foreground">
+            {removedNotice}
+          </p>
+        )}
         {details.affected.length === 0 && (
           <p className="text-[11px] text-destructive">
             Select at least one service. Changes are not saved until one is selected.
