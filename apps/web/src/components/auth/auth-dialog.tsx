@@ -12,6 +12,7 @@ import { headerForStep, type FormContext } from './auth-step-header'
 import { hasDistinctSignup } from './oauth-buttons'
 import { useAuthPopover } from './auth-popover-context'
 import { useAuthBroadcast } from '@/lib/client/hooks/use-auth-broadcast'
+import { useSignInFromAnotherTab } from './use-sign-in-from-another-tab'
 import { signOut } from '@/lib/client/auth-client'
 import type { OidcSignInButton } from '@/lib/shared/oidc-sign-in-button'
 import { isTeamCallback } from '@/lib/shared/routing'
@@ -66,6 +67,10 @@ export function AuthDialog({ authConfig, workspaceName }: AuthDialogProps) {
     onSuccess: onAuthSuccess,
     enabled: isOpen,
   })
+
+  // The emailed link, opened in another tab, signs the visitor in over there;
+  // notice it when they come back here instead of waiting on the code.
+  useSignInFromAnotherTab(isOpen && formContext.step === 'code')
 
   // A teammate on the way to an admin page gets the team version of the copy.
   const team = isTeamCallback(callbackUrl)

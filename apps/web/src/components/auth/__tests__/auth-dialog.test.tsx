@@ -6,9 +6,18 @@ import { IntlProvider } from 'react-intl'
 
 // signOut is what the abandon path must call when closing mid-2FA.
 const mockSignOut = vi.fn()
-vi.mock('@/lib/client/auth-client', () => ({ signOut: mockSignOut }))
+// The session as another tab may have left it.
+const mockGetSession = vi.fn()
+vi.mock('@/lib/client/auth-client', () => ({
+  signOut: mockSignOut,
+  authClient: { getSession: mockGetSession },
+}))
 
-vi.mock('@/lib/client/hooks/use-auth-broadcast', () => ({ useAuthBroadcast: vi.fn() }))
+const mockPostAuthSuccess = vi.fn()
+vi.mock('@/lib/client/hooks/use-auth-broadcast', () => ({
+  useAuthBroadcast: vi.fn(),
+  postAuthSuccess: mockPostAuthSuccess,
+}))
 
 // Stub the form: report a configurable step on mount so we can drive the
 // dialog's formContext without the real sign-in flow, and record the props the
@@ -81,6 +90,7 @@ beforeEach(() => {
   reportedStep = null
   lastFormProps = {}
   mockSignOut.mockResolvedValue(undefined) // the abandon path calls .catch()
+  mockGetSession.mockResolvedValue({ data: null, error: null })
 })
 
 describe('AuthDialog — abandon during required 2FA', () => {
@@ -221,5 +231,54 @@ describe('AuthDialog: why the visitor is signing in', () => {
     fireEvent.click(screen.getByText('close-it'))
     fireEvent.click(screen.getByText('open-plain'))
     expect(await screen.findByText('Sign in to vote and comment on feedback.')).toBeTruthy()
+  })
+})
+
+describe('AuthDialog: the emailed link opened in another tab', () => {
+  async function waitingOnTheCode() {
+    stepToReport = 'code'
+    renderDialog()
+    await screen.findByText('FORM_BODY')
+    await waitFor(() => expect(reportedStep).toBe('code'))
+  }
+
+  it('finishes the sign-in when the visitor comes back signed in', async () => {
+    await waitingOnTheCode()
+    mockGetSession.mockResolvedValue({
+      data: { user: { id: 'user_1', isAnonymous: false }, session: {} },
+      error: null,
+    })
+
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    // The same announcement a sign-in in this tab makes, which closes the
+    // dialog and runs its onSuccess.
+    await waitFor(() => expect(mockPostAuthSuccess).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps waiting while the session is still signed out or anonymous', async () => {
+    await waitingOnTheCode()
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(mockGetSession).toHaveBeenCalledTimes(1))
+
+    mockGetSession.mockResolvedValue({
+      data: { user: { id: 'anon_1', isAnonymous: true }, session: {} },
+      error: null,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(mockGetSession).toHaveBeenCalledTimes(2))
+
+    expect(mockPostAuthSuccess).not.toHaveBeenCalled()
+  })
+
+  it('does not ask before an email has been sent', async () => {
+    renderDialog()
+    await screen.findByText('FORM_BODY')
+    await waitFor(() => expect(reportedStep).toBe('credentials'))
+
+    window.dispatchEvent(new Event('focus'))
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    expect(mockGetSession).not.toHaveBeenCalled()
   })
 })
