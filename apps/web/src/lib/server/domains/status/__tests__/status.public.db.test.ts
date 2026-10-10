@@ -247,6 +247,16 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
     expect(activity).toEqual([...activity].sort((a, b) => b - a))
   })
 
+  it('reads a link that is not an incident id as not found, not an error', async () => {
+    expect(await getPublicStatusIncident(ANONYMOUS_ACTOR, 'history' as StatusIncidentId)).toBeNull()
+    expect(
+      await getPublicStatusIncident(
+        ANONYMOUS_ACTOR,
+        'status_component_01h455vb4pex5vsknk084sn02q' as StatusIncidentId
+      )
+    ).toBeNull()
+  })
+
   describe('impact, for a visitor who sees only some services', () => {
     const insider: Actor = {
       principalId: createId('principal') as PrincipalId,

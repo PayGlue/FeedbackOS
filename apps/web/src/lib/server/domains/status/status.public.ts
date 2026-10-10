@@ -26,7 +26,7 @@ import {
   statusIncidentUpdates,
   statusIncidentComponents,
 } from '@/lib/server/db'
-import type { StatusComponentId, StatusIncidentId } from '@quackback/ids'
+import { isTypeId, type StatusComponentId, type StatusIncidentId } from '@quackback/ids'
 import { canViewStatusComponent, statusComponentViewFilter } from '@/lib/server/policy/status'
 import type { Actor } from '@/lib/server/policy/types'
 import type { StatusSettings } from '@/lib/shared/status-settings'
@@ -301,6 +301,10 @@ export async function getPublicStatusIncident(
   actor: Actor,
   id: StatusIncidentId
 ): Promise<PublicStatusIncident | null> {
+  // The id comes from the URL. One that isn't an incident id (a mistyped or
+  // made-up link) names no incident, and converting it for the query would
+  // throw instead of reading as not found.
+  if (!isTypeId(id, 'status_incident')) return null
   const incident = await db.query.statusIncidents.findFirst({
     where: and(eq(statusIncidents.id, id), isNull(statusIncidents.deletedAt)),
   })
