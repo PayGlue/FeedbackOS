@@ -533,11 +533,21 @@ describe('status lifecycle (Postgres)', () => {
     it('migration 0298 dates existing windows by their real or planned start, and a second run changes nothing', async () => {
       const day = 24 * HOUR
       const now = Date.now()
-      const rows = {
+      const rows: Record<string, { created: number; start: number; completed?: number }> = {
         upcoming: { created: now - day, start: now + day },
         started: { created: now - 3 * day, start: now - 2 * day },
         createdUnderWay: { created: now - HOUR, start: now - 2 * HOUR },
         startedEarlyByHand: { created: now - 3 * day, start: now - day },
+        // Moved straight from scheduled to completed: its completion update is
+        // not when it started, or it would have lasted no time at all.
+        completedWithoutStart: {
+          created: now - 3 * day,
+          start: now - 2 * day,
+          completed: now - day,
+        },
+        // Completed (called off) before its planned start: the plan would put
+        // started_at after resolved_at, so it keeps its creation time.
+        completedBeforePlan: { created: now - 3 * day, start: now + day, completed: now - 2 * day },
       }
       const ids: Record<string, string> = {}
       for (const [name, row] of Object.entries(rows)) {
@@ -546,13 +556,22 @@ describe('status lifecycle (Postgres)', () => {
           .values({
             kind: 'maintenance',
             title: name,
-            status: 'scheduled',
+            status: row.completed ? 'completed' : 'scheduled',
             impact: 'maintenance',
             scheduledStartAt: new Date(row.start),
             startedAt: new Date(row.created),
+            resolvedAt: row.completed ? new Date(row.completed) : null,
           })
           .returning({ id: statusIncidents.id })
         ids[name] = inserted.id
+        if (row.completed) {
+          await testDb.insert(statusIncidentUpdates).values({
+            incidentId: inserted.id,
+            status: 'completed',
+            body: 'Done.',
+            createdAt: new Date(row.completed),
+          })
+        }
       }
       // "Start now" a day ahead of the planned start posted this update.
       const startedByHandAt = now - 2 * day
@@ -588,7 +607,32 @@ describe('status lifecycle (Postgres)', () => {
       expect(await startedAt(ids.started)).toBe(rows.started.start)
       expect(await startedAt(ids.createdUnderWay)).toBe(rows.createdUnderWay.created)
       expect(await startedAt(ids.startedEarlyByHand)).toBe(startedByHandAt)
+      expect(await startedAt(ids.completedWithoutStart)).toBe(rows.completedWithoutStart.start)
+      expect(await startedAt(ids.completedBeforePlan)).toBe(rows.completedBeforePlan.created)
       expect(await startedAt(incident.id)).toBe(now - day)
+    })
+
+    it('a window completed straight from scheduled keeps its planned start, never one after it completed', async () => {
+      const plan = new Date(Date.now() - 2 * HOUR)
+      const ran = await scheduleWindow(plan, new Date(plan.getTime() + HOUR))
+      const completed = await postIncidentUpdate(
+        ran.id,
+        { status: 'completed', body: 'Done.' },
+        { principalId: author }
+      )
+      expect(completed.startedAt.getTime()).toBe(plan.getTime())
+      expect(isRecent(completed.resolvedAt!)).toBe(true)
+
+      // Called off before its planned start: it can't have started later
+      // than it finished.
+      const future = new Date(Date.now() + 24 * HOUR)
+      const calledOff = await scheduleWindow(future, new Date(future.getTime() + HOUR))
+      const cancelled = await postIncidentUpdate(
+        calledOff.id,
+        { status: 'completed', body: 'Called off.' },
+        { principalId: author }
+      )
+      expect(cancelled.startedAt.getTime()).toBeLessThanOrEqual(cancelled.resolvedAt!.getTime())
     })
   })
 

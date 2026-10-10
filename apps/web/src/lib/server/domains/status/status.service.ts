@@ -447,10 +447,21 @@ export async function postIncidentUpdate(
   if (startsMaintenance) {
     updateData.startedAt = now
   }
-  // A window that isn't running holds its planned start in started_at, so
-  // one moved back to scheduled takes the plan again.
+  // A window that isn't running holds its planned start in started_at. Moved
+  // back to scheduled, it takes the plan again; completed straight from
+  // scheduled, it keeps the plan as when it began (migration 0298 dates old
+  // rows the same way), unless the plan is still ahead: it can't have started
+  // after it finished.
   if (unschedulesMaintenance && existing.scheduledStartAt) {
     updateData.startedAt = existing.scheduledStartAt
+  }
+  if (
+    existing.kind === 'maintenance' &&
+    existing.status === 'scheduled' &&
+    becomesTerminal &&
+    existing.startedAt > now
+  ) {
+    updateData.startedAt = now
   }
   // A window moved back across a boundary that has already passed would be
   // pushed straight forward again by the scheduler's sweep (re-completed, or

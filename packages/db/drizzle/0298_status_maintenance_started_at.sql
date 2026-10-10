@@ -7,10 +7,14 @@
 -- Existing rows are corrected from the best record there is:
 --   1. A window that has begun has a timeline row for it: automatic and
 --      manual starts both post an in_progress update, and a window can also
---      move straight to verifying or completed. The first such update is
---      when it really started, early starts by hand included.
---   2. A window with no such update (still scheduled) takes its planned
---      start, matching what the app now writes for scheduled windows.
+--      move straight to verifying. The first such update is when it really
+--      started, early starts by hand included.
+--   2. A window with no such update takes its planned start, matching what
+--      the app writes: a window still scheduled holds its plan, and one moved
+--      straight from scheduled to completed keeps it. A completed update is
+--      not a start, or such a window would last no time at all. The plan is
+--      only taken when it isn't after the window was resolved, so started_at
+--      never ends up after resolved_at.
 -- Each only moves started_at later, so a row created already under way
 -- keeps its creation time. Backfilled rows carry their own historical times
 -- and are left alone.
@@ -27,7 +31,7 @@ BEGIN
   FROM (
     SELECT "incident_id", min("created_at") AS "first_start"
     FROM "status_incident_updates"
-    WHERE "status" IN ('in_progress', 'verifying', 'completed')
+    WHERE "status" IN ('in_progress', 'verifying')
     GROUP BY "incident_id"
   ) AS s
   WHERE i."id" = s."incident_id"
@@ -41,9 +45,10 @@ BEGIN
     AND i."backfilled" = false
     AND i."scheduled_start_at" IS NOT NULL
     AND i."started_at" < i."scheduled_start_at"
+    AND (i."resolved_at" IS NULL OR i."scheduled_start_at" <= i."resolved_at")
     AND NOT EXISTS (
       SELECT 1 FROM "status_incident_updates" AS u
       WHERE u."incident_id" = i."id"
-        AND u."status" IN ('in_progress', 'verifying', 'completed')
+        AND u."status" IN ('in_progress', 'verifying')
     );
 END $$;
