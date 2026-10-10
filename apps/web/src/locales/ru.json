@@ -649,6 +649,7 @@
   "portal.status.title": "Статус",
   "portal.status.description": "Актуальный статус наших сервисов. Подпишитесь, чтобы получать уведомления об инцидентах и техработах.",
   "portal.status.rssFeed": "RSS-лента",
+  "portal.status.section.activeIncidents": "Текущие инциденты",
   "portal.status.section.components": "Текущий статус по сервисам",
   "portal.status.section.scheduledMaintenance": "Плановые работы",
   "portal.status.section.pastIncidents": "Прошлые инциденты",

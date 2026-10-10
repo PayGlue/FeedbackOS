@@ -649,6 +649,7 @@
   "portal.status.title": "Status",
   "portal.status.description": "Live status van onze diensten. Abonneer je om meldingen te krijgen over storingen en onderhoud.",
   "portal.status.rssFeed": "RSS-feed",
+  "portal.status.section.activeIncidents": "Actieve storingen",
   "portal.status.section.components": "Huidige status per dienst",
   "portal.status.section.scheduledMaintenance": "Gepland onderhoud",
   "portal.status.section.pastIncidents": "Eerdere storingen",

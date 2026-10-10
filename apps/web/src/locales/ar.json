@@ -649,6 +649,7 @@
   "portal.status.title": "الحالة",
   "portal.status.description": "الحالة المباشرة لخدماتنا. اشترك لتصلك إشعارات عن الحوادث وأعمال الصيانة.",
   "portal.status.rssFeed": "خلاصة RSS",
+  "portal.status.section.activeIncidents": "الحوادث الجارية",
   "portal.status.section.components": "الحالة الحالية لكل خدمة",
   "portal.status.section.scheduledMaintenance": "الصيانة المجدولة",
   "portal.status.section.pastIncidents": "الحوادث السابقة",

@@ -12,6 +12,8 @@
  *   reload.
  * - The RSS feed is offered only on a public page: a feed reader has no
  *   session, so any other page gives it an empty feed.
+ * - Headings never skip a level: sections are h2s and the incidents in them
+ *   h3s, including the active-incident cards, which lead the page.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
@@ -233,5 +235,76 @@ describe('the RSS feed', () => {
       expect(screen.queryByRole('link', { name: 'RSS Feed' })).toBeNull()
       cleanup()
     }
+  })
+})
+
+describe('heading order', () => {
+  const update = (body: string, createdAt: string) => ({
+    id: `update_${body}`,
+    status: 'investigating',
+    body,
+    createdAt,
+  })
+  const incident = (id: string, title: string, status: string) => ({
+    id,
+    kind: 'incident',
+    title,
+    status,
+    impact: 'major',
+    scheduledStartAt: null,
+    scheduledEndAt: null,
+    startedAt: '2026-10-09T10:00:00.000Z',
+    resolvedAt: null,
+    affectedComponents: [],
+    updates: [update(title, '2026-10-09T10:00:00.000Z')],
+  })
+
+  it('goes from the page title through section h2s to incident h3s, skipping none', async () => {
+    ctx.getStatusPageFn.mockResolvedValue({
+      ...pageData(),
+      snapshot: {
+        ...pageData().snapshot,
+        activeIncidents: [incident('status_incident_now', 'API errors', 'investigating')],
+        upcomingMaintenance: [
+          {
+            ...incident('status_incident_maint', 'Database upgrade', 'scheduled'),
+            kind: 'maintenance',
+            impact: 'maintenance',
+            scheduledStartAt: '2026-10-12T02:00:00.000Z',
+            scheduledEndAt: '2026-10-12T04:00:00.000Z',
+          },
+        ],
+        recentIncidents: [
+          {
+            date: '2026-10-08',
+            incidents: [incident('status_incident_old', 'DNS blip', 'resolved')],
+          },
+        ],
+      },
+    })
+    ctx.listStatusHistoryFn.mockResolvedValue({
+      items: [incident('status_incident_older', 'Login outage', 'resolved')],
+      nextCursor: null,
+      hasMore: false,
+    })
+    const { container } = renderWith(options.component)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Incident history →' }))
+    await screen.findByRole('heading', { name: 'Login outage' })
+
+    const headings = [...container.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((h) => [
+      Number(h.tagName[1]),
+      h.textContent,
+    ])
+    expect(headings).toEqual([
+      [1, 'Status'],
+      [2, 'Active incidents'],
+      [3, 'API errors'],
+      [2, 'Current status by service'],
+      [2, 'Scheduled maintenance'],
+      [3, 'Database upgrade'],
+      [2, 'Past incidents'],
+      [3, 'DNS blip'],
+      [3, 'Login outage'],
+    ])
   })
 })

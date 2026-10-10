@@ -649,6 +649,7 @@
   "portal.status.title": "Status",
   "portal.status.description": "Live status for our services. Subscribe to get notified about incidents and maintenance.",
   "portal.status.rssFeed": "RSS Feed",
+  "portal.status.section.activeIncidents": "Active incidents",
   "portal.status.section.components": "Current status by service",
   "portal.status.section.scheduledMaintenance": "Scheduled maintenance",
   "portal.status.section.pastIncidents": "Past incidents",

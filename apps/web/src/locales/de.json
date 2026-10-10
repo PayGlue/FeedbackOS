@@ -649,6 +649,7 @@
   "portal.status.title": "Status",
   "portal.status.description": "Der aktuelle Status unserer Dienste. Abonniere Updates, um über Störungen und Wartungen informiert zu werden.",
   "portal.status.rssFeed": "RSS-Feed",
+  "portal.status.section.activeIncidents": "Aktuelle Störungen",
   "portal.status.section.components": "Aktueller Status pro Dienst",
   "portal.status.section.scheduledMaintenance": "Geplante Wartungen",
   "portal.status.section.pastIncidents": "Vergangene Störungen",

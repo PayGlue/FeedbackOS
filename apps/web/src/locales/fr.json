@@ -649,6 +649,7 @@
   "portal.status.title": "État des services",
   "portal.status.description": "L'état en direct de nos services. Abonnez-vous pour être informé des incidents et des maintenances.",
   "portal.status.rssFeed": "Flux RSS",
+  "portal.status.section.activeIncidents": "Incidents en cours",
   "portal.status.section.components": "État actuel par service",
   "portal.status.section.scheduledMaintenance": "Maintenance planifiée",
   "portal.status.section.pastIncidents": "Incidents passés",

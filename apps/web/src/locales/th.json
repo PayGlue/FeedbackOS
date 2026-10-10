@@ -843,6 +843,7 @@
   "portal.status.title": "สถานะ",
   "portal.status.description": "สถานะบริการแบบเรียลไทม์ ติดตามเพื่อรับแจ้งเหตุขัดข้องและการบำรุงรักษา",
   "portal.status.rssFeed": "ฟีด RSS",
+  "portal.status.section.activeIncidents": "เหตุขัดข้องที่กำลังเกิดขึ้น",
   "portal.status.section.components": "สถานะปัจจุบันรายบริการ",
   "portal.status.section.scheduledMaintenance": "กำหนดการบำรุงรักษา",
   "portal.status.section.pastIncidents": "เหตุขัดข้องที่ผ่านมา",

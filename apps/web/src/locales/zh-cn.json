@@ -649,6 +649,7 @@
   "portal.status.title": "状态",
   "portal.status.description": "服务的实时状态。订阅后可获取事件和维护通知。",
   "portal.status.rssFeed": "RSS 订阅",
+  "portal.status.section.activeIncidents": "进行中的事件",
   "portal.status.section.components": "各服务当前状态",
   "portal.status.section.scheduledMaintenance": "计划维护",
   "portal.status.section.pastIncidents": "历史事件",

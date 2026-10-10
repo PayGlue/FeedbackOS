@@ -198,11 +198,19 @@ function StatusPage() {
       {snapshot.activeIncidents.length === 0 ? (
         <StatusHero status={snapshot.topLevel.status} lastUpdatedAt={lastUpdatedAt} />
       ) : (
-        <div className="flex flex-col gap-3">
+        <section className="flex flex-col gap-3">
+          {/* The cards are the banner, so the section's heading is for
+              screen readers only: it keeps the cards' h3s under an h2. */}
+          <h2 className="sr-only">
+            <FormattedMessage
+              id="portal.status.section.activeIncidents"
+              defaultMessage="Active incidents"
+            />
+          </h2>
           {snapshot.activeIncidents.map((incident) => (
             <StatusIncidentCard key={incident.id} incident={incident} />
           ))}
-        </div>
+        </section>
       )}
 
       <section className="mt-8">
@@ -327,7 +335,7 @@ function StatusPage() {
                 <div className="flex flex-col gap-3.5">
                   {day.incidents.map((incident) => (
                     <div key={incident.id}>
-                      <h4 className="text-sm font-semibold">
+                      <h3 className="text-sm font-semibold">
                         <Link
                           to="/status/$incidentId"
                           params={{ incidentId: incident.id }}
@@ -335,7 +343,7 @@ function StatusPage() {
                         >
                           {incident.title}
                         </Link>
-                      </h4>
+                      </h3>
                       <StatusIncidentTimeline
                         updates={incident.updates}
                         compact
@@ -361,7 +369,7 @@ function StatusPage() {
                     timeZone: 'UTC',
                   })}
                 </p>
-                <h4 className="text-sm font-semibold">
+                <h3 className="text-sm font-semibold">
                   <Link
                     to="/status/$incidentId"
                     params={{ incidentId: incident.id }}
@@ -369,7 +377,7 @@ function StatusPage() {
                   >
                     {incident.title}
                   </Link>
-                </h4>
+                </h3>
                 <StatusIncidentTimeline updates={incident.updates} compact className="mt-1.5" />
               </div>
             ))}
