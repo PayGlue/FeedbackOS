@@ -259,15 +259,7 @@ function StatusIncidentEditorContent({
     )
   }
 
-  if (incident === null) {
-    return (
-      <EditorUnavailable
-        onClose={onClose}
-        title="Incident not found"
-        description="It may have been deleted, or the link is wrong."
-      />
-    )
-  }
+  if (incident === null) return <IncidentNotFound onClose={onClose} />
 
   if (isLoading || !incident || !details) {
     return (
@@ -411,6 +403,16 @@ function StatusIncidentEditorContent({
         </Sheet>
       </ModalFooter>
     </div>
+  )
+}
+
+function IncidentNotFound({ onClose }: { onClose: () => void }) {
+  return (
+    <EditorUnavailable
+      onClose={onClose}
+      title="Incident not found"
+      description="It may have been deleted, or the link is wrong."
+    />
   )
 }
 
@@ -698,14 +700,20 @@ export function StatusIncidentModal({
     searchParam: 'incident',
   })
 
+  // An id that isn't an incident id at all is as missing as an unknown one:
+  // say so, rather than opening an empty shell.
   return (
     <UrlModalShell
       open={open}
       onOpenChange={(o) => !o && close()}
       srTitle="Status incident"
-      hasValidId={!!validatedId}
+      hasValidId={open}
     >
-      {validatedId && <StatusIncidentEditorContent incidentId={validatedId} onClose={close} />}
+      {validatedId ? (
+        <StatusIncidentEditorContent incidentId={validatedId} onClose={close} />
+      ) : (
+        <IncidentNotFound onClose={close} />
+      )}
     </UrlModalShell>
   )
 }
