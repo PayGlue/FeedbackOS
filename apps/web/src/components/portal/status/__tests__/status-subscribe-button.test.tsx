@@ -206,6 +206,27 @@ describe('back from signing in', () => {
     await waitFor(() => expect(hoisted.toast.success).toHaveBeenCalled())
   })
 
+  it('shows Subscribed even when a read of the old state was in flight', async () => {
+    // Back in the magic link's tab, the first read and the subscribe start
+    // together; the read answers "not subscribed" after the subscribe lands.
+    localStorage.setItem(
+      PENDING_KEY,
+      JSON.stringify({ scope: 'page', componentIds: [], savedAt: Date.now() })
+    )
+    window.history.replaceState(null, '', '/status?subscribe=resume')
+    let answerFirstRead: (value: { subscribed: boolean }) => void = () => {}
+    hoisted.mineQueryFn
+      .mockImplementationOnce(() => new Promise((resolve) => (answerFirstRead = resolve)))
+      .mockResolvedValue({ subscribed: true })
+    hoisted.session = signedInUser
+    renderButton()
+
+    await waitFor(() => expect(hoisted.toast.success).toHaveBeenCalled())
+    answerFirstRead({ subscribed: false })
+
+    expect(await screen.findByRole('button', { name: 'Subscribed' })).toBeTruthy()
+  })
+
   it('leaves a choice alone after a sign-in that did not come from subscribing', async () => {
     // The visitor closed the sign-in dialog, then signed in from the header.
     localStorage.setItem(

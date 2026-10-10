@@ -101,8 +101,13 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
     ]
   }, [pageData])
 
-  const invalidateSubscription = () =>
-    queryClient.invalidateQueries({ queryKey: statusKeys.mySubscription() })
+  // A read already in flight started before the change, and invalidating
+  // would join it rather than start a new one: its stale answer ("not
+  // subscribed" just after subscribing) would win. Cancel it first.
+  const invalidateSubscription = async () => {
+    await queryClient.cancelQueries({ queryKey: statusKeys.mySubscription() })
+    await queryClient.invalidateQueries({ queryKey: statusKeys.mySubscription() })
+  }
 
   /** Send the visitor through sign-in, keeping what they chose for after. */
   function requestSignIn(pending: PendingStatusSubscription) {
@@ -130,7 +135,7 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
   const subscribeMutation = useMutation({
     mutationFn: (input: PendingStatusSubscription) => subscribeStatusFn({ data: input }),
     onSuccess: () => {
-      invalidateSubscription()
+      void invalidateSubscription()
       setOpen(false)
       toast.success(
         intl.formatMessage({
@@ -168,7 +173,7 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
   const unsubscribeMutation = useMutation({
     mutationFn: () => unsubscribeStatusFn(),
     onSuccess: () => {
-      invalidateSubscription()
+      void invalidateSubscription()
       setConfirmOpen(false)
       toast.success(
         intl.formatMessage({
