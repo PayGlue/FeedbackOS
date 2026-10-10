@@ -65,6 +65,7 @@ const choices = {
 }
 const mockUpdate = vi.fn()
 const refetch = vi.fn()
+const invalidateQueries = vi.fn()
 
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-query')>()),
@@ -73,12 +74,14 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
     if (opts.queryKey.includes('templates')) return { data: [] }
     return { data: detail, isLoading: false, isError: false, isFetching: false, refetch }
   },
+  useQueryClient: () => ({ invalidateQueries: invalidateQueries }),
 }))
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('@/lib/client/queries/status', () => ({
   statusIncidentQueries: { detail: (id: string) => ({ queryKey: ['status', 'detail', id] }) },
   statusComponentQueries: { choices: () => ({ queryKey: ['status', 'components', 'choices'] }) },
   statusTemplateQueries: { list: () => ({ queryKey: ['status', 'templates'] }) },
+  statusKeys: { components: () => ['status', 'components'] },
 }))
 vi.mock('@/lib/client/mutations/status', () => ({
   useUpdateStatusIncident: () => ({ mutateAsync: mockUpdate, isPending: false }),
@@ -126,6 +129,8 @@ describe('incident editor, service deleted elsewhere', () => {
     expect(
       screen.getAllByText('Webhooks was deleted and removed from this incident.').length
     ).toBeGreaterThan(0)
+    // The picker reloads, so the deleted service isn't offered again.
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['status', 'components'] })
     expect(serviceBox('Webhooks').getAttribute('aria-checked')).toBe('false')
     expect(serviceBox('API').getAttribute('aria-checked')).toBe('true')
     expect(mockUpdate).not.toHaveBeenCalled()

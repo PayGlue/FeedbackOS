@@ -8,7 +8,7 @@
  * posts updates. Posting is the sole public, timeline-visible act.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import { Cog6ToothIcon, EnvelopeIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
@@ -34,6 +34,7 @@ import { SidebarContainer, StatusSelect } from '@/components/shared/sidebar-prim
 import {
   statusComponentQueries,
   statusIncidentQueries,
+  statusKeys,
   type StatusComponentChoices,
   type StatusIncidentAdminDetail,
 } from '@/lib/client/queries/status'
@@ -184,6 +185,7 @@ function StatusIncidentEditorContent({
   // the sidebar too and say so. This is a sync, not an edit: nothing saves.
   const [removedNotice, setRemovedNotice] = useState<string | null>(null)
   const { data: serviceChoices } = useQuery(statusComponentQueries.choices())
+  const queryClient = useQueryClient()
   const serviceNames = useRef(new Map<string, string>())
   useEffect(() => {
     for (const c of incident?.affectedComponents ?? []) {
@@ -205,6 +207,9 @@ function StatusIncidentEditorContent({
       return next
     })
     setRemovedNotice(deletedServicesNotice(ids.map((id) => serviceNames.current.get(id))))
+    // The picker's list is as stale as the incident was: reload it so the
+    // deleted service isn't offered again.
+    void queryClient.invalidateQueries({ queryKey: statusKeys.components() })
   }
 
   // A refetch, or a response merged into the cache: a service the server had

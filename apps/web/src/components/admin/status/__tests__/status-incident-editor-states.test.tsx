@@ -15,12 +15,14 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-query')>()),
   useQuery: (opts: { queryKey: string[] }) =>
     opts.queryKey.includes('choices') ? { data: undefined } : { ...detail, refetch },
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }))
 // The real URL-modal hook runs (it validates the id); only navigation is stubbed.
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('@/lib/client/queries/status', () => ({
   statusIncidentQueries: { detail: (id: string) => ({ queryKey: ['status', 'detail', id] }) },
   statusComponentQueries: { choices: () => ({ queryKey: ['status', 'components', 'choices'] }) },
+  statusKeys: { components: () => ['status', 'components'] },
 }))
 vi.mock('@/lib/client/mutations/status', () => ({
   useUpdateStatusIncident: () => ({ mutateAsync: vi.fn(), isPending: false }),
