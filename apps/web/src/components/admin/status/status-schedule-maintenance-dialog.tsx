@@ -174,11 +174,9 @@ export function ScheduleMaintenanceDialog({
             </div>
             <div className="space-y-2">
               <Label>Scheduled end</Label>
-              <DateTimePicker
-                value={scheduledEnd}
-                onChange={setScheduledEnd}
-                minDate={scheduledStart}
-              />
+              {/* No minDate: the picker would move an end before the start up
+                  to the start. The admin's value stays, with the error below. */}
+              <DateTimePicker value={scheduledEnd} onChange={setScheduledEnd} />
             </div>
             {windowOutOfOrder && (
               <p className="col-span-2 text-xs text-destructive">

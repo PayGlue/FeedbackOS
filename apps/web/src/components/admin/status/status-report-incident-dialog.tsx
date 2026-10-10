@@ -229,10 +229,11 @@ export function ReportIncidentDialog({
               </div>
               <div className="space-y-2">
                 <Label>Resolved at</Label>
+                {/* No minDate: the picker would move a time before the start up
+                    to the start. The admin's value stays, with the error below. */}
                 <DateTimePicker
                   value={backfillEnd}
                   onChange={setBackfillEnd}
-                  minDate={backfillStart}
                   maxDate={new Date()}
                 />
               </div>
