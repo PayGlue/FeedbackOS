@@ -132,6 +132,25 @@ const incidentCreated: EventData = {
   },
 } as EventData
 
+// Scheduled after the incident above: a window from 02:00 to 04:00 UTC.
+const maintenanceScheduled: EventData = {
+  type: 'status.maintenance_scheduled',
+  actor: { type: 'user', principalId: P_MEMBER, displayName: 'Admin' },
+  data: {
+    incident: {
+      id: createId('status_incident'),
+      kind: 'maintenance',
+      title: `status-maint-${runSuffix}`,
+      status: 'scheduled',
+      impact: 'maintenance',
+      scheduledStartAt: '2026-07-12T02:00:00.000Z',
+      scheduledEndAt: '2026-07-12T04:00:00.000Z',
+      startedAt: '2026-07-12T02:00:00.000Z',
+      componentIds: [API],
+    },
+  },
+} as EventData
+
 /** The affected-component list each recipient's email shows. */
 function emailedComponents(targets: Awaited<ReturnType<typeof getStatusSubscriberTargets>>) {
   return Object.fromEntries(
@@ -258,5 +277,16 @@ describe.skipIf(!dbAvailable)('status incident emails (execution-level)', () => 
   it('tells a subscriber who chose components only about those they can see', async () => {
     const targets = await getStatusSubscriberTargets(incidentCreated, context)
     expect(Object.keys(emailedComponents(targets))).not.toContain(PICKER_EMAIL)
+  })
+
+  it('gives maintenance windows on the 24-hour clock, as the status page does', async () => {
+    const targets = await getStatusSubscriberTargets(maintenanceScheduled, context)
+    const email = targets.find(
+      (t) => t.type === 'email' && (t.target as { email: string }).email === OUTSIDER_EMAIL
+    )
+    const config = email?.config as { scheduledStartLabel: string; scheduledEndLabel: string }
+    expect(config.scheduledStartLabel).toMatch(/July 12, 2026.* 02:00 UTC$/)
+    expect(config.scheduledEndLabel).toMatch(/July 12, 2026.* 04:00 UTC$/)
+    expect(`${config.scheduledStartLabel} ${config.scheduledEndLabel}`).not.toMatch(/AM|PM/)
   })
 })

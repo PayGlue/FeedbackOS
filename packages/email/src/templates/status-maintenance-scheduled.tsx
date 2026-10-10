@@ -88,7 +88,7 @@ export function StatusMaintenanceScheduledEmail({
         </Text>
       </Section>
 
-      {/* Affected components */}
+      {/* Affected services */}
       {affectedComponents.length > 0 && (
         <Section style={{ marginBottom: '24px' }}>
           <Text
@@ -99,7 +99,7 @@ export function StatusMaintenanceScheduledEmail({
               marginBottom: '8px',
             }}
           >
-            Affected components
+            Affected services
           </Text>
           <Text style={{ ...typography.textSmall, marginTop: '0', marginBottom: '0' }}>
             {affectedComponents.join(', ')}
@@ -118,6 +118,7 @@ export function StatusMaintenanceScheduledEmail({
       <NotificationFooter
         reason="You received this email because you're subscribed to status updates."
         unsubscribeUrl={unsubscribeUrl}
+        unsubscribeLabel="Unsubscribe from status updates"
         preferencesUrl={preferencesUrl}
       />
     </EmailLayout>

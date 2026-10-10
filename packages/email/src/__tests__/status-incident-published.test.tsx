@@ -34,20 +34,47 @@ describe('StatusIncidentPublishedEmail', () => {
   })
 })
 
+const maintenance = {
+  workspaceName: 'Acme',
+  maintenanceTitle: 'Database upgrade',
+  startLabel: 'October 12, 2026 at 02:00 UTC',
+  endLabel: 'October 12, 2026 at 04:00 UTC',
+  affectedComponents: ['API'],
+  incidentUrl: 'https://acme.example.com/status/status_incident_2',
+  unsubscribeUrl: 'https://acme.example.com/unsubscribe?token=t',
+}
+
 describe('StatusMaintenanceScheduledEmail', () => {
   it('keeps the line breaks the description was written with', async () => {
     const html = await render(
       <StatusMaintenanceScheduledEmail
-        workspaceName="Acme"
-        maintenanceTitle="Database upgrade"
+        {...maintenance}
         body={'Writes pause briefly.\nReads stay up.'}
-        startLabel="October 12, 2026, 02:00 UTC"
-        endLabel="October 12, 2026, 04:00 UTC"
-        affectedComponents={['API']}
-        incidentUrl="https://acme.example.com/status/status_incident_2"
-        unsubscribeUrl="https://acme.example.com/unsubscribe?token=t"
       />
     )
     expect(html).toMatch(/Writes pause briefly\.<br\s*\/?>Reads stay up\./)
   })
+})
+
+describe('status email wording', () => {
+  const emails = {
+    incident: () => <StatusIncidentPublishedEmail {...incident} body="We are seeing errors." />,
+    maintenance: () => <StatusMaintenanceScheduledEmail {...maintenance} body="Writes pause." />,
+  }
+
+  for (const [name, email] of Object.entries(emails)) {
+    it(`speaks of services, as the status page does (${name})`, async () => {
+      const html = await render(email())
+      expect(html).toContain('Affected services')
+      expect(html).not.toContain('Affected components')
+    })
+
+    it(`offers to unsubscribe from status updates, not from a post (${name})`, async () => {
+      const html = await render(email())
+      expect(html).toMatch(
+        /<a[^>]*href="https:\/\/acme\.example\.com\/unsubscribe\?token=t"[^>]*>Unsubscribe from status updates<\/a>/
+      )
+      expect(html).not.toContain('Unsubscribe from this post')
+    })
+  }
 })

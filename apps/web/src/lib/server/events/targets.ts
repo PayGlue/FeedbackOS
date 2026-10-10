@@ -2151,7 +2151,8 @@ export async function getStatusSubscriberTargets(
   return targets
 }
 
-/** ISO string → "July 12, 2026, 02:00 UTC" for maintenance-window emails. */
+/** ISO string → "July 12, 2026 at 02:00 UTC" for maintenance-window emails,
+ *  on the 24-hour clock the status page uses. */
 function formatStatusDate(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleString('en-US', {
@@ -2160,6 +2161,7 @@ function formatStatusDate(iso: string): string {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hourCycle: 'h23',
     timeZone: 'UTC',
     timeZoneName: 'short',
   })

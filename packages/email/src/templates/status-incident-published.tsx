@@ -113,7 +113,7 @@ export function StatusIncidentPublishedEmail({
         )}
       </Section>
 
-      {/* Affected components */}
+      {/* Affected services */}
       {affectedComponents.length > 0 && (
         <Section style={{ marginBottom: '24px' }}>
           <Text
@@ -125,7 +125,7 @@ export function StatusIncidentPublishedEmail({
               marginBottom: '8px',
             }}
           >
-            Affected components
+            Affected services
           </Text>
           {affectedComponents.map((component) => (
             <Text
@@ -149,6 +149,7 @@ export function StatusIncidentPublishedEmail({
       <NotificationFooter
         reason="You received this email because you're subscribed to status updates."
         unsubscribeUrl={unsubscribeUrl}
+        unsubscribeLabel="Unsubscribe from status updates"
         preferencesUrl={preferencesUrl}
       />
     </EmailLayout>
