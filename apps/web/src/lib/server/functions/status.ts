@@ -516,8 +516,8 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
  * Everything the admin Overview needs in one round trip: the derived
- * public-banner state, service health, active incidents, upcoming
- * maintenance, and the stat tiles. Deliberately NOT the viewer-scoped
+ * public-banner state, service health, active incidents, maintenance in
+ * progress, upcoming maintenance, and the stat tiles. Deliberately NOT the viewer-scoped
  * `getStatusPageSnapshot`/`getStatusUptimeFn` path — those 404/empty when
  * `statusSettings.enabled` is false, and admins need the overview precisely
  * to see and fix a disabled page.
@@ -570,8 +570,13 @@ export const getStatusOverviewAdminFn = createServerFn({ method: 'GET' }).handle
       components: g.components.map(leanComponent),
     })),
     activeIncidents: incidents.items.map(serializeIncident),
+    // An open window is either running now (live, like an open incident) or
+    // still ahead; only the latter is upcoming.
+    liveMaintenance: maintenance.items
+      .filter((m) => m.status !== 'scheduled')
+      .map(serializeIncident),
     upcomingMaintenance: maintenance.items
-      .slice()
+      .filter((m) => m.status === 'scheduled')
       .sort(
         (a, b) =>
           (a.scheduledStartAt?.getTime() ?? Infinity) - (b.scheduledStartAt?.getTime() ?? Infinity)

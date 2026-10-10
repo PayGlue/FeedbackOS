@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 
 let overview: unknown
 
@@ -44,6 +44,7 @@ function makeOverview(overrides: Record<string, unknown> = {}) {
     enabled: true,
     topLevelStatus: 'operational',
     activeIncidents: [],
+    liveMaintenance: [],
     upcomingMaintenance: [],
     ungroupedComponents: [{ id: 'c1', name: 'Website', status: 'operational' }],
     groups: [],
@@ -104,6 +105,45 @@ describe('<StatusOverviewView>', () => {
     const label = screen.getByText('90-day uptime')
     expect(label.className).not.toContain('uppercase')
     expect(screen.getByText('99.50%')).toBeTruthy()
+  })
+
+  it('shows a running window as live, and only windows still ahead as upcoming', () => {
+    const window = (id: string, title: string, status: string) => ({
+      id,
+      kind: 'maintenance',
+      title,
+      status,
+      impact: 'maintenance',
+      scheduledStartAt: '2026-10-12T14:00:00.000Z',
+      scheduledEndAt: '2026-10-12T16:00:00.000Z',
+      autoStart: true,
+      autoComplete: true,
+      startedAt: '2026-10-12T13:00:00.000Z',
+      affectedComponents: [{ componentId: 'c1', name: 'Website' }],
+      updates: [{ id: `${id}-u`, body: 'Under way.', createdAt: '2026-10-12T13:00:00.000Z' }],
+    })
+    overview = makeOverview({
+      liveMaintenance: [window('m1', 'Database failover', 'in_progress')],
+      upcomingMaintenance: [window('m2', 'Network upgrade', 'scheduled')],
+    })
+    renderOverview()
+
+    const live = screen.getByText('Maintenance in progress').closest('section') as HTMLElement
+    expect(within(live).getByText('Database failover')).toBeTruthy()
+    expect(within(live).getByText('In progress')).toBeTruthy()
+    expect(within(live).getByRole('button', { name: 'Post update' })).toBeTruthy()
+    expect(within(live).queryByText('Network upgrade')).toBeNull()
+
+    const upcoming = screen.getByText('Upcoming maintenance').closest('section') as HTMLElement
+    expect(within(upcoming).getByText('Network upgrade')).toBeTruthy()
+    expect(within(upcoming).queryByText('Database failover')).toBeNull()
+    expect(within(upcoming).getByRole('button', { name: 'Start now' })).toBeTruthy()
+  })
+
+  it('shows no maintenance cards when no window is open', () => {
+    renderOverview()
+    expect(screen.queryByText('Maintenance in progress')).toBeNull()
+    expect(screen.queryByText('Upcoming maintenance')).toBeNull()
   })
 
   it('offers to add the first service, without a paragraph', () => {

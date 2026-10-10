@@ -2,8 +2,9 @@
  * Admin Overview: the on-call landing view (Status Admin Redesign spec,
  * Phase 2). Answers "what does the public see right now" before anything
  * else: a banner mirroring the portal hero (same worst-of derivation, same
- * copy), active incidents with Post update one click away, upcoming
- * maintenance with Start now, service health, and stat tiles.
+ * copy), active incidents and maintenance in progress with Post update one
+ * click away, upcoming maintenance with Start now, service health, and stat
+ * tiles.
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -86,6 +87,7 @@ function OverviewBody({ data }: { data: StatusOverview }) {
       <div className="grid grid-cols-1 lg:grid-cols-[1.55fr_1fr] gap-3 items-start">
         <div className="space-y-3 min-w-0">
           <ActiveIncidentsCard incidents={data.activeIncidents} />
+          <LiveMaintenanceCard windows={data.liveMaintenance} />
           <UpcomingMaintenanceCard windows={data.upcomingMaintenance} />
           <StatTiles data={data} />
         </div>
@@ -217,8 +219,6 @@ function useGoToIncident() {
 }
 
 function ActiveIncidentsCard({ incidents }: { incidents: OverviewIncident[] }) {
-  const goToIncident = useGoToIncident()
-
   if (incidents.length === 0) {
     return (
       <CardShell title="Open incidents">
@@ -233,55 +233,96 @@ function ActiveIncidentsCard({ incidents }: { incidents: OverviewIncident[] }) {
   return (
     <CardShell title="Open incidents" action={<ViewAllLink view="open" />}>
       <div className="divide-y divide-border/40">
-        {incidents.map((incident) => {
-          const latest = incident.updates[incident.updates.length - 1]
-          const lifecycle = incident.status as StatusIncidentLifecycle
-          return (
-            <div key={incident.id} className="px-4 py-3 space-y-2">
-              <div className="flex items-start gap-2.5">
-                <span
-                  className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: IMPACT_COLORS[incident.impact] }}
-                />
-                <div className="flex-1 min-w-0">
-                  <button
-                    type="button"
-                    className="font-semibold text-sm text-left hover:underline underline-offset-2 line-clamp-1"
-                    onClick={() => goToIncident(incident.id)}
-                  >
-                    {incident.title}
-                  </button>
-                  <div className="flex items-center flex-wrap gap-2 text-[11px] text-muted-foreground mt-1">
-                    <LifecycleBadge status={lifecycle} />
-                    <Badge variant="outline" size="sm">
-                      {IMPACT_LABELS[incident.impact]}
-                    </Badge>
-                    {incident.affectedComponents.slice(0, 3).map((c) => (
-                      <span key={c.componentId}>{c.name}</span>
-                    ))}
-                    <span className="text-muted-foreground/50">·</span>
-                    <span>
-                      Started <TimeAgo date={incident.startedAt} locale="en" />
-                    </span>
-                  </div>
-                </div>
-                <Button size="sm" onClick={() => goToIncident(incident.id)}>
-                  Post update
-                </Button>
-              </div>
-              {latest && (
-                <p className="text-xs text-muted-foreground border-l-2 border-border pl-2.5 ml-1 line-clamp-2">
-                  <span className="text-foreground/80 font-medium">
-                    Latest update <TimeAgo date={latest.createdAt} locale="en" />:
-                  </span>{' '}
-                  {latest.body}
-                </p>
-              )}
-            </div>
-          )
-        })}
+        {incidents.map((incident) => (
+          <LiveRow
+            key={incident.id}
+            item={incident}
+            meta={
+              <Badge variant="outline" size="sm">
+                {IMPACT_LABELS[incident.impact]}
+              </Badge>
+            }
+          />
+        ))}
       </div>
     </CardShell>
+  )
+}
+
+/** Windows running now. They are live, like an open incident, so they read
+ *  like one: when they started and the latest update, with Post update to
+ *  hand. Nothing shows while none is running. */
+function LiveMaintenanceCard({ windows }: { windows: OverviewIncident[] }) {
+  const formatDate = useLocalDateFormatter()
+  if (windows.length === 0) return null
+
+  return (
+    <CardShell title="Maintenance in progress" action={<ViewAllLink view="maintenance" />}>
+      <div className="divide-y divide-border/40">
+        {windows.map((w) => (
+          <LiveRow
+            key={w.id}
+            item={w}
+            meta={
+              w.scheduledStartAt ? (
+                <span>
+                  Planned {formatWindow(formatDate, w.scheduledStartAt, w.scheduledEndAt)}
+                </span>
+              ) : null
+            }
+          />
+        ))}
+      </div>
+    </CardShell>
+  )
+}
+
+/** One live incident or running window: what it is, when it started, the
+ *  latest update, and Post update. */
+function LiveRow({ item, meta }: { item: OverviewIncident; meta?: React.ReactNode }) {
+  const goToIncident = useGoToIncident()
+  const latest = item.updates[item.updates.length - 1]
+  const lifecycle = item.status as StatusIncidentLifecycle
+  return (
+    <div className="px-4 py-3 space-y-2">
+      <div className="flex items-start gap-2.5">
+        <span
+          className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: IMPACT_COLORS[item.impact] }}
+        />
+        <div className="flex-1 min-w-0">
+          <button
+            type="button"
+            className="font-semibold text-sm text-left hover:underline underline-offset-2 line-clamp-1"
+            onClick={() => goToIncident(item.id)}
+          >
+            {item.title}
+          </button>
+          <div className="flex items-center flex-wrap gap-2 text-[11px] text-muted-foreground mt-1">
+            <LifecycleBadge status={lifecycle} />
+            {meta}
+            {item.affectedComponents.slice(0, 3).map((c) => (
+              <span key={c.componentId}>{c.name}</span>
+            ))}
+            <span className="text-muted-foreground/50">·</span>
+            <span>
+              Started <TimeAgo date={item.startedAt} locale="en" />
+            </span>
+          </div>
+        </div>
+        <Button size="sm" onClick={() => goToIncident(item.id)}>
+          Post update
+        </Button>
+      </div>
+      {latest && (
+        <p className="text-xs text-muted-foreground border-l-2 border-border pl-2.5 ml-1 line-clamp-2">
+          <span className="text-foreground/80 font-medium">
+            Latest update <TimeAgo date={latest.createdAt} locale="en" />:
+          </span>{' '}
+          {latest.body}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -301,6 +342,8 @@ function dayOfMonth(format: LocalDateFormatter, date: Date): string {
   return format(date, { day: 'numeric', numberingSystem: 'latn' }).replace(/\D/g, '')
 }
 
+/** Windows still ahead. One that has started is under Maintenance in
+ *  progress instead. */
 function UpcomingMaintenanceCard({ windows }: { windows: OverviewIncident[] }) {
   const formatDate = useLocalDateFormatter()
   const goToIncident = useGoToIncident()
