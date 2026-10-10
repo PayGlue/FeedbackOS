@@ -1597,6 +1597,7 @@
   "portal.auth.team.notOnTeam": "لست من الفريق؟ <link>انتقل إلى بوابة {workspace}</link>",
   "portal.auth.team.notOnTeamGeneric": "لست من الفريق؟ <link>انتقل إلى البوابة</link>",
   "portal.status.subscribeDialog.accountNote": "تتطلب تحديثات البريد الإلكتروني حسابًا مجانيًا في البوابة. أو تابع <rss>موجز RSS</rss>.",
+  "portal.status.subscribeDialog.accountNoteWithoutFeed": "تتطلب تحديثات البريد الإلكتروني حسابًا مجانيًا في البوابة.",
   "unsubscribe.postLabel": "المنشور: {title}",
   "unsubscribe.doneTitle": "تم",
   "unsubscribe.onboarding.turnBackOn": "غيّرت رأيك؟ <link>أعد تفعيلها</link> من تفضيلاتك.",

@@ -18,6 +18,7 @@ import {
   StatusSignInPrompt,
   useStatusSignInCouldGrantAccess,
   useRefreshStatusForViewer,
+  useStatusFeedOffered,
   LIFECYCLE_STYLE,
   LIFECYCLE_LABEL,
 } from '@/components/portal/status'
@@ -124,6 +125,7 @@ function formatMaintenanceWindow(
 function StatusPage() {
   const intl = useIntl()
   useRefreshStatusForViewer()
+  const feedOffered = useStatusFeedOffered()
   const { data } = useSuspenseQuery(publicStatusPageQueries.get())
   const { snapshot, settings, uptime } = data
 
@@ -172,14 +174,19 @@ function StatusPage() {
         action={
           <div className="flex items-center gap-2">
             <StatusSubscribeButton />
-            <Button variant="outline" size="sm" asChild className="shrink-0 gap-1.5">
-              <a href="/status/feed" target="_blank" rel="noopener noreferrer">
-                <RssIcon className="h-4 w-4" />
-                <span className="sr-only sm:not-sr-only">
-                  {intl.formatMessage({ id: 'portal.status.rssFeed', defaultMessage: 'RSS Feed' })}
-                </span>
-              </a>
-            </Button>
+            {feedOffered && (
+              <Button variant="outline" size="sm" asChild className="shrink-0 gap-1.5">
+                <a href="/status/feed" target="_blank" rel="noopener noreferrer">
+                  <RssIcon className="h-4 w-4" />
+                  <span className="sr-only sm:not-sr-only">
+                    {intl.formatMessage({
+                      id: 'portal.status.rssFeed',
+                      defaultMessage: 'RSS Feed',
+                    })}
+                  </span>
+                </a>
+              </Button>
+            )}
           </div>
         }
         animate

@@ -25,6 +25,7 @@ import {
 } from '@/lib/client/queries/status'
 import { subscribeStatusFn, unsubscribeStatusFn } from '@/lib/server/functions/status-subscriptions'
 import type { StatusComponentId } from '@quackback/ids'
+import { useStatusFeedOffered } from './use-status-feed-offered'
 import {
   resumeSubscribeUrl,
   savePendingStatusSubscription,
@@ -75,6 +76,7 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
   const authPopover = useAuthPopoverSafe()
   const session = useSessionContext()
   const signedIn = !!session?.user && session.user.principalType !== 'anonymous'
+  const feedOffered = useStatusFeedOffered()
   const [open, setOpen] = useState(false)
   const [scope, setScope] = useState<'page' | 'components'>('page')
   const [selectedIds, setSelectedIds] = useState<StatusComponentId[]>([])
@@ -283,25 +285,33 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
                 defaultMessage: "We'll email you when incidents and maintenance are posted.",
               })}
             </DialogDescription>
-            {/* Said before the visitor picks a scope, not after Subscribe. */}
+            {/* Said before the visitor picks a scope, not after Subscribe. A
+                page that isn't public has no feed to offer instead. */}
             {!signedIn && (
               <p className="text-xs text-muted-foreground">
-                <FormattedMessage
-                  id="portal.status.subscribeDialog.accountNote"
-                  defaultMessage="Email updates need a free portal account. Or follow the <rss>RSS feed</rss>."
-                  values={{
-                    rss: (chunks) => (
-                      <a
-                        href="/status/feed"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline underline-offset-2 hover:text-foreground"
-                      >
-                        {chunks}
-                      </a>
-                    ),
-                  }}
-                />
+                {feedOffered ? (
+                  <FormattedMessage
+                    id="portal.status.subscribeDialog.accountNote"
+                    defaultMessage="Email updates need a free portal account. Or follow the <rss>RSS feed</rss>."
+                    values={{
+                      rss: (chunks) => (
+                        <a
+                          href="/status/feed"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 hover:text-foreground"
+                        >
+                          {chunks}
+                        </a>
+                      ),
+                    }}
+                  />
+                ) : (
+                  <FormattedMessage
+                    id="portal.status.subscribeDialog.accountNoteWithoutFeed"
+                    defaultMessage="Email updates need a free portal account."
+                  />
+                )}
               </p>
             )}
           </DialogHeader>

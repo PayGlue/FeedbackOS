@@ -1597,6 +1597,7 @@
   "portal.auth.team.notOnTeam": "Nie należysz do zespołu? <link>Przejdź do portalu {workspace}</link>",
   "portal.auth.team.notOnTeamGeneric": "Nie należysz do zespołu? <link>Przejdź do portalu</link>",
   "portal.status.subscribeDialog.accountNote": "Powiadomienia e-mail wymagają bezpłatnego konta w portalu. Możesz też śledzić <rss>kanał RSS</rss>.",
+  "portal.status.subscribeDialog.accountNoteWithoutFeed": "Powiadomienia e-mail wymagają bezpłatnego konta w portalu.",
   "unsubscribe.postLabel": "Wpis: {title}",
   "unsubscribe.doneTitle": "Gotowe",
   "unsubscribe.onboarding.turnBackOn": "Zmiana zdania? <link>Włącz je ponownie</link> w preferencjach.",

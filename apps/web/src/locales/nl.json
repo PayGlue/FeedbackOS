@@ -1597,6 +1597,7 @@
   "portal.auth.team.notOnTeam": "Geen lid van het team? <link>Ga naar het portaal van {workspace}</link>",
   "portal.auth.team.notOnTeamGeneric": "Geen lid van het team? <link>Ga naar het portaal</link>",
   "portal.status.subscribeDialog.accountNote": "Voor e-mailupdates heb je een gratis portaalaccount nodig. Of volg de <rss>RSS-feed</rss>.",
+  "portal.status.subscribeDialog.accountNoteWithoutFeed": "Voor e-mailupdates heb je een gratis portaalaccount nodig.",
   "unsubscribe.postLabel": "Post: {title}",
   "unsubscribe.doneTitle": "Klaar",
   "unsubscribe.onboarding.turnBackOn": "Toch weer aan? <link>Zet ze weer aan</link> in je voorkeuren.",

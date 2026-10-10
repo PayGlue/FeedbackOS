@@ -1597,6 +1597,7 @@
   "portal.auth.team.notOnTeam": "¿No eres del equipo? <link>Ir al portal de {workspace}</link>",
   "portal.auth.team.notOnTeamGeneric": "¿No eres del equipo? <link>Ir al portal</link>",
   "portal.status.subscribeDialog.accountNote": "Las actualizaciones por correo necesitan una cuenta gratuita del portal. O sigue el <rss>feed RSS</rss>.",
+  "portal.status.subscribeDialog.accountNoteWithoutFeed": "Las actualizaciones por correo necesitan una cuenta gratuita del portal.",
   "unsubscribe.postLabel": "Publicación: {title}",
   "unsubscribe.doneTitle": "Listo",
   "unsubscribe.onboarding.turnBackOn": "¿Cambiaste de opinión? <link>Vuelve a activarlos</link> en tus preferencias.",

@@ -1848,6 +1848,7 @@
   "portal.auth.team.notOnTeam": "ไม่ได้อยู่ในทีมใช่ไหม? <link>ไปที่พอร์ทัล {workspace}</link>",
   "portal.auth.team.notOnTeamGeneric": "ไม่ได้อยู่ในทีมใช่ไหม? <link>ไปที่พอร์ทัล</link>",
   "portal.status.subscribeDialog.accountNote": "การรับอัปเดตทางอีเมลต้องมีบัญชีพอร์ทัลฟรี หรือติดตามผ่าน <rss>ฟีด RSS</rss>",
+  "portal.status.subscribeDialog.accountNoteWithoutFeed": "การรับอัปเดตทางอีเมลต้องมีบัญชีพอร์ทัลฟรี",
   "unsubscribe.doneTitle": "เรียบร้อย",
   "unsubscribe.onboarding.turnBackOn": "เปลี่ยนใจใช่ไหม? <link>เปิดกลับมา</link> ได้ในการตั้งค่าของคุณ",
   "unsubscribe.onboarding.confirmTitle": "หยุดรับเคล็ดลับการตั้งค่า?",

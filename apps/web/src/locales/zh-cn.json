@@ -1597,6 +1597,7 @@
   "portal.auth.team.notOnTeam": "不是团队成员？<link>前往 {workspace} 门户</link>",
   "portal.auth.team.notOnTeamGeneric": "不是团队成员？<link>前往门户</link>",
   "portal.status.subscribeDialog.accountNote": "邮件更新需要一个免费的门户账户。也可以关注 <rss>RSS 订阅源</rss>。",
+  "portal.status.subscribeDialog.accountNoteWithoutFeed": "邮件更新需要一个免费的门户账户。",
   "unsubscribe.postLabel": "帖子：{title}",
   "unsubscribe.doneTitle": "已完成",
   "unsubscribe.onboarding.turnBackOn": "改变主意了？可在偏好设置中<link>重新开启</link>。",

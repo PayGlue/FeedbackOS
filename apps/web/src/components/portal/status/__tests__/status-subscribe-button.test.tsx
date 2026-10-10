@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const hoisted = vi.hoisted(() => ({
   session: null as unknown,
+  settings: { statusConfig: { audience: 'public' } } as unknown,
   openAuthPopover: vi.fn(),
   subscribeStatusFn: vi.fn(),
   unsubscribeStatusFn: vi.fn(),
@@ -16,6 +17,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('@/lib/client/hooks/use-root-context', () => ({
   useSessionContext: () => hoisted.session,
+  useWorkspaceSettings: () => hoisted.settings,
 }))
 vi.mock('@/components/auth/auth-popover-context', () => ({
   useAuthPopoverSafe: () => ({ openAuthPopover: hoisted.openAuthPopover }),
@@ -67,6 +69,7 @@ const signedInUser = { user: { id: 'user_1', principalType: 'user' } }
 
 beforeEach(() => {
   localStorage.clear()
+  hoisted.settings = { statusConfig: { audience: 'public' } }
   hoisted.openAuthPopover.mockReset()
   hoisted.subscribeStatusFn.mockReset().mockResolvedValue({ subscribed: true })
   hoisted.unsubscribeStatusFn.mockReset().mockResolvedValue({ subscribed: false })
@@ -105,6 +108,14 @@ it('tells a signed-out visitor that email needs an account and offers the RSS fe
   await openDialog()
   expect(screen.getByText(/Email updates need a free portal account/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'RSS feed' })).toHaveAttribute('href', '/status/feed')
+})
+
+it('offers no RSS feed when the page is not public, since a feed reader would get it empty', async () => {
+  hoisted.session = null
+  hoisted.settings = { statusConfig: { audience: 'segments' } }
+  await openDialog()
+  expect(screen.getByText('Email updates need a free portal account.')).toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'RSS feed' })).toBeNull()
 })
 
 it('says nothing about accounts to a signed-in visitor', async () => {

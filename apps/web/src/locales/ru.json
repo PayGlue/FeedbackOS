@@ -1597,6 +1597,7 @@
   "portal.auth.team.notOnTeam": "Не из команды? <link>Перейти на портал {workspace}</link>",
   "portal.auth.team.notOnTeamGeneric": "Не из команды? <link>Перейти на портал</link>",
   "portal.status.subscribeDialog.accountNote": "Для обновлений по почте нужен бесплатный аккаунт на портале. Или подпишитесь на <rss>RSS-ленту</rss>.",
+  "portal.status.subscribeDialog.accountNoteWithoutFeed": "Для обновлений по почте нужен бесплатный аккаунт на портале.",
   "unsubscribe.postLabel": "Публикация: {title}",
   "unsubscribe.doneTitle": "Готово",
   "unsubscribe.onboarding.turnBackOn": "Передумали? <link>Включите их снова</link> в настройках.",

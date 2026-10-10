@@ -10,6 +10,8 @@
  *   way in, instead of only "not available".
  * - Signing in on the page shows what the new viewer may see without a
  *   reload.
+ * - The RSS feed is offered only on a public page: a feed reader has no
+ *   session, so any other page gives it an empty feed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
@@ -207,5 +209,29 @@ describe('when the viewer changes', () => {
     renderAgain()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(ctx.getStatusPageFn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the RSS feed', () => {
+  it('is offered on a public page', async () => {
+    renderWith(options.component)
+    expect(await screen.findByRole('link', { name: 'RSS Feed' })).toHaveAttribute(
+      'href',
+      '/status/feed'
+    )
+  })
+
+  it('is not offered on a page for signed-in visitors or chosen segments', async () => {
+    for (const audience of ['authenticated', 'segments']) {
+      ctx.session = { user: { id: 'user_1', principalType: 'user' } }
+      ctx.settings = {
+        featureFlags: { statusPage: true },
+        statusConfig: { enabled: true, audience, pageDescription: null },
+      }
+      renderWith(options.component)
+      await screen.findByText('No incidents in the last 14 days.')
+      expect(screen.queryByRole('link', { name: 'RSS Feed' })).toBeNull()
+      cleanup()
+    }
   })
 })
