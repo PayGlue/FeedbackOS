@@ -26,6 +26,7 @@ import {
   conversations,
   tickets,
   ticketConversations,
+  type StatusIncidentImpact,
 } from '@/lib/server/db'
 import {
   resolveContactRecipients,
@@ -1943,6 +1944,7 @@ export async function getStatusSubscriberTargets(
   } = await import('@/lib/server/db')
   const { STATUS_COMPONENT_STATUS_LABELS, statusLifecycleLabel } =
     await import('@/lib/server/domains/status/status.labels')
+  const { deriveViewerImpact } = await import('@/lib/server/domains/status/status.calc')
   const { getActiveSubscriptionsForComponents } =
     await import('@/lib/server/domains/status/status.subscription')
   const { isStatusAudienceGranted } = await import('@/lib/server/domains/status/status.audience')
@@ -2028,7 +2030,8 @@ export async function getStatusSubscriberTargets(
   // who chose only components they can no longer see isn't told about the
   // rest. The visible subset is kept: it is the component list that
   // recipient's email may show (the page hides the rest from them, so the
-  // email must too).
+  // email must too), and the impact they are told is the one the page shows
+  // them, worked out from that subset.
   const eligible = principals.flatMap((p) => {
     const actor: Actor = {
       principalId: p.id,
@@ -2045,7 +2048,12 @@ export async function getStatusSubscriberTargets(
       ? visibleAffected.filter((c) => chosen.has(String(c.id)))
       : visibleAffected
     if (affected.length > 0 && followed.length === 0) return []
-    return [{ ...p, visibleAffected }]
+    const impact = deriveViewerImpact(
+      incident.impact as StatusIncidentImpact,
+      visibleAffected.map((c) => c.linkedStatus ?? c.liveStatus),
+      visibleAffected.length < affectedInOrder.length
+    )
+    return [{ ...p, visibleAffected, impact }]
   })
   if (eligible.length === 0) return []
 
@@ -2068,20 +2076,29 @@ export async function getStatusSubscriberTargets(
       status: STATUS_COMPONENT_STATUS_LABELS[c.linkedStatus ?? c.liveStatus],
     }))
 
-  // In-app notification target (all eligible; ignores emailsDisabled).
-  targets.push({
-    type: 'notification',
-    target: { principalIds: eligible.map((p) => p.id as PrincipalId) },
-    config: {
-      eventType: event.type,
-      incidentId: incident.id,
-      incidentTitle: incident.title,
-      incidentUrl,
-      kind: incident.kind,
-      impact: incident.impact,
-      statusLabel: statusLifecycleLabel(incident.status),
-    },
-  })
+  // In-app notification targets (all eligible; ignores emailsDisabled), one
+  // per impact, since the notification carries the impact its recipients see.
+  const principalIdsByImpact = new Map<StatusIncidentImpact, PrincipalId[]>()
+  for (const p of eligible) {
+    const ids = principalIdsByImpact.get(p.impact) ?? []
+    ids.push(p.id as PrincipalId)
+    principalIdsByImpact.set(p.impact, ids)
+  }
+  for (const [impact, ids] of principalIdsByImpact) {
+    targets.push({
+      type: 'notification',
+      target: { principalIds: ids },
+      config: {
+        eventType: event.type,
+        incidentId: incident.id,
+        incidentTitle: incident.title,
+        incidentUrl,
+        kind: incident.kind,
+        impact,
+        statusLabel: statusLifecycleLabel(incident.status),
+      },
+    })
+  }
 
   // Email targets — gated by emailsDisabled + per-principal notification matrix.
   if (!settings.emailsDisabled) {
@@ -2113,7 +2130,7 @@ export async function getStatusSubscriberTargets(
                 preferencesUrl: `${context.portalBaseUrl}/settings/preferences`,
                 incidentTitle: incident.title,
                 incidentUrl,
-                impact: incident.impact,
+                impact: p.impact,
                 statusLabel: statusLifecycleLabel(incident.status),
                 body: firstUpdateBody,
                 affectedComponents: affectedForEmail(p.visibleAffected),

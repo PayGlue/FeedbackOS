@@ -6,6 +6,8 @@
  *   from the newest incident, which listed the first 14 days twice.
  * - The feed carries open incidents and scheduled or in-progress maintenance,
  *   not only resolved history, newest activity first.
+ * - A visitor who can't see some of an incident's services is shown the
+ *   impact of the ones they can see, not one raised by the hidden ones.
  *
  * Runs the real queries against the real database: the global `db` proxy is
  * pointed at this file's own short-lived connection (closed in afterAll).
@@ -23,9 +25,16 @@ import {
 } from '@/lib/server/db'
 // oxlint-disable-next-line no-restricted-imports -- legitimate createDb caller: this file owns the global db for its worker (see help-center-segment-gate.integration.test.ts)
 import { createDb } from '@quackback/db/client'
-import { createId, type StatusComponentId, type StatusIncidentId } from '@quackback/ids'
-import { ANONYMOUS_ACTOR } from '@/lib/server/policy/types'
 import {
+  createId,
+  type PrincipalId,
+  type SegmentId,
+  type StatusComponentId,
+  type StatusIncidentId,
+} from '@quackback/ids'
+import { ANONYMOUS_ACTOR, type Actor } from '@/lib/server/policy/types'
+import {
+  getPublicStatusIncident,
   getStatusPageSnapshot,
   listIncidentHistory,
   listStatusFeedItems,
@@ -45,6 +54,10 @@ const RECENT_MAINTENANCE = createId('status_incident') as StatusIncidentId
 const OPEN_INCIDENT = createId('status_incident') as StatusIncidentId
 const SCHEDULED_MAINTENANCE = createId('status_incident') as StatusIncidentId
 const GATED_INCIDENT = createId('status_incident') as StatusIncidentId
+// Resolved long ago, so the page and feed assertions below never list them.
+const MIXED_INCIDENT = createId('status_incident') as StatusIncidentId
+const OVERRIDDEN_INCIDENT = createId('status_incident') as StatusIncidentId
+const IMPACT_ROWS = [MIXED_INCIDENT, OVERRIDDEN_INCIDENT]
 const MINE = [
   RECENT_INCIDENT,
   OLD_INCIDENT,
@@ -155,11 +168,39 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
         createdAt: lastChange[id],
       }))
     )
+
+    // API degraded for everyone, plus a major outage on a gated service: the
+    // stored impact is critical because of the service most visitors can't see.
+    await activeDb.insert(statusIncidents).values([
+      {
+        ...incident(MIXED_INCIDENT, 'incident', 'resolved', ago(400), ago(399)),
+        impact: 'critical',
+      },
+      // An admin set the impact by hand, below what the services suggest.
+      {
+        ...incident(OVERRIDDEN_INCIDENT, 'incident', 'resolved', ago(400), ago(399)),
+        impact: 'minor',
+        impactOverride: true,
+      },
+    ])
+    await activeDb.insert(statusIncidentComponents).values(
+      IMPACT_ROWS.flatMap((id) => [
+        {
+          incidentId: id,
+          componentId: COMPONENT,
+          componentStatus:
+            id === MIXED_INCIDENT ? ('degraded_performance' as const) : ('partial_outage' as const),
+        },
+        { incidentId: id, componentId: GATED_COMPONENT, componentStatus: 'major_outage' as const },
+      ])
+    )
   }, 60_000)
 
   afterAll(async () => {
     if (activeDb) {
-      await activeDb.delete(statusIncidents).where(inArray(statusIncidents.id, MINE))
+      await activeDb
+        .delete(statusIncidents)
+        .where(inArray(statusIncidents.id, [...MINE, ...IMPACT_ROWS]))
       await activeDb
         .delete(statusComponents)
         .where(inArray(statusComponents.id, [COMPONENT, GATED_COMPONENT]))
@@ -204,5 +245,32 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
     ])
     const activity = items.map((i) => statusIncidentLastActivityAt(i).getTime())
     expect(activity).toEqual([...activity].sort((a, b) => b - a))
+  })
+
+  describe('impact, for a visitor who sees only some services', () => {
+    const insider: Actor = {
+      principalId: createId('principal') as PrincipalId,
+      role: 'user',
+      principalType: 'user',
+      segmentIds: new Set(['segment_nobody' as SegmentId]),
+    }
+
+    it('comes from the services the visitor can see', async () => {
+      const seen = await getPublicStatusIncident(ANONYMOUS_ACTOR, MIXED_INCIDENT)
+      expect(seen?.affectedComponents.map((c) => c.id)).toEqual([COMPONENT])
+      expect(seen?.impact).toBe('minor')
+    })
+
+    it("stays the incident's own for a visitor who sees every service", async () => {
+      const seen = await getPublicStatusIncident(insider, MIXED_INCIDENT)
+      expect(seen?.affectedComponents).toHaveLength(2)
+      expect(seen?.impact).toBe('critical')
+    })
+
+    it('keeps an admin override that is lower than the visible services suggest', async () => {
+      expect((await getPublicStatusIncident(ANONYMOUS_ACTOR, OVERRIDDEN_INCIDENT))?.impact).toBe(
+        'minor'
+      )
+    })
   })
 })

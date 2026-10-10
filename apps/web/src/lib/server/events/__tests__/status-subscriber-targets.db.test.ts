@@ -3,7 +3,9 @@
  * lists only the affected components that recipient can see (a
  * segment-restricted component stays out of an outsider's email, exactly as
  * the public page hides it from them), and each component carries the status
- * the incident set on it rather than one label guessed from the impact.
+ * the incident set on it rather than one label guessed from the impact. The
+ * impact each recipient is told is worked out from the components they can
+ * see, so a restricted component's outage doesn't show through it.
  *
  * Runs the real target resolver against the real database: the global `db`
  * proxy is pointed at this file's own short-lived connection (closed in
@@ -226,6 +228,31 @@ describe.skipIf(!dbAvailable)('status incident emails (execution-level)', () => 
       .filter((id) => id === P_MEMBER || id === P_OUTSIDER || id === P_PICKER)
       .sort()
     expect(notified).toEqual([P_MEMBER, P_OUTSIDER].sort())
+  })
+
+  it('tells each recipient the impact of the components they can see', async () => {
+    const targets = await getStatusSubscriberTargets(incidentCreated, context)
+    const emailedImpacts = Object.fromEntries(
+      targets
+        .filter((t) => t.type === 'email')
+        .map((t) => [
+          (t.target as { email: string }).email,
+          (t.config as { impact: string }).impact,
+        ])
+        .filter(([email]) => String(email).includes(runSuffix))
+    )
+    // Billing's major outage made the incident critical; the outsider can
+    // only see API, which is degraded.
+    expect(emailedImpacts).toEqual({ [MEMBER_EMAIL]: 'critical', [OUTSIDER_EMAIL]: 'minor' })
+
+    const notifiedImpact = (id: PrincipalId) =>
+      targets.find(
+        (t) =>
+          t.type === 'notification' &&
+          (t.target as { principalIds: string[] }).principalIds.includes(id)
+      )?.config.impact
+    expect(notifiedImpact(P_MEMBER)).toBe('critical')
+    expect(notifiedImpact(P_OUTSIDER)).toBe('minor')
   })
 
   it('tells a subscriber who chose components only about those they can see', async () => {

@@ -30,7 +30,7 @@ import type { StatusComponentId, StatusIncidentId } from '@quackback/ids'
 import { canViewStatusComponent, statusComponentViewFilter } from '@/lib/server/policy/status'
 import type { Actor } from '@/lib/server/policy/types'
 import type { StatusSettings } from '@/lib/shared/status-settings'
-import { deriveTopLevelStatus, deriveUptimeDays } from './status.calc'
+import { deriveTopLevelStatus, deriveUptimeDays, deriveViewerImpact } from './status.calc'
 import type {
   StatusPageSnapshot,
   PublicStatusComponent,
@@ -58,7 +58,8 @@ type ComponentLinkRow = {
  * Project an incident to its public shape for `actor`, filtering the
  * affected-components list to what they can see. Returns null when the
  * incident has zero visible affected components — the incident itself must
- * then be invisible (Status Product Spec §4).
+ * then be invisible (Status Product Spec §4). The impact is the viewer's
+ * too (`deriveViewerImpact`): services they can't see don't raise it.
  */
 async function toPublicIncident(
   incident: IncidentRow,
@@ -80,7 +81,11 @@ async function toPublicIncident(
     kind: incident.kind,
     title: incident.title,
     status: incident.status,
-    impact: incident.impact,
+    impact: deriveViewerImpact(
+      incident.impact,
+      visibleLinks.map((l) => l.componentStatus),
+      visibleLinks.length < links.length
+    ),
     scheduledStartAt: incident.scheduledStartAt,
     scheduledEndAt: incident.scheduledEndAt,
     startedAt: incident.startedAt,
