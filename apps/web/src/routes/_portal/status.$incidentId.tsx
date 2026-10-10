@@ -9,6 +9,7 @@ import {
   StatusSubscribeButton,
   StatusSignInPrompt,
   useStatusSignInCouldGrantAccess,
+  useRefreshStatusForViewer,
   IMPACT_STYLE,
   IMPACT_LABEL,
   LIFECYCLE_STYLE,
@@ -87,6 +88,7 @@ function StatusIncidentRoute() {
 
 function StatusIncidentPage() {
   const intl = useIntl()
+  useRefreshStatusForViewer()
   const { incidentId } = Route.useLoaderData()
   const { data: incident } = useSuspenseQuery(publicStatusIncidentQueries.detail(incidentId))
 

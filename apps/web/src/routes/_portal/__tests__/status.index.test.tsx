@@ -8,6 +8,8 @@
  *   the window's start), and says when there is nothing older.
  * - A page published for signed-in visitors offers a signed-out visitor a
  *   way in, instead of only "not available".
+ * - Signing in on the page shows what the new viewer may see without a
+ *   reload.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
@@ -17,7 +19,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { IntlProvider } from 'react-intl'
 
 const ctx = vi.hoisted(() => ({
-  session: null as null | { user: { principalType: string } },
+  session: null as null | { user: { id?: string; principalType: string } },
   settings: {
     featureFlags: { statusPage: true },
     statusConfig: { enabled: true, audience: 'public', pageDescription: null },
@@ -65,7 +67,7 @@ const options = Route as unknown as {
 
 const WINDOW_START = '2026-09-26T12:00:00.000Z'
 
-function pageData(recentIncidents: unknown[] = []) {
+function pageData(recentIncidents: unknown[] = [], ungroupedComponents: unknown[] = []) {
   return {
     snapshot: {
       topLevel: {
@@ -74,7 +76,7 @@ function pageData(recentIncidents: unknown[] = []) {
         activeIncidentCount: 0,
       },
       groups: [],
-      ungroupedComponents: [],
+      ungroupedComponents,
       activeIncidents: [],
       upcomingMaintenance: [],
       recentIncidents,
@@ -154,5 +156,56 @@ describe('a page the visitor cannot see', () => {
     renderWith(options.notFoundComponent)
     expect(screen.getByRole('heading', { name: 'Status page not available' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+  })
+})
+
+describe('when the viewer changes', () => {
+  /** The page, rendered again on demand with the same query cache. */
+  function renderPage() {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const page = () => (
+      <QueryClientProvider client={queryClient}>
+        <IntlProvider locale="en" defaultLocale="en">
+          <options.component />
+        </IntlProvider>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(page())
+    return { renderAgain: () => rerender(page()) }
+  }
+
+  it('shows the services a visitor may see once they sign in, without a reload', async () => {
+    const { renderAgain } = renderPage()
+    await screen.findByText('No incidents in the last 14 days.')
+    expect(screen.queryByText('Billing')).toBeNull()
+
+    // Billing is restricted to a segment the signed-in visitor is in.
+    ctx.getStatusPageFn.mockResolvedValue(
+      pageData(
+        [],
+        [
+          {
+            id: 'status_component_billing',
+            name: 'Billing',
+            description: null,
+            status: 'operational',
+            showUptime: false,
+          },
+        ]
+      )
+    )
+    ctx.session = { user: { id: 'user_1', principalType: 'user' } }
+    renderAgain()
+
+    expect(await screen.findByText('Billing')).toBeInTheDocument()
+    expect(ctx.getStatusPageFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not refetch while the viewer stays the same', async () => {
+    const { renderAgain } = renderPage()
+    await screen.findByText('No incidents in the last 14 days.')
+    renderAgain()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(ctx.getStatusPageFn).toHaveBeenCalledTimes(1)
   })
 })

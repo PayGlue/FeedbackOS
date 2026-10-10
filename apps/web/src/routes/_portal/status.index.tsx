@@ -17,6 +17,7 @@ import {
   StatusSubscribeButton,
   StatusSignInPrompt,
   useStatusSignInCouldGrantAccess,
+  useRefreshStatusForViewer,
   LIFECYCLE_STYLE,
   LIFECYCLE_LABEL,
 } from '@/components/portal/status'
@@ -122,6 +123,7 @@ function formatMaintenanceWindow(
 
 function StatusPage() {
   const intl = useIntl()
+  useRefreshStatusForViewer()
   const { data } = useSuspenseQuery(publicStatusPageQueries.get())
   const { snapshot, settings, uptime } = data
 
