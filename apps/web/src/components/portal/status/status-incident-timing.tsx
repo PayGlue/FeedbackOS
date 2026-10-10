@@ -50,12 +50,11 @@ export function formatMaintenanceWindow(
   return `${startLabel} – ${end.toLocaleDateString(locale, DAY)} · ${endTime} UTC`
 }
 
-/** The date history files a row under: a maintenance window's start, an
- *  incident's start. */
+/** The date history files a row under: when it started. For a maintenance
+ *  window that is its real start, which an early start puts before the
+ *  planned one (the server's history order reads the same column). */
 export function statusIncidentDate(incident: StatusIncidentTimingData): string {
-  return incident.kind === 'maintenance'
-    ? (incident.scheduledStartAt ?? incident.startedAt)
-    : incident.startedAt
+  return incident.startedAt
 }
 
 export function StatusIncidentTiming({ incident }: { incident: StatusIncidentTimingData }) {

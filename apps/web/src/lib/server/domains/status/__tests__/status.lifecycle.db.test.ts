@@ -39,6 +39,7 @@ vi.mock('@/lib/server/events/scheduler', () => ({
   cancelScheduledDispatch: vi.fn().mockResolvedValue(undefined),
 }))
 
+import { scheduleDispatch } from '@/lib/server/events/scheduler'
 import { createStatusComponent, deleteStatusComponent } from '../status.components'
 import {
   createIncident,
@@ -456,18 +457,62 @@ describe('status lifecycle (Postgres)', () => {
       expect(isRecent(started.startedAt)).toBe(true)
     })
 
-    it('records the real start on "Start now" and on a posted in-progress update', async () => {
-      const early = await scheduleWindow(new Date(Date.now() + 24 * HOUR), null)
-      await startMaintenanceNow(early.id)
-      expect(isRecent((await getStatusIncidentById(early.id)).startedAt)).toBe(true)
+    it('records the real start on "Start now" and on a posted in-progress update, and keeps the plan', async () => {
+      const plannedStart = new Date(Date.now() + 24 * HOUR)
+      const plannedEnd = new Date(plannedStart.getTime() + 2 * HOUR)
 
-      const posted = await scheduleWindow(new Date(Date.now() + 24 * HOUR), null)
+      const early = await scheduleWindow(plannedStart, plannedEnd)
+      vi.mocked(scheduleDispatch).mockClear()
+      const before = Date.now()
+      await startMaintenanceNow(early.id)
+      const started = await getStatusIncidentById(early.id)
+      expect(started.status).toBe('in_progress')
+      expect(isRecent(started.startedAt)).toBe(true)
+      expect(started.scheduledStartAt?.getTime()).toBe(plannedStart.getTime())
+      expect(started.scheduledEndAt?.getTime()).toBe(plannedEnd.getTime())
+      // Completion stays armed for the planned end.
+      const completion = vi
+        .mocked(scheduleDispatch)
+        .mock.calls.map(([job]) => job)
+        .find((job) => job.handler === '__status_maintenance_complete__')
+      expect(completion?.delayMs).toBeLessThanOrEqual(plannedEnd.getTime() - before)
+      expect(completion?.delayMs).toBeGreaterThan(plannedEnd.getTime() - before - 60_000)
+
+      const posted = await scheduleWindow(plannedStart, plannedEnd)
       const after = await postIncidentUpdate(
         posted.id,
         { status: 'in_progress', body: 'Starting early.' },
         { principalId: author }
       )
       expect(isRecent(after.startedAt)).toBe(true)
+      expect(after.scheduledStartAt?.getTime()).toBe(plannedStart.getTime())
+      expect(after.scheduledEndAt?.getTime()).toBe(plannedEnd.getTime())
+
+      // Both still complete on their own at the planned end.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      try {
+        vi.setSystemTime(plannedEnd.getTime() + 60_000)
+        expect(await reconcileMaintenanceWindows()).toEqual({ started: 0, completed: 2 })
+      } finally {
+        vi.useRealTimers()
+      }
+      expect((await getStatusIncidentById(early.id)).status).toBe('completed')
+      expect((await getStatusIncidentById(posted.id)).status).toBe('completed')
+    })
+
+    it('a window started early and moved back to scheduled holds its plan again', async () => {
+      const plannedStart = new Date(Date.now() + 24 * HOUR)
+      const window = await scheduleWindow(plannedStart, new Date(plannedStart.getTime() + HOUR))
+      await startMaintenanceNow(window.id)
+
+      const moved = await postIncidentUpdate(
+        window.id,
+        { status: 'scheduled', body: 'Not yet after all.' },
+        { principalId: author }
+      )
+      expect(moved.startedAt.getTime()).toBe(plannedStart.getTime())
+      // The plan is still ahead, so it starts on its own then.
+      expect(moved.autoStart).toBe(true)
     })
 
     it('rejects a window that ends before it starts, on create and on update', async () => {

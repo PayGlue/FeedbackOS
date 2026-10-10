@@ -54,6 +54,14 @@ describe('StatusIncidentTiming', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the planned window, not the real start, for a window started early', () => {
+    renderTiming({ ...maintenance, status: 'in_progress', startedAt: '2026-10-12T10:00:00.000Z' })
+    expect(screen.getByText('Started October 12, 2026 at 10:00 UTC')).toBeInTheDocument()
+    expect(
+      screen.getByText('Scheduled window: Monday, October 12 · 14:00 – 16:00 UTC')
+    ).toBeInTheDocument()
+  })
+
   it('says when an incident started', () => {
     renderTiming({
       kind: 'incident',
@@ -75,9 +83,18 @@ describe('formatMaintenanceWindow', () => {
 })
 
 describe('statusIncidentDate', () => {
-  it('files a maintenance window under its start, not its creation', () => {
-    expect(statusIncidentDate({ ...maintenance, status: 'completed' })).toBe(
+  it('files a maintenance window under when it started, which holds its plan until then', () => {
+    // started_at holds the planned start until the window begins.
+    const planned = { ...maintenance, startedAt: maintenance.scheduledStartAt }
+    expect(statusIncidentDate({ ...planned, status: 'completed' })).toBe(
       maintenance.scheduledStartAt
+    )
+  })
+
+  it('files a window started early under its real start, not the plan', () => {
+    const startedEarly = { ...maintenance, startedAt: '2026-10-11T09:00:00.000Z' }
+    expect(statusIncidentDate({ ...startedEarly, status: 'completed' })).toBe(
+      '2026-10-11T09:00:00.000Z'
     )
   })
 })

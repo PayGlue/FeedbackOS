@@ -415,11 +415,11 @@ export async function postIncidentUpdate(
   // resolvedAt.
   const reopens = wasTerminal && !becomesTerminal
   // Posting 'in_progress' (or 'verifying') on a still-'scheduled' window is
-  // a real start: pull the start bound to now (job guards + uptime
-  // derivation read it), apply component statuses, and reschedule the
-  // auto-complete job — same effects as handleMaintenanceStart, but with the
-  // admin's own words as the single timeline row instead of the scheduler's
-  // canned copy.
+  // a real start: record it in started_at, apply component statuses, and
+  // re-arm the auto-complete job — same effects as handleMaintenanceStart,
+  // but with the admin's own words as the single timeline row instead of the
+  // scheduler's canned copy. The planned window stays as planned, so the
+  // public page keeps showing it and completion still fires at its end.
   const startsMaintenance =
     existing.kind === 'maintenance' &&
     existing.status === 'scheduled' &&
@@ -445,8 +445,12 @@ export async function postIncidentUpdate(
     updateData.resolvedAt = null
   }
   if (startsMaintenance) {
-    updateData.scheduledStartAt = now
     updateData.startedAt = now
+  }
+  // A window that isn't running holds its planned start in started_at, so
+  // one moved back to scheduled takes the plan again.
+  if (unschedulesMaintenance && existing.scheduledStartAt) {
+    updateData.startedAt = existing.scheduledStartAt
   }
   // A window moved back across a boundary that has already passed would be
   // pushed straight forward again by the scheduler's sweep (re-completed, or
@@ -497,11 +501,7 @@ export async function postIncidentUpdate(
     await cancelMaintenanceJobs(existing).catch((err) =>
       log.error({ err, incident_id: id }, 'failed to cancel maintenance jobs on manual start')
     )
-    await enqueueMaintenanceJobs({
-      ...existing,
-      status: input.status,
-      scheduledStartAt: updateData.scheduledStartAt as Date,
-    }).catch((err) =>
+    await enqueueMaintenanceJobs({ ...existing, status: input.status }).catch((err) =>
       log.error({ err, incident_id: id }, 'failed to re-enqueue maintenance jobs on manual start')
     )
   } else if (existing.kind === 'maintenance' && (reopens || unschedulesMaintenance)) {

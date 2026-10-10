@@ -213,9 +213,9 @@ function StatusIncidentEditorContent({
         skipRestore: terminal ? !restore : undefined,
         ...(templateId ? { templateId } : {}),
       })
-      // Starting, reopening or moving a window back can move its start bound
-      // or switch its automation off server-side. Take those into the
-      // sidebar, or the next autosave would write the stale values back.
+      // Reopening or moving a window back can switch its automation off
+      // server-side. Take the server's window into the sidebar, or the next
+      // autosave would write stale values back.
       if (posted.kind === 'maintenance') {
         setDetails((prev) =>
           prev

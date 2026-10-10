@@ -129,6 +129,14 @@ export async function handleMaintenanceStart(incidentId: StatusIncidentId): Prom
   if (!incident || incident.kind !== 'maintenance' || incident.status !== 'scheduled') return
   if (!incident.scheduledStartAt || incident.scheduledStartAt.getTime() > Date.now()) return
 
+  await beginMaintenance(incident)
+}
+
+/** Start a scheduled window now: status, real start, component statuses and
+ *  the timeline row in one transaction, then the started event. The planned
+ *  window (scheduled_start_at / scheduled_end_at) is left as planned. */
+async function beginMaintenance(incident: { id: StatusIncidentId; title: string }): Promise<void> {
+  const incidentId = incident.id
   const links = await db.transaction(async (tx) => {
     // started_at becomes the real start; until now it held the planned one.
     const now = new Date()
@@ -214,13 +222,12 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
 }
 
 /**
- * Admin "Start now" for a scheduled window. `handleMaintenanceStart` guards
- * on `scheduledStartAt <= now`, so an early start must pull the start bound
- * to now first — calling the handler directly would silently no-op, and a
- * bare postIncidentUpdate('in_progress') would skip component-status
- * application. Cancels the old schedule's jobs before the rewrite and
- * re-enqueues afterward (same cancel + re-enqueue shape as updateIncident)
- * so the auto-complete job survives under the new schedule hash.
+ * Admin "Start now" for a scheduled window. Starts it directly rather than
+ * through `handleMaintenanceStart`, whose guard waits for the planned start.
+ * The plan is kept: started_at records the real start, the public page still
+ * shows the window as it was scheduled, and completion still fires at the
+ * planned end. The pending start job is cancelled (it would no-op anyway) and
+ * the completion job re-armed, which keeps its id since the plan is unchanged.
  *
  * A window whose end bound has already passed can still be started (it will
  * simply never auto-complete; the admin completes it from the editor).
@@ -237,21 +244,11 @@ export async function startMaintenanceNow(incidentId: StatusIncidentId): Promise
     )
   }
 
-  await cancelMaintenanceJobs(incident)
+  await cancelScheduledDispatch(startJobId(incident.id, scheduleHash(incident)))
 
-  const now = new Date()
-  await db
-    .update(statusIncidents)
-    .set({ scheduledStartAt: now, updatedAt: now })
-    .where(eq(statusIncidents.id, incidentId))
+  await beginMaintenance(incident)
 
-  await handleMaintenanceStart(incidentId)
-
-  await enqueueMaintenanceJobs({
-    ...incident,
-    scheduledStartAt: now,
-    status: 'in_progress',
-  }).catch((err) =>
+  await enqueueMaintenanceJobs({ ...incident, status: 'in_progress' }).catch((err) =>
     log.error(
       { err, incident_id: incidentId },
       'failed to re-enqueue maintenance jobs on start-now'
