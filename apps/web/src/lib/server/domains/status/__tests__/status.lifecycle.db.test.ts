@@ -813,6 +813,48 @@ describe('status lifecycle (Postgres)', () => {
         })
       ).toEqual([])
     })
+
+    it('stays history: it is never live, on create or by a later update', async () => {
+      const api = await service('API')
+      const start = new Date(Date.now() - 3 * HOUR)
+      const backfill = { startedAt: start, resolvedAt: new Date(start.getTime() + HOUR) }
+      const past = {
+        kind: 'incident' as const,
+        title: 'Old outage',
+        body: 'It happened.',
+        affectedComponents: [{ componentId: api, componentStatus: 'major_outage' as const }],
+        backfill,
+      }
+
+      await expect(
+        createIncident({ ...past, status: 'investigating' }, { principalId: author })
+      ).rejects.toThrow('A past incident is logged as resolved. Use the "resolved" status.')
+
+      const logged = await createIncident({ ...past, status: 'resolved' }, { principalId: author })
+      await expect(
+        postIncidentUpdate(
+          logged.id,
+          { status: 'monitoring', body: 'It is back.' },
+          { principalId: author }
+        )
+      ).rejects.toThrow("A logged past incident can't be reopened. Report a new incident instead.")
+
+      const after = await getStatusIncidentById(logged.id)
+      expect(after.status).toBe('resolved')
+      expect(after.resolvedAt?.getTime()).toBe(backfill.resolvedAt.getTime())
+      expect(after.updates).toHaveLength(1)
+      expect(await statusOf(api)).toBe('operational')
+      expect((await listStatusIncidents({ kind: 'incident', state: 'active' })).items).toEqual([])
+
+      // A note on it, still resolved, is fine.
+      const noted = await postIncidentUpdate(
+        logged.id,
+        { status: 'resolved', body: 'Root cause: an expired certificate.' },
+        { principalId: author }
+      )
+      expect(noted.updates).toHaveLength(2)
+      expect(noted.resolvedAt?.getTime()).toBe(backfill.resolvedAt.getTime())
+    })
   })
 
   describe('the maintenance sweep', () => {

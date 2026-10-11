@@ -92,6 +92,29 @@ function assertStatusMatchesKind(kind: 'incident' | 'maintenance', status: strin
   )
 }
 
+const KIND_NOUN: Record<'incident' | 'maintenance', string> = {
+  incident: 'incident',
+  maintenance: 'maintenance window',
+}
+
+/** A logged past incident (a backfill) is a historical record: resolved from
+ *  the moment it is logged and never live again. A live status on one would
+ *  list it as active from its past start and, once anything recomputed its
+ *  services, hold them at the statuses it had then. */
+function assertBackfillStaysResolved(
+  kind: 'incident' | 'maintenance',
+  status: string,
+  reopening: boolean
+): void {
+  if (status === TERMINAL_STATUS[kind]) return
+  throw new ValidationError(
+    'VALIDATION_ERROR',
+    reopening
+      ? `A logged past ${KIND_NOUN[kind]} can't be reopened. ${kind === 'incident' ? 'Report a new incident' : 'Schedule a new window'} instead.`
+      : `A past ${KIND_NOUN[kind]} is logged as ${TERMINAL_STATUS[kind]}. Use the "${TERMINAL_STATUS[kind]}" status.`
+  )
+}
+
 /** A window must end after it starts. Checked server-side so the API and a
  *  stale editor can't store a window that auto-completes before it begins. */
 function assertWindowOrder(start: Date | null | undefined, end: Date | null | undefined): void {
@@ -167,6 +190,7 @@ export async function createIncident(
         : deriveImpact(componentStatuses)
 
   assertWindowOrder(input.scheduledStartAt, input.scheduledEndAt)
+  if (input.backfill) assertBackfillStaysResolved(input.kind, input.status, false)
   if (input.backfill && input.backfill.resolvedAt.getTime() <= input.backfill.startedAt.getTime()) {
     throw new ValidationError(
       'VALIDATION_ERROR',
@@ -433,6 +457,7 @@ export async function postIncidentUpdate(
   const existing = await requireIncident(id)
   const body = validateBody(input.body)
   assertStatusMatchesKind(existing.kind, input.status)
+  if (existing.backfilled) assertBackfillStaysResolved(existing.kind, input.status, true)
 
   const wasTerminal = existing.status === TERMINAL_STATUS[existing.kind]
   const becomesTerminal = input.status === TERMINAL_STATUS[existing.kind]

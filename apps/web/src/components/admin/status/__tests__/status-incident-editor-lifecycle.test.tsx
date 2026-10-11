@@ -108,3 +108,30 @@ describe('incident editor, the publish email', () => {
     expect(screen.queryByText('Published')).toBeNull()
   })
 })
+
+describe('incident editor, a logged past incident', () => {
+  it('offers no reopen: only the resolved stage can be posted to', () => {
+    detail = incident({
+      status: 'resolved',
+      resolvedAt: '2026-10-10T09:00:00.000Z',
+      backfilled: true,
+      notifiedAt: null,
+      notifySubscribers: false,
+      notifiedSubscriberCount: null,
+    })
+    renderEditor()
+
+    const stage = (name: string) => screen.getByRole('radio', { name: new RegExp(name) })
+    for (const earlier of ['Investigating', 'Identified', 'Monitoring']) {
+      expect(stage(earlier)).toBeDisabled()
+    }
+    expect(stage('Resolved')).toBeEnabled()
+    expect(screen.queryByText(/reopen/)).toBeNull()
+  })
+
+  it('still offers a reopen on a resolved incident that was live', () => {
+    detail = incident({ status: 'resolved', resolvedAt: '2026-10-10T09:00:00.000Z' })
+    renderEditor()
+    expect(screen.getByRole('radio', { name: /Monitoring/ })).toBeEnabled()
+  })
+})

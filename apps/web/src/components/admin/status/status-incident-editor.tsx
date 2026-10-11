@@ -402,6 +402,8 @@ function StatusIncidentEditorContent({
             reachedAt={reachedAt}
             onSelect={setTarget}
             disabled={postMutation.isPending}
+            // A logged past incident stays history; the server refuses a reopen.
+            canReopen={!incident.backfilled}
           />
 
           <div className="mt-6">
