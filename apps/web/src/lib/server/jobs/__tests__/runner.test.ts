@@ -78,6 +78,7 @@ import {
   runScheduleTick,
   runnerConfig,
   scheduleOffsetMs,
+  startJobsById,
   totalDeclaredConcurrency,
 } from '../runner'
 
@@ -742,6 +743,126 @@ describe('the bounded pool', () => {
     await dispatchPass({ pool, config: CONFIG, run: runJob })
     await awaitPool(pool)
     expect(poolSize(pool)).toBe(0)
+  })
+})
+
+describe('the fleet-wide cap', () => {
+  // A pooled process runs one pool per workspace, so `concurrency` binds per
+  // workspace and the process total is that times the fleet. `fleetConcurrency`
+  // holds a heavy queue to a total across every pool in the process. Two pools
+  // over the shared test database stand in for two workspaces.
+
+  /** A queue whose jobs park until released, so a slot stays held. */
+  function parkedQueue(label: string, caps: { concurrency: number; fleetConcurrency: number }) {
+    const q = queue(label)
+    const releases: Array<() => void> = []
+    __setJobDefinitionsForTests([
+      {
+        name: q,
+        ...caps,
+        maxAttempts: 1,
+        leaseMs: 30_000,
+        handler: async () => async () => {
+          await new Promise<void>((r) => releases.push(r))
+        },
+      },
+    ])
+    const releaseAll = () => releases.splice(0).forEach((r) => r())
+    return { q, releases, releaseAll }
+  }
+
+  it('holds a queue to its cap across every workspace pool', async () => {
+    const { q, releases, releaseAll } = parkedQueue('fleet-cap', {
+      concurrency: 1,
+      fleetConcurrency: 1,
+    })
+    await enqueueJob({ queue: q })
+    await enqueueJob({ queue: q })
+    const alpha = createJobPool()
+    const bravo = createJobPool()
+
+    expect((await dispatchPass({ pool: alpha, config: CONFIG, run: runJob })).claimed).toBe(1)
+    // Bravo's own pool has room, but the process does not.
+    expect((await dispatchPass({ pool: bravo, config: CONFIG, run: runJob })).claimed).toBe(0)
+    expect((await rowsFor(q)).map((r) => r.status).sort()).toEqual(['pending', 'running'])
+
+    // The slot comes back when alpha's job settles, and bravo takes it.
+    await vi.waitFor(() => expect(releases).toHaveLength(1))
+    releaseAll()
+    await awaitPool(alpha)
+    expect((await dispatchPass({ pool: bravo, config: CONFIG, run: runJob })).claimed).toBe(1)
+    await vi.waitFor(() => expect(releases).toHaveLength(1))
+    releaseAll()
+    await awaitPool(bravo)
+  })
+
+  it('returns the part of a reservation the claim did not use', async () => {
+    const { q, releases, releaseAll } = parkedQueue('fleet-cap-unused', {
+      concurrency: 2,
+      fleetConcurrency: 2,
+    })
+    await enqueueJob({ queue: q })
+    const alpha = createJobPool()
+    // Alpha asks for two and finds one, so one of its two slots must come back.
+    expect((await dispatchPass({ pool: alpha, config: CONFIG, run: runJob })).claimed).toBe(1)
+
+    await enqueueJob({ queue: q })
+    await enqueueJob({ queue: q })
+    const bravo = createJobPool()
+    // Exactly one: two would ignore the cap, none would leak alpha's spare.
+    expect((await dispatchPass({ pool: bravo, config: CONFIG, run: runJob })).claimed).toBe(1)
+
+    await vi.waitFor(() => expect(releases).toHaveLength(2))
+    releaseAll()
+    await Promise.all([awaitPool(alpha), awaitPool(bravo)])
+  })
+
+  it('frees the slot when a job fails, not only when it succeeds', async () => {
+    const q = queue('fleet-cap-fail')
+    __setJobDefinitionsForTests([
+      {
+        name: q,
+        fleetConcurrency: 1,
+        maxAttempts: 1,
+        handler: async () => async () => {
+          throw new Error('nope')
+        },
+      },
+    ])
+    await enqueueJob({ queue: q })
+    await enqueueJob({ queue: q })
+    const alpha = createJobPool()
+    expect((await dispatchPass({ pool: alpha, config: CONFIG, run: runJob })).claimed).toBe(1)
+    await awaitPool(alpha)
+    const bravo = createJobPool()
+    expect((await dispatchPass({ pool: bravo, config: CONFIG, run: runJob })).claimed).toBe(1)
+    await awaitPool(bravo)
+  })
+
+  it('holds start-by-id to the same cap, leaving the row for the sweeper', async () => {
+    const { q, releases, releaseAll } = parkedQueue('fleet-cap-by-id', {
+      concurrency: 1,
+      fleetConcurrency: 1,
+    })
+    await enqueueJob({ queue: q })
+    const alpha = createJobPool()
+    expect((await dispatchPass({ pool: alpha, config: CONFIG, run: runJob })).claimed).toBe(1)
+
+    const second = await enqueueJob({ queue: q })
+    const bravo = createJobPool()
+    const byId = () =>
+      startJobsById({ pool: bravo, config: CONFIG, jobIds: [second.jobId], run: runJob })
+    expect(await byId()).toBe(0)
+    // Rows come back in insertion order, so the second job is the second row.
+    expect((await rowsFor(q))[1].status).toBe('pending')
+
+    await vi.waitFor(() => expect(releases).toHaveLength(1))
+    releaseAll()
+    await awaitPool(alpha)
+    expect(await byId()).toBe(1)
+    await vi.waitFor(() => expect(releases).toHaveLength(1))
+    releaseAll()
+    await awaitPool(bravo)
   })
 })
 

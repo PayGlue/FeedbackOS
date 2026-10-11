@@ -33,6 +33,7 @@ import {
 } from './job-queue'
 import {
   concurrencyFor,
+  fleetConcurrencyFor,
   findJobDefinition,
   isTerminalJobError,
   jobDefinitions,
@@ -402,6 +403,31 @@ function releaseReservation(pool: JobPool, queue: string): void {
   else pool.inFlight.set(queue, held - 1)
 }
 
+/**
+ * Jobs reserved or running per queue across every pool in this process — the
+ * budget `fleetConcurrency` is spent from.
+ *
+ * Every claim path reserves here before it awaits the claim and hands back
+ * what the claim did not use, and every started job releases one slot when it
+ * settles. Reserving before the await is what makes the cap exact: the
+ * workspace loops in one process interleave only at awaits, so a slot one pool
+ * has reserved can never also be counted free by another.
+ *
+ * Counted for every queue, enforced only where a definition sets a cap, so a
+ * definition swapped between a reservation and its release cannot strand one.
+ */
+const fleetInFlight = new Map<string, number>()
+
+function adjustFleet(queue: string, delta: number): void {
+  const next = (fleetInFlight.get(queue) ?? 0) + delta
+  if (next <= 0) fleetInFlight.delete(queue)
+  else fleetInFlight.set(queue, next)
+}
+
+function fleetFree(def: JobDefinition): number {
+  return fleetConcurrencyFor(def) - (fleetInFlight.get(def.name) ?? 0)
+}
+
 export function poolSize(pool: JobPool): number {
   let n = 0
   for (const count of pool.inFlight.values()) n += count
@@ -417,7 +443,8 @@ export function claimSpecsFor(pool: JobPool, config: RunnerConfig): QueueClaimSp
     const free = Math.min(
       concurrencyFor(def) - (pool.inFlight.get(def.name) ?? 0),
       config.batchSize,
-      budget
+      budget,
+      fleetFree(def)
     )
     if (free < 1) continue
     specs.push({ queue: def.name, limit: free, leaseMs: leaseMsFor(def) })
@@ -452,7 +479,17 @@ export async function dispatchPass(opts: {
     const specs = claimSpecsFor(pool, opts.config)
     if (specs.length === 0) return { claimed: 0, saturated: true }
 
-    const jobs = await claimJobs({ specs })
+    for (const spec of specs) adjustFleet(spec.queue, spec.limit)
+    let jobs: ClaimedJob[] = []
+    try {
+      jobs = await claimJobs({ specs })
+    } finally {
+      // Hand back the part of each reservation the claim did not fill.
+      for (const spec of specs) {
+        const used = jobs.filter((job) => job.queue === spec.queue).length
+        adjustFleet(spec.queue, used - spec.limit)
+      }
+    }
     for (const job of jobs) startClaimedJob({ pool, job, run: opts.run, onSettled: opts.onSettled })
     return { claimed: jobs.length, saturated: false }
   })
@@ -461,7 +498,9 @@ export async function dispatchPass(opts: {
 /**
  * Put an already-claimed row on the pool. `counted` means the caller already
  * reserved the inFlight slot (start-by-id does this before `claimById` so a
- * failed claim does not leave a running row with no runner).
+ * failed claim does not leave a running row with no runner). The caller always
+ * holds the job's process-wide slot (`fleetInFlight`); it is released here when
+ * the job settles.
  */
 export function startClaimedJob(opts: {
   pool: JobPool
@@ -483,6 +522,7 @@ export function startClaimedJob(opts: {
     })
     .then((outcome) => {
       releaseReservation(pool, job.queue)
+      adjustFleet(job.queue, -1)
       pool.active.delete(promise)
       opts.onSettled?.(job.queue, outcome)
     })
@@ -509,15 +549,20 @@ export async function startJobsById(opts: {
       if (!def) continue
       const free = Math.min(
         concurrencyFor(def) - (opts.pool.inFlight.get(peek.queue) ?? 0),
-        opts.config.maxConcurrency - poolSize(opts.pool)
+        opts.config.maxConcurrency - poolSize(opts.pool),
+        fleetFree(def)
       )
       if (free < 1) continue
       opts.pool.inFlight.set(peek.queue, (opts.pool.inFlight.get(peek.queue) ?? 0) + 1)
+      adjustFleet(peek.queue, 1)
       let job: ClaimedJob | null = null
       try {
         job = await claimById(jobId, leaseMsFor(def))
       } finally {
-        if (!job) releaseReservation(opts.pool, peek.queue)
+        if (!job) {
+          releaseReservation(opts.pool, peek.queue)
+          adjustFleet(peek.queue, -1)
+        }
       }
       if (!job) continue
       startClaimedJob({

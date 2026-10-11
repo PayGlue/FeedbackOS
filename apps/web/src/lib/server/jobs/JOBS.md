@@ -476,6 +476,15 @@ reference allowed (one `Worker` per queue at its own concurrency), so the
 default binds nothing. It exists because a pooled process runs one loop per
 workspace, and an operator sizing connections cares about the product.
 
+**`fleetConcurrency` is the cap across workspaces.** Every other cap here binds
+one workspace's loop, so a pooled process can run a queue's `concurrency` times
+the fleet. A definition that sets `fleetConcurrency` (`analytics` does) is held
+to that many running jobs across every loop in the process. Each claim path
+reserves its slots before it awaits the claim and hands back what the claim did
+not fill, so two loops cannot both count the last slot free; jobs over the cap
+stay `pending`, unclaimed, so no lease runs down while they wait. The cap is per
+process: two worker replicas allow twice as many.
+
 ### What the move fixed rather than preserved
 
 - **`workflow-dispatch`'s dedupe never worked.** The comment promised that

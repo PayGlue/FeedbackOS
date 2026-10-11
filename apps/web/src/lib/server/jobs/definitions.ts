@@ -73,6 +73,16 @@ export interface JobDefinition {
    * order (see runner.ts), so a handler must not depend on it for correctness.
    */
   concurrency?: number
+  /**
+   * How many jobs from this queue may run at once across every workspace loop
+   * in this process. Unset means no cap beyond `concurrency` per loop.
+   *
+   * `concurrency` binds per workspace, so a pooled process can run
+   * `concurrency` times the fleet. A queue whose work is heavy on the shared
+   * database sets this so the fleet's runs cannot all land at once. Jobs over
+   * the cap stay `pending`, unclaimed, until a slot frees.
+   */
+  fleetConcurrency?: number
   /** How long succeeded rows are kept. Defaults to the process-wide setting. */
   retentionMs?: number
   /**
@@ -308,8 +318,12 @@ export const JOB_DEFINITIONS: readonly JobDefinition[] = [
       ),
   },
   {
+    // Whole-table aggregates in every workspace's database, all against the
+    // one shared server, so the fleet runs a few at a time rather than all of
+    // them inside the hour's first minute.
     name: 'analytics',
     cron: '0 * * * *',
+    fleetConcurrency: 4,
     maxAttempts: 3,
     handler: () =>
       import('@/lib/server/domains/analytics/analytics-queue').then((m) => m.runAnalyticsRefresh),
@@ -607,6 +621,11 @@ export function maxAttemptsFor(def: JobDefinition): number {
 
 export function concurrencyFor(def: JobDefinition): number {
   return def.concurrency ?? DEFAULT_CONCURRENCY
+}
+
+/** The process-wide cap for a queue; unlimited when the definition sets none. */
+export function fleetConcurrencyFor(def: JobDefinition): number {
+  return def.fleetConcurrency ?? Number.POSITIVE_INFINITY
 }
 
 /**

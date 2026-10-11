@@ -1155,6 +1155,18 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
   },
   {
     file: 'apps/web/src/lib/server/jobs/runner.ts',
+    name: 'fleetInFlight',
+    category: 'process-lifetime',
+    owner: 'Piece 6 (saas/queue-lease)',
+    reason:
+      'Jobs reserved or running per queue name across every workspace pool in this process - the ' +
+      'budget fleetConcurrency is spent from. Being shared across workspaces is its purpose: a ' +
+      'per-workspace count would cap nothing a fleet does at once. It holds queue names and ' +
+      'counts only, never a payload or a workspace identity, so a cross-workspace read reveals ' +
+      'nothing but how busy the process is.',
+  },
+  {
+    file: 'apps/web/src/lib/server/jobs/runner.ts',
     name: 'cronCache',
     category: 'content-addressed',
     owner: 'Piece 6 (saas/queue-lease)',
