@@ -7,14 +7,19 @@
  * impact each recipient is told is worked out from the components they can
  * see, so a restricted component's outage doesn't show through it.
  *
- * Runs the real target resolver against the real database: the global `db`
- * proxy is pointed at this file's own short-lived connection (closed in
- * afterAll). Peripheral services (status settings, unsubscribe tokens,
- * notification preferences) are mocked, as in changelog-segment-targets.db.
- * Skips when no database is reachable.
+ * Runs the real target resolver against the real database, inside the
+ * test-DB fixture's always-rolled-back transaction: each test seeds its own
+ * rows, and no other test file ever sees them. Peripheral services (status
+ * settings, unsubscribe tokens, notification preferences) are mocked, as in
+ * changelog-segment-targets.db. Skips when no database is reachable.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { sql, inArray } from 'drizzle-orm'
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
+import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
+
+vi.mock('@/lib/server/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/server/db')>()),
+  db: (await import('@/lib/server/__tests__/db-test-fixture')).testDb,
+}))
 
 vi.mock('@/lib/server/domains/settings/settings.status', () => ({
   getStatusSettings: vi.fn().mockResolvedValue({
@@ -44,10 +49,7 @@ import {
   statusSubscriptions,
   user,
   userSegments,
-  type Database,
 } from '@/lib/server/db'
-// oxlint-disable-next-line no-restricted-imports -- legitimate createDb caller: this file owns the global db for its worker (see help-center-segment-gate.integration.test.ts)
-import { createDb } from '@quackback/db/client'
 import {
   createId,
   type PrincipalId,
@@ -72,40 +74,11 @@ const MEMBER_EMAIL = `status-member-${runSuffix}@example.com`
 const OUTSIDER_EMAIL = `status-outsider-${runSuffix}@example.com`
 const PICKER_EMAIL = `status-picker-${runSuffix}@example.com`
 
-const CANDIDATE_URLS = [
-  process.env.DATABASE_URL,
-  'postgresql://postgres:password@localhost:5432/quackback',
-].filter((u): u is string => !!u)
-
-async function pickWorkingDb(): Promise<{ db: Database; close: () => Promise<void> } | null> {
-  for (const url of CANDIDATE_URLS) {
-    try {
-      const db = createDb(url, { max: 4, prepare: false })
-      await db.execute(sql`select 1`)
-      return {
-        db,
-        close: async () => {
-          const raw = (db as unknown as { $client?: { end?: () => Promise<void> } }).$client
-          await raw?.end?.()
-        },
-      }
-    } catch {
-      // try next candidate
-    }
-  }
-  return null
-}
-
-let activeDb: Database | null = null
-let closeDb: (() => Promise<void>) | null = null
-
-const resolved = await pickWorkingDb()
-const dbAvailable = resolved !== null
-if (resolved) {
-  activeDb = resolved.db
-  closeDb = resolved.close
-  ;(globalThis as Record<string, unknown>).__db = resolved.db
-}
+const fixture = await createDbTestFixture({
+  probe: async (db) => {
+    await db.select({ id: statusSubscriptions.id }).from(statusSubscriptions).limit(0)
+  },
+})
 
 const context: HookContext = {
   workspaceName: 'Status Target Test',
@@ -165,69 +138,58 @@ function emailedComponents(targets: Awaited<ReturnType<typeof getStatusSubscribe
   )
 }
 
-describe.skipIf(!dbAvailable)('status incident emails (execution-level)', () => {
-  beforeAll(async () => {
-    if (!activeDb) return
-    await activeDb
+describe.skipIf(!fixture.available)('status incident emails (execution-level)', () => {
+  beforeEach(async () => {
+    await fixture.begin()
+    await testDb
       .insert(segments)
       .values({ id: SEGMENT, name: `status-tgt-${runSuffix}`, slug: `status-tgt-${runSuffix}` })
 
     const memberUser = createId('user')
     const outsiderUser = createId('user')
     const pickerUser = createId('user')
-    await activeDb.insert(user).values([
+    await testDb.insert(user).values([
       { id: memberUser, name: 'Member', email: MEMBER_EMAIL },
       { id: outsiderUser, name: 'Outsider', email: OUTSIDER_EMAIL },
       { id: pickerUser, name: 'Picker', email: PICKER_EMAIL },
     ])
     // Portal users: the default 'member' role is a teammate, who sees every
     // component regardless of segments.
-    await activeDb.insert(principal).values([
+    await testDb.insert(principal).values([
       { id: P_MEMBER, userId: memberUser, role: 'user', createdAt: new Date() },
       { id: P_OUTSIDER, userId: outsiderUser, role: 'user', createdAt: new Date() },
       { id: P_PICKER, userId: pickerUser, role: 'user', createdAt: new Date() },
     ])
-    await activeDb
+    await testDb
       .insert(userSegments)
       .values({ principalId: P_MEMBER, segmentId: SEGMENT, addedBy: 'manual' })
 
-    await activeDb.insert(statusComponents).values([
+    await testDb.insert(statusComponents).values([
       { id: API, name: `API ${runSuffix}` },
       // Only members of SEGMENT can see this one on the public page.
       { id: BILLING, name: `Billing ${runSuffix}`, segmentIds: [SEGMENT] },
     ])
-    await activeDb.insert(statusIncidents).values({
+    await testDb.insert(statusIncidents).values({
       id: INCIDENT,
       kind: 'incident',
       title: `status-tgt-${runSuffix}`,
       status: 'investigating',
       impact: 'critical',
     })
-    await activeDb.insert(statusIncidentComponents).values([
+    await testDb.insert(statusIncidentComponents).values([
       { incidentId: INCIDENT, componentId: API, componentStatus: 'degraded_performance' },
       { incidentId: INCIDENT, componentId: BILLING, componentStatus: 'major_outage' },
     ])
-    await activeDb.insert(statusSubscriptions).values([
+    await testDb.insert(statusSubscriptions).values([
       { principalId: P_MEMBER, scope: 'page', source: 'admin' },
       { principalId: P_OUTSIDER, scope: 'page', source: 'admin' },
       // Chose only Billing, which was later restricted to a segment they
       // aren't in: the API outage is nothing they asked to hear about.
       { principalId: P_PICKER, scope: 'components', componentIds: [BILLING], source: 'self_serve' },
     ])
-  }, 60_000)
-
-  afterAll(async () => {
-    if (activeDb) {
-      await activeDb.delete(statusIncidents).where(inArray(statusIncidents.id, [INCIDENT]))
-      await activeDb.delete(statusComponents).where(inArray(statusComponents.id, [API, BILLING]))
-      await activeDb.delete(segments).where(inArray(segments.id, [SEGMENT]))
-      await activeDb
-        .delete(user)
-        .where(sql`${user.email} LIKE ${`status-%-${runSuffix}@example.com`}`)
-    }
-    delete (globalThis as Record<string, unknown>).__db
-    await closeDb?.()
   })
+  afterEach(fixture.rollback)
+  afterAll(fixture.close)
 
   it('lists each component with the status the incident set on it, as far as the recipient can see', async () => {
     const targets = await getStatusSubscriberTargets(incidentCreated, context)
