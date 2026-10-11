@@ -36,7 +36,11 @@ import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import { buildEventActor, type EventActor } from '@/lib/server/events/dispatch'
 import { deriveImpact } from './status.calc'
-import { reconcileComponentStatuses, dispatchStatusEvent } from './status.components'
+import {
+  reconcileComponentStatuses,
+  dispatchStatusEvent,
+  holdsComponents,
+} from './status.components'
 import { enqueueMaintenanceJobs, cancelMaintenanceJobs } from './status.maintenance'
 import type {
   CreateStatusIncidentInput,
@@ -124,28 +128,6 @@ function assertWindowOrder(start: Date | null | undefined, end: Date | null | un
       'The scheduled end must be after the scheduled start'
     )
   }
-}
-
-/** A maintenance row applies its component statuses at window start
- *  (status.maintenance.ts), not at creation — a future 'scheduled' window
- *  must not show the public page as already under maintenance. Everything
- *  else (an incident, or a maintenance window created already in progress)
- *  applies immediately. Backfilled rows never apply component changes. */
-function appliesComponentStatusNow(input: {
-  kind: string
-  status: string
-  backfilled: boolean
-}): boolean {
-  if (input.backfilled) return false
-  if (input.kind === 'maintenance' && input.status === 'scheduled') return false
-  return true
-}
-
-/** Whether a row in this status holds its services at their affected status.
- *  Mirrors the active-set filter in reconcileComponentStatus's query. */
-function holdsComponents(kind: string, status: string): boolean {
-  if (kind === 'incident') return status !== 'resolved'
-  return status === 'in_progress' || status === 'verifying'
 }
 
 /** A create or a stale editor naming a service that has since been deleted.
@@ -409,14 +391,10 @@ export async function updateIncident(
       }))
     )
 
-    // Apply the new/changed target statuses live, if this incident is
-    // currently in a state that applies component statuses at all.
-    const nowLive = appliesComponentStatusNow({
-      kind: existing.kind,
-      status: existing.status,
-      backfilled: existing.backfilled,
-    })
-    if (nowLive) {
+    // Apply the new/changed target statuses live, if this row is holding
+    // its services: not a window still scheduled, a resolved incident or a
+    // completed window, whose services may have been set by hand since.
+    if (holdsComponents(existing.kind, existing.status)) {
       const source = existing.kind === 'incident' ? 'incident' : 'maintenance'
       const affected = new Set([
         ...replaced,
@@ -481,13 +459,15 @@ export async function postIncidentUpdate(
     existing.kind === 'maintenance' &&
     existing.status !== 'scheduled' &&
     input.status === 'scheduled'
-  // A terminal update restores services unless the partial-recovery box was
-  // ticked; any other move recomputes them only when it changes whether the
-  // row holds them (a start, a reopen, a window moved back to scheduled).
+  // A terminal update restores the services the row was holding, unless the
+  // partial-recovery box was ticked; one that wasn't holding them (a window
+  // completed before it started, a note on a resolved incident) leaves them
+  // as they are. Any other move recomputes them only when it changes whether
+  // the row holds them (a start, a reopen, a window moved back to scheduled).
+  const heldBefore = holdsComponents(existing.kind, existing.status)
   const recomputesComponents = becomesTerminal
-    ? !input.skipRestore
-    : holdsComponents(existing.kind, existing.status) !==
-      holdsComponents(existing.kind, input.status)
+    ? heldBefore && !input.skipRestore
+    : heldBefore !== holdsComponents(existing.kind, input.status)
 
   const now = new Date()
   const updateData: Record<string, unknown> = { status: input.status, updatedAt: now }

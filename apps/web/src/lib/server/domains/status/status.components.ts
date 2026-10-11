@@ -313,6 +313,16 @@ const STATUS_WEIGHT: Record<StatusComponentStatus, number> = {
   major_outage: 4,
 }
 
+/** Whether a row in this status holds its services at their affected status.
+ *  Mirrors the active-set filter in reconcileComponentStatus's query below. A
+ *  write recomputes a row's services only when the row holds them before or
+ *  after it: recomputing for a row that holds them neither way would only
+ *  reset a status set by hand or through the API since. */
+export function holdsComponents(kind: string, status: string): boolean {
+  if (kind === 'incident') return status !== 'resolved'
+  return status === 'in_progress' || status === 'verifying'
+}
+
 /**
  * Recompute a component from every currently active incident/window. A
  * soft-deleted component is skipped rather than thrown on: it is off the page

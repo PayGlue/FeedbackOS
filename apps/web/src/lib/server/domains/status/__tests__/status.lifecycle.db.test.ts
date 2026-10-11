@@ -428,6 +428,83 @@ describe('status lifecycle (Postgres)', () => {
     })
   })
 
+  describe('a row that is not holding its services', () => {
+    it('leaves a status set since alone when its details are saved', async () => {
+      const api = await service('API')
+      const incident = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
+      await postIncidentUpdate(
+        incident.id,
+        { status: 'resolved', body: 'Fixed.' },
+        { principalId: author }
+      )
+      await setComponentStatus(api, 'degraded_performance', 'manual')
+
+      // The editor's autosave always sends the services back.
+      await updateIncident(incident.id, {
+        title: 'Elevated errors on the API',
+        affectedComponents: [{ componentId: api, componentStatus: 'partial_outage' }],
+      })
+      expect(await statusOf(api)).toBe('degraded_performance')
+    })
+
+    it('leaves it alone when a terminal update is posted', async () => {
+      const start = new Date(Date.now() + 24 * HOUR)
+      const window = await scheduleWindow(start, new Date(start.getTime() + HOUR))
+      const [link] = window.affectedComponents
+      await setComponentStatus(link.componentId, 'degraded_performance', 'api')
+
+      // Called off before it ever started.
+      await postIncidentUpdate(
+        window.id,
+        { status: 'completed', body: 'Called off.' },
+        { principalId: author }
+      )
+      expect(await statusOf(link.componentId)).toBe('degraded_performance')
+
+      // A further note on a resolved incident.
+      const api = await service('API')
+      const incident = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
+      await postIncidentUpdate(
+        incident.id,
+        { status: 'resolved', body: 'Fixed.' },
+        { principalId: author }
+      )
+      await setComponentStatus(api, 'partial_outage', 'manual')
+      await postIncidentUpdate(
+        incident.id,
+        { status: 'resolved', body: 'Root cause: a bad deploy.' },
+        { principalId: author }
+      )
+      expect(await statusOf(api)).toBe('partial_outage')
+    })
+
+    it('leaves it alone when the scheduler completes a window that never started', async () => {
+      const window = await scheduleWindow(
+        new Date(Date.now() - 2 * HOUR),
+        new Date(Date.now() - HOUR)
+      )
+      await updateIncident(window.id, { autoStart: false })
+      const [link] = window.affectedComponents
+      await setComponentStatus(link.componentId, 'degraded_performance', 'api')
+
+      await handleMaintenanceComplete(window.id)
+      expect((await getStatusIncidentById(window.id)).status).toBe('completed')
+      expect(await statusOf(link.componentId)).toBe('degraded_performance')
+    })
+
+    it('still recomputes a holding row whose services change', async () => {
+      const api = await service('API')
+      const web = await service('Website')
+      const incident = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
+
+      await updateIncident(incident.id, {
+        affectedComponents: [{ componentId: web, componentStatus: 'partial_outage' }],
+      })
+      expect(await statusOf(api)).toBe('operational')
+      expect(await statusOf(web)).toBe('partial_outage')
+    })
+  })
+
   describe('reopening', () => {
     it('a resolved incident clears resolvedAt, rejoins the open lists and holds its services again', async () => {
       const api = await service('API')

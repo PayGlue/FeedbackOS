@@ -28,7 +28,11 @@ import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import { scheduleDispatch, cancelScheduledDispatch } from '@/lib/server/events/scheduler'
 import type { EventActor } from '@/lib/server/events/dispatch'
-import { reconcileComponentStatuses, dispatchStatusEvent } from './status.components'
+import {
+  reconcileComponentStatuses,
+  dispatchStatusEvent,
+  holdsComponents,
+} from './status.components'
 
 const log = logger.child({ component: 'status-maintenance' })
 
@@ -189,10 +193,11 @@ async function beginMaintenance(incident: {
   return true
 }
 
-/** Flip a window to completed + restore affected components to operational.
+/** Flip a window to completed + restore the services it was holding.
  *  Guarded on status!=='completed' so a stale duplicate job is a no-op; also
  *  the reconcile sweep's catch-up path for a window whose start was missed
- *  entirely (still 'scheduled') during downtime. */
+ *  entirely (still 'scheduled') during downtime, which held nothing and so
+ *  leaves its services as they are. */
 export async function handleMaintenanceComplete(incidentId: StatusIncidentId): Promise<void> {
   const incident = await db.query.statusIncidents.findFirst({
     where: and(eq(statusIncidents.id, incidentId), isNull(statusIncidents.deletedAt)),
@@ -204,8 +209,10 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
   // failure can't leave the window completed with its services still under
   // maintenance.
   const links = await db.transaction(async (tx) => {
-    // Claimed like a start: only a window not yet completed matches, so of
-    // two callers that both read it as open, only one completes it.
+    // Claimed like a start, against the status just read: of two callers
+    // that both read the window as open, only one completes it, and whether
+    // it was holding its services is known. A window whose status changed
+    // since the read is left for the sweep, which reads it afresh.
     const [claimed] = await tx
       .update(statusIncidents)
       .set({
@@ -216,7 +223,7 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
       .where(
         and(
           eq(statusIncidents.id, incidentId),
-          ne(statusIncidents.status, 'completed'),
+          eq(statusIncidents.status, incident.status),
           isNull(statusIncidents.deletedAt)
         )
       )
@@ -224,12 +231,14 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
     if (!claimed) return null
 
     const links = await affectedComponentIds(incidentId, tx)
-    await reconcileComponentStatuses(
-      links.map((link) => link.componentId),
-      'maintenance',
-      incidentId,
-      tx
-    )
+    if (holdsComponents(incident.kind, incident.status)) {
+      await reconcileComponentStatuses(
+        links.map((link) => link.componentId),
+        'maintenance',
+        incidentId,
+        tx
+      )
+    }
 
     await tx.insert(statusIncidentUpdates).values({
       incidentId,
