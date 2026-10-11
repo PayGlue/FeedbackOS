@@ -278,7 +278,8 @@ describe('GET /status/feed', () => {
     expect(html).toContain(
       'Calls to &lt;b&gt;v2&lt;/b&gt; &amp; &lt;script&gt;x&lt;/script&gt; fail'
     )
-    expect(html).not.toMatch(/<(b|script)>/)
+    expect(html).not.toContain('<b>')
+    expect(html).not.toContain('<script>')
   })
 
   it('keeps the line breaks of a body', async () => {
