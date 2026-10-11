@@ -291,6 +291,30 @@ describe('GET /status/feed', () => {
     expect(html).not.toContain('<script>')
   })
 
+  it('shortens a long body but keeps the window and services after it', async () => {
+    listStatusFeedFn.mockResolvedValue([
+      item({
+        kind: 'maintenance',
+        title: 'Database upgrade',
+        status: 'scheduled',
+        scheduledStartAt: '2026-10-13T02:00:00.000Z',
+        scheduledEndAt: '2026-10-13T04:00:00.000Z',
+        updates: [
+          {
+            id: 'status_update_1',
+            status: 'scheduled',
+            body: 'x'.repeat(600),
+            createdAt: '2026-10-10T09:00:00.000Z',
+          },
+        ],
+      }),
+    ])
+    const description = itemsOf(await (await GET()).text())[0].description ?? ''
+    expect(description).toContain(`${'x'.repeat(497)}... · Window: October 13, 2026 at 02:00 UTC`)
+    expect(description).toMatch(/ · Affected: API$/)
+    expect(description).not.toContain('x'.repeat(498))
+  })
+
   it('keeps the line breaks of a body', async () => {
     listStatusFeedFn.mockResolvedValue([
       item({

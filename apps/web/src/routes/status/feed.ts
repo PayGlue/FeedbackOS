@@ -129,7 +129,8 @@ function toFeedEntries(
 
   const entries: FeedEntry[] = item.updates.map((update) => ({
     title: titleFor(update.status),
-    content: [update.body, ...context].join(' · '),
+    // Only the body is shortened, so the window and services always follow.
+    content: [truncate(update.body, 500), ...context].join(' · '),
     publishedAt: new Date(update.createdAt),
     link,
     guid: `${link}#${update.id}`,
@@ -210,8 +211,7 @@ function buildRssFeed(options: RssFeedOptions): string {
   // A reader renders a description as HTML. Bodies are plain text, so they
   // are HTML-escaped (text that looks like a tag stays text) with their line
   // breaks kept, then XML-escaped like every other value.
-  const toDescriptionHtml = (text: string): string =>
-    escapeHtmlAttr(truncate(text, 500)).replace(/\r?\n/g, '<br>')
+  const toDescriptionHtml = (text: string): string => escapeHtmlAttr(text).replace(/\r?\n/g, '<br>')
 
   const items = entries
     .map((entry) => {
