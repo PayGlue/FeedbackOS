@@ -530,7 +530,8 @@ export const getStatusOverviewAdminFn = createServerFn({ method: 'GET' }).handle
 
   // An open window is either running now (live, like an open incident) or
   // still ahead; only the latter is upcoming. Each is its own capped list,
-  // so windows still ahead can never push a running one off the overview.
+  // so windows still ahead can never push a running one off the overview,
+  // and the upcoming list is the soonest windows, soonest first.
   const [
     groups,
     ungrouped,
@@ -555,6 +556,7 @@ export const getStatusOverviewAdminFn = createServerFn({ method: 'GET' }).handle
       kind: 'maintenance',
       state: 'active',
       statuses: ['scheduled'],
+      order: 'soonest',
       limit: 20,
     }),
     getStatusSubscriptionCounts(),
@@ -596,13 +598,7 @@ export const getStatusOverviewAdminFn = createServerFn({ method: 'GET' }).handle
     })),
     activeIncidents: incidents.items.map(serializeIncident),
     liveMaintenance: runningMaintenance.items.map(serializeIncident),
-    upcomingMaintenance: scheduledMaintenance.items
-      .slice()
-      .sort(
-        (a, b) =>
-          (a.scheduledStartAt?.getTime() ?? Infinity) - (b.scheduledStartAt?.getTime() ?? Infinity)
-      )
-      .map(serializeIncident),
+    upcomingMaintenance: scheduledMaintenance.items.map(serializeIncident),
     uptime90d,
     subscribers: { ...counts, newLast7d },
     incidentsLast30d,

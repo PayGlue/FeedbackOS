@@ -191,6 +191,9 @@ export interface ListStatusIncidentsParams {
   state?: 'active' | 'resolved' | 'all'
   /** Only rows in one of these lifecycle statuses, applied before `limit`. */
   statuses?: Array<StatusIncidentStatus | StatusMaintenanceStatus>
+  /** 'newest' (default) = most recently created first, and pages by `cursor`;
+   *  'soonest' = earliest scheduled start first (none last), one page only. */
+  order?: 'newest' | 'soonest'
   /** Case-insensitive title match. */
   search?: string
   cursor?: string

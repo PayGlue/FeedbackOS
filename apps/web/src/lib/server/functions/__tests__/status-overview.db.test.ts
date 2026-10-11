@@ -73,36 +73,50 @@ describe('status overview (Postgres)', () => {
   afterEach(fixture.rollback)
   afterAll(fixture.close)
 
-  it('lists a running window even behind more than a page of newer scheduled ones', async () => {
+  async function maintenance(status: 'in_progress' | 'scheduled', startInHours: number) {
     const db = await createStatusComponent({ name: 'Database' })
-    const window = (status: 'in_progress' | 'scheduled', startInHours: number) => {
-      const start = new Date(Date.now() + startInHours * HOUR)
-      return createIncident(
-        {
-          kind: 'maintenance',
-          title: `${status} ${startInHours}`,
-          status,
-          body: 'Planned upgrade.',
-          affectedComponents: [{ componentId: db.id, componentStatus: 'under_maintenance' }],
-          scheduledStartAt: start,
-          scheduledEndAt: new Date(start.getTime() + HOUR),
-          notifySubscribers: false,
-        },
-        { principalId: author }
-      )
-    }
+    const start = new Date(Date.now() + startInHours * HOUR)
+    return createIncident(
+      {
+        kind: 'maintenance',
+        title: `${status} ${startInHours}`,
+        status,
+        body: 'Planned upgrade.',
+        affectedComponents: [{ componentId: db.id, componentStatus: 'under_maintenance' }],
+        scheduledStartAt: start,
+        scheduledEndAt: new Date(start.getTime() + HOUR),
+        notifySubscribers: false,
+      },
+      { principalId: author }
+    )
+  }
 
-    const running = await window('in_progress', -1)
-    // Scheduled a week ago, before every upcoming window below.
+  /** Dates a row's creation a week back, before everything created after it. */
+  async function createdLastWeek(id: string) {
     await testDb
       .update(statusIncidents)
       .set({ createdAt: new Date(Date.now() - 7 * 24 * HOUR) })
-      .where(eq(statusIncidents.id, running.id))
-    for (let i = 1; i <= 21; i++) await window('scheduled', i)
+      .where(eq(statusIncidents.id, id as never))
+  }
+
+  it('lists a running window even behind more than a page of newer scheduled ones', async () => {
+    const running = await maintenance('in_progress', -1)
+    await createdLastWeek(running.id)
+    for (let i = 1; i <= 21; i++) await maintenance('scheduled', i)
 
     const overview = await getOverview()
     expect(overview.liveMaintenance.map((w) => w.id)).toEqual([running.id])
     expect(overview.upcomingMaintenance).toHaveLength(20)
     expect(overview.upcomingMaintenance.map((w) => w.id)).not.toContain(running.id)
+  })
+
+  it('lists the soonest upcoming windows, however long ago they were scheduled', async () => {
+    const soonest = await maintenance('scheduled', 1)
+    await createdLastWeek(soonest.id)
+    for (let i = 2; i <= 22; i++) await maintenance('scheduled', i)
+
+    const overview = await getOverview()
+    expect(overview.upcomingMaintenance).toHaveLength(20)
+    expect(overview.upcomingMaintenance[0]?.id).toBe(soonest.id)
   })
 })

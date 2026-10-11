@@ -81,14 +81,16 @@ beforeEach(() => {
     window('sooner', 'scheduled', 2),
   ]
   mockListStatusIncidents.mockImplementation(
-    async ({ kind, statuses }: { kind: string; statuses?: string[] }) => ({
-      items:
+    async ({ kind, statuses, order }: { kind: string; statuses?: string[]; order?: string }) => {
+      const items =
         kind === 'maintenance'
           ? maintenance.filter((m) => !statuses || statuses.includes(m.status))
-          : [],
-      nextCursor: null,
-      hasMore: false,
-    })
+          : []
+      if (order === 'soonest') {
+        items.sort((a, b) => a.scheduledStartAt.getTime() - b.scheduledStartAt.getTime())
+      }
+      return { items, nextCursor: null, hasMore: false }
+    }
   )
 })
 

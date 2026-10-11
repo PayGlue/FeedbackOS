@@ -733,7 +733,7 @@ export async function findStatusIncidentById(
 export async function listStatusIncidents(
   params: ListStatusIncidentsParams
 ): Promise<StatusIncidentListResult> {
-  const { kind, state = 'all', statuses, search, cursor, limit = 20 } = params
+  const { kind, state = 'all', statuses, order = 'newest', search, cursor, limit = 20 } = params
   const conditions = [isNull(statusIncidents.deletedAt)]
   if (kind) conditions.push(eq(statusIncidents.kind, kind))
   if (state === 'active') conditions.push(isNull(statusIncidents.resolvedAt))
@@ -757,6 +757,8 @@ export async function listStatusIncidents(
   }
 
   if (cursor) {
+    // The cursor walks the newest-first order only.
+    if (order !== 'newest') throw new Error('listStatusIncidents pages only newest first')
     const cursorRow = await db.query.statusIncidents.findFirst({
       where: eq(statusIncidents.id, cursor as StatusIncidentId),
       columns: { createdAt: true },
@@ -776,7 +778,10 @@ export async function listStatusIncidents(
 
   const rows = await db.query.statusIncidents.findMany({
     where: and(...conditions),
-    orderBy: [desc(statusIncidents.createdAt), desc(statusIncidents.id)],
+    orderBy:
+      order === 'soonest'
+        ? [sql`${statusIncidents.scheduledStartAt} asc nulls last`, asc(statusIncidents.id)]
+        : [desc(statusIncidents.createdAt), desc(statusIncidents.id)],
     limit: limit + 1,
   })
 
