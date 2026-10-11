@@ -528,17 +528,40 @@ export const getStatusOverviewAdminFn = createServerFn({ method: 'GET' }).handle
   const auth = await requireAuth({ permission: PERMISSIONS.STATUS_PAGE_PUBLISH })
   const now = new Date()
 
-  const [groups, ungrouped, incidents, maintenance, counts, newLast7d, incidentsLast30d, settings] =
-    await Promise.all([
-      listStatusComponentGroupsWithComponents(),
-      listUngroupedStatusComponents(),
-      listStatusIncidents({ kind: 'incident', state: 'active', limit: 20 }),
-      listStatusIncidents({ kind: 'maintenance', state: 'active', limit: 20 }),
-      getStatusSubscriptionCounts(),
-      countStatusSubscriptionsSince(new Date(now.getTime() - 7 * DAY_MS)),
-      countStatusIncidentsSince(new Date(now.getTime() - 30 * DAY_MS)),
-      getStatusSettings(),
-    ])
+  // An open window is either running now (live, like an open incident) or
+  // still ahead; only the latter is upcoming. Each is its own capped list,
+  // so windows still ahead can never push a running one off the overview.
+  const [
+    groups,
+    ungrouped,
+    incidents,
+    runningMaintenance,
+    scheduledMaintenance,
+    counts,
+    newLast7d,
+    incidentsLast30d,
+    settings,
+  ] = await Promise.all([
+    listStatusComponentGroupsWithComponents(),
+    listUngroupedStatusComponents(),
+    listStatusIncidents({ kind: 'incident', state: 'active', limit: 20 }),
+    listStatusIncidents({
+      kind: 'maintenance',
+      state: 'active',
+      statuses: ['in_progress', 'verifying'],
+      limit: 20,
+    }),
+    listStatusIncidents({
+      kind: 'maintenance',
+      state: 'active',
+      statuses: ['scheduled'],
+      limit: 20,
+    }),
+    getStatusSubscriptionCounts(),
+    countStatusSubscriptionsSince(new Date(now.getTime() - 7 * DAY_MS)),
+    countStatusIncidentsSince(new Date(now.getTime() - 30 * DAY_MS)),
+    getStatusSettings(),
+  ])
 
   const leanComponent = (c: { id: string; name: string; status: string }) => ({
     id: c.id,
@@ -572,13 +595,9 @@ export const getStatusOverviewAdminFn = createServerFn({ method: 'GET' }).handle
       components: g.components.map(leanComponent),
     })),
     activeIncidents: incidents.items.map(serializeIncident),
-    // An open window is either running now (live, like an open incident) or
-    // still ahead; only the latter is upcoming.
-    liveMaintenance: maintenance.items
-      .filter((m) => m.status !== 'scheduled')
-      .map(serializeIncident),
-    upcomingMaintenance: maintenance.items
-      .filter((m) => m.status === 'scheduled')
+    liveMaintenance: runningMaintenance.items.map(serializeIncident),
+    upcomingMaintenance: scheduledMaintenance.items
+      .slice()
       .sort(
         (a, b) =>
           (a.scheduledStartAt?.getTime() ?? Infinity) - (b.scheduledStartAt?.getTime() ?? Infinity)

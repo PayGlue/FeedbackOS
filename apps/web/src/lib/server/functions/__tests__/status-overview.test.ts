@@ -73,20 +73,23 @@ function window(id: string, status: string, startInHours: number) {
 }
 
 beforeEach(() => {
-  mockListStatusIncidents.mockImplementation(async ({ kind }: { kind: string }) => ({
-    items:
-      kind === 'maintenance'
-        ? [
-            window('later', 'scheduled', 48),
-            // Started early by hand: its plan is still a day ahead.
-            window('running', 'in_progress', 24),
-            window('verifying', 'verifying', -1),
-            window('sooner', 'scheduled', 2),
-          ]
-        : [],
-    nextCursor: null,
-    hasMore: false,
-  }))
+  const maintenance = [
+    window('later', 'scheduled', 48),
+    // Started early by hand: its plan is still a day ahead.
+    window('running', 'in_progress', 24),
+    window('verifying', 'verifying', -1),
+    window('sooner', 'scheduled', 2),
+  ]
+  mockListStatusIncidents.mockImplementation(
+    async ({ kind, statuses }: { kind: string; statuses?: string[] }) => ({
+      items:
+        kind === 'maintenance'
+          ? maintenance.filter((m) => !statuses || statuses.includes(m.status))
+          : [],
+      nextCursor: null,
+      hasMore: false,
+    })
+  )
 })
 
 describe('getStatusOverviewAdminFn maintenance', () => {

@@ -712,11 +712,12 @@ export async function findStatusIncidentById(
 export async function listStatusIncidents(
   params: ListStatusIncidentsParams
 ): Promise<StatusIncidentListResult> {
-  const { kind, state = 'all', search, cursor, limit = 20 } = params
+  const { kind, state = 'all', statuses, search, cursor, limit = 20 } = params
   const conditions = [isNull(statusIncidents.deletedAt)]
   if (kind) conditions.push(eq(statusIncidents.kind, kind))
   if (state === 'active') conditions.push(isNull(statusIncidents.resolvedAt))
   if (state === 'resolved') conditions.push(isNotNull(statusIncidents.resolvedAt))
+  if (statuses) conditions.push(inArray(statusIncidents.status, statuses))
   const term = search?.trim()
   if (term) {
     const pattern = `%${term}%`

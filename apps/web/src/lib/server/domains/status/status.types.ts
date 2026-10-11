@@ -189,6 +189,8 @@ export interface ListStatusIncidentsParams {
   kind?: StatusIncidentKind
   /** 'active' = not resolved/completed; 'resolved' = resolved/completed. */
   state?: 'active' | 'resolved' | 'all'
+  /** Only rows in one of these lifecycle statuses, applied before `limit`. */
+  statuses?: Array<StatusIncidentStatus | StatusMaintenanceStatus>
   /** Case-insensitive title match. */
   search?: string
   cursor?: string
