@@ -92,6 +92,42 @@ function detailsFromIncident(incident: StatusIncidentAdminDetail): DetailsState 
   }
 }
 
+type WindowFields = Pick<
+  DetailsState,
+  'scheduledStart' | 'scheduledEnd' | 'autoStart' | 'autoComplete'
+>
+
+function windowFields(details: DetailsState): WindowFields {
+  const { scheduledStart, scheduledEnd, autoStart, autoComplete } = details
+  return { scheduledStart, scheduledEnd, autoStart, autoComplete }
+}
+
+/** Equal, comparing dates by the instant they hold. */
+function sameValue(a: unknown, b: unknown): boolean {
+  return a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b
+}
+
+/** The sidebar after a post answers: each window field takes the post's
+ *  value, unless it was changed while the post was in flight (it no longer
+ *  matches what was there when the post was sent), in which case the edit
+ *  stands. `edited` says whether any did. */
+function mergePostedWindow(
+  current: DetailsState,
+  sent: WindowFields,
+  posted: WindowFields
+): { next: DetailsState; edited: boolean } {
+  const next = { ...current }
+  let edited = false
+  for (const key of Object.keys(posted) as Array<keyof WindowFields>) {
+    if (sameValue(current[key], sent[key])) {
+      Object.assign(next, { [key]: posted[key] })
+    } else {
+      edited = true
+    }
+  }
+  return { next, edited }
+}
+
 /** A window's end must come after its start (the server rejects it too). */
 function windowInOrder(details: Pick<DetailsState, 'scheduledStart' | 'scheduledEnd'>): boolean {
   const { scheduledStart, scheduledEnd } = details
@@ -229,9 +265,11 @@ function StatusIncidentEditorContent({
   }, [incident])
 
   const { mutateAsync: saveDetailsAsync } = updateMutation
-  async function flushSave(next: DetailsState, kind: 'incident' | 'maintenance') {
-    if (next.title.trim().length === 0 || next.affected.length === 0) return
-    if (kind === 'maintenance' && !windowInOrder(next)) return
+  /** False when the save failed (and said so); true when it saved, or when
+   *  the details are incomplete and the sidebar says they aren't saved. */
+  async function flushSave(next: DetailsState, kind: 'incident' | 'maintenance'): Promise<boolean> {
+    if (next.title.trim().length === 0 || next.affected.length === 0) return true
+    if (kind === 'maintenance' && !windowInOrder(next)) return true
     setSaveState('saving')
     try {
       const saved = await saveDetailsAsync({
@@ -255,19 +293,21 @@ function StatusIncidentEditorContent({
       const linked = new Set<string>(saved.affectedComponents.map((c) => c.componentId))
       dropDeletedServices(next.affected.map((a) => a.componentId).filter((id) => !linked.has(id)))
       setSaveState('saved')
+      return true
     } catch (error) {
       setSaveState('idle')
       toast.error(error instanceof Error ? error.message : 'Failed to save details')
       // The save may have failed on a service deleted since; the server's
       // copy says which.
       void refetch()
+      return false
     }
   }
 
   const kindRef = useRef<'incident' | 'maintenance'>('incident')
   if (incident) kindRef.current = incident.kind
   // Saves sent and not answered yet. Posting waits for them (see handlePost).
-  const inFlightSaves = useRef(new Set<Promise<void>>())
+  const inFlightSaves = useRef(new Set<Promise<boolean>>())
   // Debounced autosave with flush-on-unmount (shared hook; same mechanism
   // as the status settings page's text fields).
   const detailsSave = useDebouncedSave<DetailsState>((next) => {
@@ -292,6 +332,10 @@ function StatusIncidentEditorContent({
   const effectiveTarget = target ?? currentStatus ?? 'investigating'
   const terminal = isTerminalLifecycle(effectiveTarget)
 
+  // The sidebar as last rendered, for handlePost to read after its awaits.
+  const detailsRef = useRef(details)
+  detailsRef.current = details
+
   const posting = useRef(false)
   async function handlePost() {
     if (!incident || !body.trim() || postMutation.isPending || posting.current) return
@@ -301,8 +345,13 @@ function StatusIncidentEditorContent({
       // post. Save it now, and let any save already sent finish, so neither
       // lands after the post and writes the window as it was before the
       // transition (its start, or automation the post switched off) back.
+      // If one fails, don't post: the post would act on the details as the
+      // server still has them. The failed save has said so, and the update
+      // stays in the composer to post again.
       detailsSave.flush()
-      await Promise.all(inFlightSaves.current)
+      const saved = await Promise.all(inFlightSaves.current)
+      if (saved.includes(false)) return
+      const sentWindow = detailsRef.current ? windowFields(detailsRef.current) : null
       const posted = await postMutation.mutateAsync({
         id: incidentId,
         status: effectiveTarget,
@@ -313,18 +362,20 @@ function StatusIncidentEditorContent({
       // Reopening or moving a window back can switch its automation off
       // server-side. Take the server's window into the sidebar, or the next
       // autosave would write stale values back; that includes a save queued
-      // by an edit made while the post was in flight.
-      if (posted.kind === 'maintenance') {
+      // by an edit made while the post was in flight. A window field the
+      // operator changed during the post keeps their value instead, and is
+      // saved on top of the post.
+      if (posted.kind === 'maintenance' && sentWindow) {
+        const postedWindow: WindowFields = {
+          scheduledStart: posted.scheduledStartAt ? new Date(posted.scheduledStartAt) : undefined,
+          scheduledEnd: posted.scheduledEndAt ? new Date(posted.scheduledEndAt) : undefined,
+          autoStart: posted.autoStart,
+          autoComplete: posted.autoComplete,
+        }
         setDetails((prev) => {
           if (!prev) return prev
-          const next = {
-            ...prev,
-            scheduledStart: posted.scheduledStartAt ? new Date(posted.scheduledStartAt) : undefined,
-            scheduledEnd: posted.scheduledEndAt ? new Date(posted.scheduledEndAt) : undefined,
-            autoStart: posted.autoStart,
-            autoComplete: posted.autoComplete,
-          }
-          if (detailsSave.hasPending()) detailsSave.queue(next)
+          const { next, edited } = mergePostedWindow(prev, sentWindow, postedWindow)
+          if (edited || detailsSave.hasPending()) detailsSave.queue(next)
           return next
         })
       }

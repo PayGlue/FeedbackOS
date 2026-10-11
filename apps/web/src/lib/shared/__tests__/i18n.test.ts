@@ -9,6 +9,7 @@ import {
   DEFAULT_LOCALE,
   isViewerMessage,
   loadAreaMessages,
+  seedAreaMessages,
   loadMessages,
   loadPortalMessages,
   loadViewerMessages,
@@ -16,6 +17,7 @@ import {
   loadAskMessages,
   isAskMessage,
   adminSeedMessages,
+  loadAdminMessages,
   isServerOnlyMessage,
   isTourMessage,
   loadTourMessages,
@@ -290,7 +292,11 @@ describe('setup wizard strings', () => {
   // the wizard renders them.
   it('are rendered by the wizard alone', () => {
     const src = join(__dirname, '../../..')
-    const wizardDirs = ['routes/onboarding', 'components/onboarding/goal-selector']
+    const wizardDirs = [
+      'routes/onboarding',
+      'components/onboarding/goal-selector',
+      'components/onboarding/setup-steps',
+    ]
     const offenders: string[] = []
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -347,6 +353,51 @@ describe('admin seed', () => {
     expect(tour['onboarding.tour.next']).toBe(all['onboarding.tour.next'])
     expect(Object.keys(tour).every(isTourMessage)).toBe(true)
     expect(Object.keys(tour).length).toBeGreaterThan(20)
+  })
+})
+
+describe('public pages in English', () => {
+  // As on admin pages: the code holds every message's English, so no page in
+  // English seeds a catalog (see useIntlSetup, which then loads nothing either).
+  it('seed nothing on the portal, widget, unsubscribe page or setup wizard', async () => {
+    expect(await loadPortalMessages(DEFAULT_LOCALE)).toEqual({})
+    expect(await loadWidgetMessages(DEFAULT_LOCALE)).toEqual({})
+    expect(await loadUnsubscribeMessages(DEFAULT_LOCALE)).toEqual({})
+    expect(await loadOnboardingMessages(DEFAULT_LOCALE)).toEqual({})
+    expect(await seedAreaMessages(DEFAULT_LOCALE, 'helpCenter')).toEqual({})
+  })
+
+  it('seed the same slices as before in any other language', async () => {
+    for (const load of [
+      loadPortalMessages,
+      loadWidgetMessages,
+      loadUnsubscribeMessages,
+      loadOnboardingMessages,
+    ]) {
+      expect(Object.keys(await load('de')).length).toBeGreaterThan(10)
+    }
+    expect(await seedAreaMessages('de', 'helpCenter')).toEqual(
+      await loadAreaMessages('de', 'helpCenter')
+    )
+  })
+})
+
+describe('admin catalog in English', () => {
+  // Every message's code English is its en.json English (the default-messages
+  // guard), so an English admin page renders from the code and seeds nothing.
+  it('seeds nothing on an admin page in English', async () => {
+    expect(await loadAdminMessages(DEFAULT_LOCALE)).toEqual({})
+  })
+
+  it('seeds the admin catalog in any other language', async () => {
+    const [all, seeded] = await Promise.all([loadMessages('de'), loadAdminMessages('de')])
+    expect(seeded).toEqual(adminSeedMessages(all))
+    expect(Object.keys(seeded).length).toBeGreaterThan(1000)
+  })
+
+  it("leaves Home's and the Launch plan's strings to the code in English", async () => {
+    expect(await loadLaunchMessages(DEFAULT_LOCALE)).toEqual({})
+    expect(Object.keys(await loadLaunchMessages('de')).length).toBeGreaterThan(60)
   })
 })
 

@@ -15,6 +15,7 @@ import {
   ilike,
   inArray,
   lt,
+  lte,
   or,
   sql,
   statusIncidents,
@@ -149,6 +150,33 @@ async function liveComponentIds(
     .from(statusComponents)
     .where(and(inArray(statusComponents.id, ids), isNull(statusComponents.deletedAt)))
   return new Set(rows.map((r) => r.id))
+}
+
+/**
+ * Manual lifecycle writes lock and refresh the incident row first. This locks
+ * the row for the rest of the transaction and returns it as it stands now,
+ * and the write takes every decision from that row, never from one read
+ * before the transaction. The scheduler's start and complete claims are
+ * UPDATEs that take the same row lock, so a manual write racing one waits
+ * for it and then sees what it did (a window the scheduler started isn't
+ * started again, and its real start isn't overwritten).
+ *
+ * NO KEY UPDATE, not UPDATE: inserting a timeline row or a service link holds
+ * KEY SHARE on this row through its foreign key, which NO KEY UPDATE doesn't
+ * conflict with. Taken before anything else in the transaction, so locks are
+ * always taken incident row first, then services in id order
+ * (reconcileComponentStatuses).
+ */
+async function lockIncident(id: StatusIncidentId, tx: Transaction) {
+  const [row] = await tx
+    .select()
+    .from(statusIncidents)
+    .where(and(eq(statusIncidents.id, id), isNull(statusIncidents.deletedAt)))
+    .for('no key update')
+  if (!row) {
+    throw new NotFoundError('STATUS_INCIDENT_NOT_FOUND', `Status incident ${id} not found`)
+  }
+  return row
 }
 
 // ============================================================================
@@ -311,54 +339,57 @@ export async function updateIncident(
   id: StatusIncidentId,
   input: UpdateStatusIncidentInput
 ): Promise<StatusIncidentWithDetails> {
-  const existing = await requireIncident(id)
-
-  const now = new Date()
-  const updateData: Record<string, unknown> = { updatedAt: now }
-  if (input.title !== undefined) updateData.title = validateTitle(input.title)
-  if (input.scheduledStartAt !== undefined) updateData.scheduledStartAt = input.scheduledStartAt
-  if (input.scheduledEndAt !== undefined) updateData.scheduledEndAt = input.scheduledEndAt
-  if (input.autoStart !== undefined) updateData.autoStart = input.autoStart
-  if (input.autoComplete !== undefined) updateData.autoComplete = input.autoComplete
-
-  // details_edited_at records a change a status feed item shows: the title,
-  // the window or the services. The editor autosaves its whole sidebar, so
-  // a value sent back unchanged, or a change to automation or impact alone,
-  // is not an edit a reader needs to hear about.
-  const sameInstant = (a: Date | null, b: Date | null) =>
-    (a?.getTime() ?? null) === (b?.getTime() ?? null)
-  let detailsChanged =
-    (updateData.title !== undefined && updateData.title !== existing.title) ||
-    (input.scheduledStartAt !== undefined &&
-      !sameInstant(input.scheduledStartAt, existing.scheduledStartAt)) ||
-    (input.scheduledEndAt !== undefined &&
-      !sameInstant(input.scheduledEndAt, existing.scheduledEndAt))
-
+  const title = input.title !== undefined ? validateTitle(input.title) : undefined
   if (input.affectedComponents !== undefined && input.affectedComponents.length === 0) {
     throw new ValidationError('VALIDATION_ERROR', 'At least one affected component is required')
   }
-  if (input.scheduledStartAt !== undefined || input.scheduledEndAt !== undefined) {
-    assertWindowOrder(
-      input.scheduledStartAt !== undefined ? input.scheduledStartAt : existing.scheduledStartAt,
-      input.scheduledEndAt !== undefined ? input.scheduledEndAt : existing.scheduledEndAt
-    )
-  }
-  // A window that hasn't started keeps its planned start in started_at, so a
-  // reschedule moves it along.
-  if (
-    existing.kind === 'maintenance' &&
-    existing.status === 'scheduled' &&
-    input.scheduledStartAt
-  ) {
-    updateData.startedAt = input.scheduledStartAt
-  }
-  if (input.impactOverride !== undefined) {
-    updateData.impactOverride = existing.kind === 'incident' && input.impactOverride
-  }
-  const impactOverride =
-    (updateData.impactOverride as boolean | undefined) ?? existing.impactOverride
 
-  await db.transaction(async (tx) => {
+  const existing = await db.transaction(async (tx) => {
+    const existing = await lockIncident(id, tx)
+
+    const now = new Date()
+    const updateData: Record<string, unknown> = { updatedAt: now }
+    if (title !== undefined) updateData.title = title
+    if (input.scheduledStartAt !== undefined) updateData.scheduledStartAt = input.scheduledStartAt
+    if (input.scheduledEndAt !== undefined) updateData.scheduledEndAt = input.scheduledEndAt
+    if (input.autoStart !== undefined) updateData.autoStart = input.autoStart
+    if (input.autoComplete !== undefined) updateData.autoComplete = input.autoComplete
+
+    // details_edited_at records a change a status feed item shows: the
+    // title, the window or the services, compared with the locked row so a
+    // stale save that reverts a change still counts. The editor autosaves its
+    // whole sidebar, so a value sent back unchanged, or a change to
+    // automation or impact alone, is not an edit a reader needs to hear about.
+    const sameInstant = (a: Date | null, b: Date | null) =>
+      (a?.getTime() ?? null) === (b?.getTime() ?? null)
+    let detailsChanged =
+      (title !== undefined && title !== existing.title) ||
+      (input.scheduledStartAt !== undefined &&
+        !sameInstant(input.scheduledStartAt, existing.scheduledStartAt)) ||
+      (input.scheduledEndAt !== undefined &&
+        !sameInstant(input.scheduledEndAt, existing.scheduledEndAt))
+
+    if (input.scheduledStartAt !== undefined || input.scheduledEndAt !== undefined) {
+      assertWindowOrder(
+        input.scheduledStartAt !== undefined ? input.scheduledStartAt : existing.scheduledStartAt,
+        input.scheduledEndAt !== undefined ? input.scheduledEndAt : existing.scheduledEndAt
+      )
+    }
+    // A window that hasn't started keeps its planned start in started_at, so a
+    // reschedule moves it along.
+    if (
+      existing.kind === 'maintenance' &&
+      existing.status === 'scheduled' &&
+      input.scheduledStartAt
+    ) {
+      updateData.startedAt = input.scheduledStartAt
+    }
+    if (input.impactOverride !== undefined) {
+      updateData.impactOverride = existing.kind === 'incident' && input.impactOverride
+    }
+    const impactOverride =
+      (updateData.impactOverride as boolean | undefined) ?? existing.impactOverride
+
     // A link to a service deleted since is history: it stays as it is, and a
     // stale editor that sends the deleted service back doesn't relink it.
     let previousLinks: { componentId: StatusComponentId; componentStatus: string }[] = []
@@ -407,7 +438,7 @@ export async function updateIncident(
     await tx.update(statusIncidents).set(updateData).where(eq(statusIncidents.id, id))
     if (existing.kind === 'maintenance') await settleMaintenanceStart(id, tx)
 
-    if (nextComponents === undefined) return
+    if (nextComponents === undefined) return existing
     const replaced = previousLinks
       .map((link) => link.componentId)
       .filter((componentId) => live.has(componentId))
@@ -440,6 +471,7 @@ export async function updateIncident(
       ])
       await reconcileComponentStatuses(affected, source, id, tx)
     }
+    return existing
   })
 
   if (
@@ -470,117 +502,133 @@ export async function postIncidentUpdate(
   input: PostIncidentUpdateInput,
   author: { principalId: PrincipalId | null }
 ): Promise<StatusIncidentWithDetails> {
-  const existing = await requireIncident(id)
+  // A row's kind and whether it was backfilled never change, so the input is
+  // checked against them before the transaction opens. Everything else is
+  // decided from the row as locked inside it.
+  const current = await requireIncident(id)
   const body = validateBody(input.body)
-  assertStatusMatchesKind(existing.kind, input.status)
-  if (existing.backfilled) assertBackfillStaysResolved(existing.kind, input.status, true)
-
-  const wasTerminal = existing.status === TERMINAL_STATUS[existing.kind]
-  const becomesTerminal = input.status === TERMINAL_STATUS[existing.kind]
-  // Moving a resolved incident or completed window back to an earlier stage
-  // reopens it: clearing resolvedAt takes it out of resolved history and puts
-  // it back in the open lists (and an incident in the public active list),
-  // and it holds its services again. Resolving it later stamps a fresh
-  // resolvedAt.
-  const reopens = wasTerminal && !becomesTerminal
-  // Posting 'in_progress' (or 'verifying') on a still-'scheduled' window is
-  // a real start: record it in started_at, apply component statuses, and
-  // re-arm the auto-complete job — same effects as handleMaintenanceStart,
-  // but with the admin's own words as the single timeline row instead of the
-  // scheduler's canned copy. The planned window stays as planned, so the
-  // public page keeps showing it and completion still fires at its end.
-  const startsMaintenance =
-    existing.kind === 'maintenance' &&
-    existing.status === 'scheduled' &&
-    holdsComponents(existing.kind, input.status)
-  const unschedulesMaintenance =
-    existing.kind === 'maintenance' &&
-    existing.status !== 'scheduled' &&
-    input.status === 'scheduled'
-  // A terminal update restores the services the row was holding, unless the
-  // partial-recovery box was ticked; one that wasn't holding them (a window
-  // completed before it started, a note on a resolved incident) leaves them
-  // as they are. Any other move recomputes them only when it changes whether
-  // the row holds them (a start, a reopen, a window moved back to scheduled).
-  const heldBefore = holdsComponents(existing.kind, existing.status)
-  const recomputesComponents = becomesTerminal
-    ? heldBefore && !input.skipRestore
-    : heldBefore !== holdsComponents(existing.kind, input.status)
-
-  const now = new Date()
-  const updateData: Record<string, unknown> = { status: input.status, updatedAt: now }
-  if (becomesTerminal && (!wasTerminal || !existing.resolvedAt)) {
-    updateData.resolvedAt = now
-  }
-  if (reopens) {
-    updateData.resolvedAt = null
-  }
-  if (startsMaintenance) {
-    updateData.startedAt = now
-  }
-  // A window that isn't running holds its planned start in started_at. Moved
-  // back to scheduled, it takes the plan again; completed straight from
-  // scheduled, it keeps the plan as when it began (migration 0298 dates old
-  // rows the same way), unless the plan is still ahead: it can't have started
-  // after it finished.
-  if (unschedulesMaintenance && existing.scheduledStartAt) {
-    updateData.startedAt = existing.scheduledStartAt
-  }
-  if (
-    existing.kind === 'maintenance' &&
-    existing.status === 'scheduled' &&
-    becomesTerminal &&
-    existing.startedAt > now
-  ) {
-    updateData.startedAt = now
-  }
-  // A window moved back across a boundary that has already passed would be
-  // pushed straight forward again by the scheduler's sweep (re-completed, or
-  // re-started). Switch that automation off; the admin moves it on from the
-  // editor instead.
-  if (existing.kind === 'maintenance' && (reopens || unschedulesMaintenance)) {
-    if (existing.autoComplete && existing.scheduledEndAt && existing.scheduledEndAt <= now) {
-      updateData.autoComplete = false
-    }
-    if (
-      input.status === 'scheduled' &&
-      existing.autoStart &&
-      existing.scheduledStartAt &&
-      existing.scheduledStartAt <= now
-    ) {
-      updateData.autoStart = false
-    }
-  }
+  assertStatusMatchesKind(current.kind, input.status)
+  if (current.backfilled) assertBackfillStaysResolved(current.kind, input.status, true)
 
   // The timeline row, the status change and the component statuses it moves
   // commit together, so a failure part-way can't leave an incident marked
   // resolved while some of its services were never restored.
-  await db.transaction(async (tx) => {
-    await tx.insert(statusIncidentUpdates).values({
-      incidentId: id,
-      status: input.status,
-      body,
-      createdBy: author.principalId,
-      templateId: input.templateId ?? null,
-      // A start is dated at the instant it records in started_at.
-      ...(startsMaintenance ? { createdAt: now } : {}),
-    })
-    await tx.update(statusIncidents).set(updateData).where(eq(statusIncidents.id, id))
-    if (existing.kind === 'maintenance') await settleMaintenanceStart(id, tx)
+  const { existing, startsMaintenance, rearmsMaintenance, updateData } = await db.transaction(
+    async (tx) => {
+      const existing = await lockIncident(id, tx)
 
-    if (recomputesComponents) {
-      const links = await tx.query.statusIncidentComponents.findMany({
-        where: eq(statusIncidentComponents.incidentId, id),
+      const wasTerminal = existing.status === TERMINAL_STATUS[existing.kind]
+      const becomesTerminal = input.status === TERMINAL_STATUS[existing.kind]
+      // Moving a resolved incident or completed window back to an earlier
+      // stage reopens it: clearing resolvedAt takes it out of resolved history
+      // and puts it back in the open lists (and an incident in the public
+      // active list), and it holds its services again. Resolving it later
+      // stamps a fresh resolvedAt.
+      const reopens = wasTerminal && !becomesTerminal
+      // Posting 'in_progress' (or 'verifying') on a still-'scheduled' window
+      // is a real start: record it in started_at, apply component statuses,
+      // and re-arm the auto-complete job, the same effects as
+      // handleMaintenanceStart but with the admin's own words as the single
+      // timeline row instead of the scheduler's canned copy. The planned
+      // window stays as planned, so the public page keeps showing it and
+      // completion still fires at its end. A window the scheduler started
+      // first is no longer scheduled here, so the post is a plain update.
+      const startsMaintenance =
+        existing.kind === 'maintenance' &&
+        existing.status === 'scheduled' &&
+        holdsComponents(existing.kind, input.status)
+      const unschedulesMaintenance =
+        existing.kind === 'maintenance' &&
+        existing.status !== 'scheduled' &&
+        input.status === 'scheduled'
+      // A terminal update restores the services the row was holding, unless
+      // the partial-recovery box was ticked; one that wasn't holding them (a
+      // window completed before it started, a note on a resolved incident)
+      // leaves them as they are. Any other move recomputes them only when it
+      // changes whether the row holds them (a start, a reopen, a window moved
+      // back to scheduled).
+      const heldBefore = holdsComponents(existing.kind, existing.status)
+      const recomputesComponents = becomesTerminal
+        ? heldBefore && !input.skipRestore
+        : heldBefore !== holdsComponents(existing.kind, input.status)
+
+      const now = new Date()
+      const updateData: Record<string, unknown> = { status: input.status, updatedAt: now }
+      if (becomesTerminal && (!wasTerminal || !existing.resolvedAt)) {
+        updateData.resolvedAt = now
+      }
+      if (reopens) {
+        updateData.resolvedAt = null
+      }
+      if (startsMaintenance) {
+        updateData.startedAt = now
+      }
+      // A window that isn't running holds its planned start in started_at.
+      // Moved back to scheduled, it takes the plan again; completed straight
+      // from scheduled, it keeps the plan as when it began (migration 0298
+      // dates old rows the same way), unless the plan is still ahead: it
+      // can't have started after it finished.
+      if (unschedulesMaintenance && existing.scheduledStartAt) {
+        updateData.startedAt = existing.scheduledStartAt
+      }
+      if (
+        existing.kind === 'maintenance' &&
+        existing.status === 'scheduled' &&
+        becomesTerminal &&
+        existing.startedAt > now
+      ) {
+        updateData.startedAt = now
+      }
+      // A window moved back across a boundary that has already passed would
+      // be pushed straight forward again by the scheduler's sweep
+      // (re-completed, or re-started). Switch that automation off; the admin
+      // moves it on from the editor instead.
+      if (existing.kind === 'maintenance' && (reopens || unschedulesMaintenance)) {
+        if (existing.autoComplete && existing.scheduledEndAt && existing.scheduledEndAt <= now) {
+          updateData.autoComplete = false
+        }
+        if (
+          input.status === 'scheduled' &&
+          existing.autoStart &&
+          existing.scheduledStartAt &&
+          existing.scheduledStartAt <= now
+        ) {
+          updateData.autoStart = false
+        }
+      }
+
+      await tx.insert(statusIncidentUpdates).values({
+        incidentId: id,
+        status: input.status,
+        body,
+        createdBy: author.principalId,
+        templateId: input.templateId ?? null,
+        // A start is dated at the instant it records in started_at.
+        ...(startsMaintenance ? { createdAt: now } : {}),
       })
-      const source = existing.kind === 'incident' ? 'incident' : 'maintenance'
-      await reconcileComponentStatuses(
-        links.map((link) => link.componentId),
-        source,
-        id,
-        tx
-      )
+      await tx.update(statusIncidents).set(updateData).where(eq(statusIncidents.id, id))
+      if (existing.kind === 'maintenance') await settleMaintenanceStart(id, tx)
+
+      if (recomputesComponents) {
+        const links = await tx.query.statusIncidentComponents.findMany({
+          where: eq(statusIncidentComponents.incidentId, id),
+        })
+        const source = existing.kind === 'incident' ? 'incident' : 'maintenance'
+        await reconcileComponentStatuses(
+          links.map((link) => link.componentId),
+          source,
+          id,
+          tx
+        )
+      }
+      return {
+        existing,
+        startsMaintenance,
+        rearmsMaintenance: existing.kind === 'maintenance' && (reopens || unschedulesMaintenance),
+        updateData,
+      }
     }
-  })
+  )
 
   if (startsMaintenance) {
     await cancelMaintenanceJobs(existing).catch((err) =>
@@ -589,7 +637,7 @@ export async function postIncidentUpdate(
     await enqueueMaintenanceJobs({ ...existing, status: input.status }).catch((err) =>
       log.error({ err, incident_id: id }, 'failed to re-enqueue maintenance jobs on manual start')
     )
-  } else if (existing.kind === 'maintenance' && (reopens || unschedulesMaintenance)) {
+  } else if (rearmsMaintenance) {
     // Reopened or moved back: queue whichever boundaries are still ahead.
     await enqueueMaintenanceJobs({
       ...existing,
@@ -633,7 +681,8 @@ export async function deleteIncident(id: StatusIncidentId): Promise<void> {
       .where(and(eq(statusIncidents.id, id), isNull(statusIncidents.deletedAt)))
       .returning()
 
-    if (result.length === 0) {
+    const [deleted] = result
+    if (!deleted) {
       throw new NotFoundError('STATUS_INCIDENT_NOT_FOUND', `Status incident ${id} not found`)
     }
 
@@ -642,12 +691,13 @@ export async function deleteIncident(id: StatusIncidentId): Promise<void> {
     // rows), or an active incident's services would stay degraded forever.
     // A row that wasn't holding them (a window still scheduled, a resolved
     // incident, a completed window) leaves them as they are, so a status set
-    // by hand or through the API since is kept.
-    if (!holdsComponents(existing.kind, existing.status)) return
+    // by hand or through the API since is kept. The delete locked the row,
+    // so the status it returns is current (see lockIncident).
+    if (!holdsComponents(deleted.kind, deleted.status)) return
     const links = await tx.query.statusIncidentComponents.findMany({
       where: eq(statusIncidentComponents.incidentId, id),
     })
-    const source = existing.kind === 'incident' ? 'incident' : 'maintenance'
+    const source = deleted.kind === 'incident' ? 'incident' : 'maintenance'
     await reconcileComponentStatuses(
       links.map((link) => link.componentId),
       source,
@@ -907,11 +957,20 @@ export async function notifyStatusIncidentPublished(
   }
 }
 
+/** How old an unclaimed row must be before the sweep announces it. Every
+ *  publish path claims (or, publishing without the email, stamps) a row
+ *  within milliseconds of inserting it, so the sweep only needs rows whose
+ *  own claim was lost. Leaving the newest alone also keeps it from racing a
+ *  publish in flight: an older version publishing without the email inserts
+ *  the row (notify_subscribers then defaults to true) and stamps notified_at
+ *  a moment later. */
+const NOTIFY_SWEEP_MIN_AGE_MS = 2 * 60 * 1000
+
 /**
- * Safety net for publish notifications — mirrors
+ * Safety net for publish notifications, mirroring
  * `reconcileChangelogNotifications`. Finds live, unclaimed, non-backfilled
- * incidents/maintenance whose publisher asked for the email, and announces
- * each.
+ * incidents/maintenance whose publisher asked for the email, published at
+ * least NOTIFY_SWEEP_MIN_AGE_MS ago, and announces each.
  */
 export async function reconcileStatusNotifications(): Promise<number> {
   const due = await db
@@ -922,7 +981,8 @@ export async function reconcileStatusNotifications(): Promise<number> {
         isNull(statusIncidents.notifiedAt),
         eq(statusIncidents.backfilled, false),
         eq(statusIncidents.notifySubscribers, true),
-        isNull(statusIncidents.deletedAt)
+        isNull(statusIncidents.deletedAt),
+        lte(statusIncidents.createdAt, new Date(Date.now() - NOTIFY_SWEEP_MIN_AGE_MS))
       )
     )
     .orderBy(asc(statusIncidents.createdAt))

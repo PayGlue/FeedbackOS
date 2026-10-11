@@ -7,6 +7,11 @@
 -- sweep also skip rows with this false, and whatever shows a send or a
 -- recipient count checks it before notified_at.
 --
+-- The other way round, a version without this column publishing unchecked
+-- while this one's sweep runs, inserts the row with this column defaulting
+-- to true and stamps notified_at a moment later. The sweep only announces
+-- rows at least two minutes old, so it never lands in that gap.
+--
 -- Existing rows default to true. A row published with the box unchecked
 -- before this change carries a notified_at that can't be told apart from a
 -- real send, so it keeps reading as sent.

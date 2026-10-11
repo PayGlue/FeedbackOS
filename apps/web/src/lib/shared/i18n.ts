@@ -202,6 +202,10 @@ export const SETUP_WIZARD_MESSAGE_PREFIXES = [
   'onboarding.workspace.',
   'onboarding.goals.',
   'onboarding.error.',
+  'onboarding.ready.',
+  'onboarding.noAccess.',
+  'onboarding.steps.',
+  'onboarding.signOut',
 ] as const
 
 export function isSetupWizardMessage(key: string): boolean {
@@ -283,10 +287,14 @@ export function withoutPageScopedMessages(all: Record<string, string>): Record<s
   return subset
 }
 
-/** The /unsubscribe page's strings in a locale, which is all that page renders. */
+/**
+ * The /unsubscribe page's strings in a locale, which is all that page renders.
+ * None in English, which renders from the code (see {@link loadAdminMessages}).
+ */
 export async function loadUnsubscribeMessages(
   locale: SupportedLocale
 ): Promise<Record<string, string>> {
+  if (locale === DEFAULT_LOCALE) return {}
   const all = await loadMessages(locale)
   const subset: Record<string, string> = {}
   for (const [key, value] of Object.entries(all)) {
@@ -317,6 +325,19 @@ export async function loadAreaMessages(
     if (area !== null && areas.includes(area)) subset[key] = value
   }
   return subset
+}
+
+/**
+ * An area's strings for a route loader to seed: none in English, which
+ * `AreaMessages` renders from the code. (Admin's notification preferences read
+ * the English on purpose, to keep that page English, so they call
+ * {@link loadAreaMessages}.)
+ */
+export async function seedAreaMessages(
+  locale: SupportedLocale,
+  area: MessageArea
+): Promise<Record<string, string>> {
+  return locale === DEFAULT_LOCALE ? {} : loadAreaMessages(locale, area)
 }
 
 /** The file viewer's strings in a locale. */
@@ -410,8 +431,12 @@ export function isLaunchMessage(key: string): boolean {
   )
 }
 
-/** Home's and the Launch plan page's strings in a locale. */
+/**
+ * Home's and the Launch plan page's strings in a locale. None in English, which
+ * these admin pages render from the code (see {@link loadAdminMessages}).
+ */
 export async function loadLaunchMessages(locale: SupportedLocale): Promise<Record<string, string>> {
+  if (locale === DEFAULT_LOCALE) return {}
   const all = await loadMessages(locale)
   const subset: Record<string, string> = {}
   for (const [key, value] of Object.entries(all)) {
@@ -452,6 +477,17 @@ export function adminSeedMessages(all: Record<string, string>): Record<string, s
 }
 
 /**
+ * The catalog an admin page seeds in a locale. None in English: every message's
+ * English in code is its en.json English, word for word (the default-messages
+ * guard in `locales/__tests__`), so an English admin page renders from the code
+ * instead of carrying the catalog in every document.
+ */
+export async function loadAdminMessages(locale: SupportedLocale): Promise<Record<string, string>> {
+  if (locale === DEFAULT_LOCALE) return {}
+  return adminSeedMessages(await loadMessages(locale))
+}
+
+/**
  * Key prefixes the widget surface renders (widget views plus the shared
  * Ask-AI / ui / common / files strings they embed). Everything else in the
  * catalog is portal/admin copy the iframe never shows.
@@ -465,8 +501,10 @@ const WIDGET_MESSAGE_PREFIXES = ['widget.', 'helpAskAi.', 'ui.', 'common.', 'fil
  * 'data-only'`, so without this seed the IntlProvider mounts empty, flashes
  * English defaults, and pays a post-mount catalog-chunk fetch. Filtering
  * keeps the serialized payload to the ~200 keys the widget can actually show.
+ * None in English, which renders from the code (see {@link loadAdminMessages}).
  */
 export async function loadWidgetMessages(locale: SupportedLocale): Promise<Record<string, string>> {
+  if (locale === DEFAULT_LOCALE) return {}
   const all = await loadMessages(locale)
   const subset: Record<string, string> = {}
   for (const [key, value] of Object.entries(all)) {
@@ -498,11 +536,13 @@ export const ONBOARDING_MESSAGE_PREFIX_LIST: readonly string[] = ONBOARDING_MESS
  * SSR document of the first screen a new workspace ever sees. Slicing keeps
  * that at the handful of keys the wizard can actually show, and the moment
  * translated onboarding copy lands in the catalogs it is picked up here with no
- * further change.
+ * further change. None in English, which renders from the code (see
+ * {@link loadAdminMessages}).
  */
 export async function loadOnboardingMessages(
   locale: SupportedLocale
 ): Promise<Record<string, string>> {
+  if (locale === DEFAULT_LOCALE) return {}
   const all = await loadMessages(locale)
   const subset: Record<string, string> = {}
   for (const [key, value] of Object.entries(all)) {
@@ -551,9 +591,11 @@ export const PORTAL_MESSAGE_PREFIX_LIST: readonly string[] = PORTAL_MESSAGE_PREF
  * can actually show, instead of the whole (admin-inclusive) catalog — a large
  * chunk of the portal SSR HTML. See {@link PORTAL_MESSAGE_PREFIXES}. The
  * viewer's strings and each area's are left out too (see
- * {@link AREA_MESSAGE_PREFIXES}); they load where they are shown.
+ * {@link AREA_MESSAGE_PREFIXES}); they load where they are shown. None in
+ * English, which renders from the code (see {@link loadAdminMessages}).
  */
 export async function loadPortalMessages(locale: SupportedLocale): Promise<Record<string, string>> {
+  if (locale === DEFAULT_LOCALE) return {}
   const all = await loadMessages(locale)
   const subset: Record<string, string> = {}
   for (const [key, value] of Object.entries(all)) {

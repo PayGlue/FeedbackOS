@@ -545,7 +545,12 @@ describe('status lifecycle (Postgres)', () => {
       // died before the fire-and-forget send) is still picked up.
       const [pending] = await testDb
         .insert(statusIncidents)
-        .values({ kind: 'incident', title: 'Pending', status: 'investigating' })
+        .values({
+          kind: 'incident',
+          title: 'Pending',
+          status: 'investigating',
+          createdAt: new Date(Date.now() - HOUR),
+        })
         .returning({ id: statusIncidents.id })
       expect(await reconcileStatusNotifications()).toBe(1)
       expect((await getStatusIncidentById(pending.id)).notifiedAt).not.toBeNull()
@@ -568,6 +573,23 @@ describe('status lifecycle (Postgres)', () => {
           )
         )
       expect(releasedSweep).toEqual([])
+    })
+
+    it('the sweep leaves a row just published to its own claim', async () => {
+      // An older version publishing with the box unchecked inserts the row
+      // (notify_subscribers defaulting to true) and stamps notified_at a
+      // moment later. The sweep must not send in between.
+      const unclaimed = (title: string, createdAt: Date) =>
+        testDb
+          .insert(statusIncidents)
+          .values({ kind: 'incident', title, status: 'investigating', createdAt })
+          .returning({ id: statusIncidents.id })
+      const [justNow] = await unclaimed('Just published', new Date())
+      const [lost] = await unclaimed('Claim lost', new Date(Date.now() - 3 * 60_000))
+
+      expect(await reconcileStatusNotifications()).toBe(1)
+      expect((await getStatusIncidentById(justNow.id)).notifiedAt).toBeNull()
+      expect((await getStatusIncidentById(lost.id)).notifiedAt).not.toBeNull()
     })
   })
 

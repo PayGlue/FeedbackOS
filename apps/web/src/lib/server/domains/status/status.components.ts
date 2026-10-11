@@ -345,7 +345,10 @@ export async function reconcileComponentStatus(
   // this service, whose foreign key check holds KEY SHARE on the row. Two
   // writes linking the same service both hold it, and FOR UPDATE would make
   // each wait on the other's (a deadlock); NO KEY UPDATE still serialises
-  // recomputes against each other without conflicting with it.
+  // recomputes against each other without conflicting with it. Lifecycle
+  // writes lock and refresh their incident row before this (lockIncident in
+  // status.service.ts, or the scheduler's claim), so locks are always taken
+  // incident row first, then services in id order.
   const [component] = await executor
     .select()
     .from(statusComponents)
