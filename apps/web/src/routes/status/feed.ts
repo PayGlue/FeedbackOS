@@ -92,11 +92,14 @@ interface FeedEntryGroup {
 const FEED_ITEM_LIMIT = 50
 
 /**
- * Posting an update also writes the incident's row, a moment after the update
- * itself and by another clock (the app's, not the database's). A row written
- * within this long of its latest update counts as that update, not an edit.
+ * A row written within this long of its latest update counts as that update,
+ * not an edit. Posting an update writes the incident's row in the same
+ * request, milliseconds after the update itself; the only other gap is the
+ * app's clock against the database's. A sidebar save the editor still had
+ * pending (it waits 800 ms) lands about a second later. Anything later is an
+ * edit, so a correction made seconds after an update still reaches readers.
  */
-const EDIT_GRACE_MS = 60 * 1000
+const EDIT_GRACE_MS = 5 * 1000
 
 /**
  * One feed item per update, so every update reaches a reader as its own item

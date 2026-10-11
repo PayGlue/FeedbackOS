@@ -235,6 +235,15 @@ describe('GET /status/feed', () => {
       expect(xml).toContain('<lastBuildDate>Sat, 10 Oct 2026 11:00:00 GMT</lastBuildDate>')
     })
 
+    it('reaches readers even when made seconds after an update, like a corrected typo', async () => {
+      listStatusFeedFn.mockResolvedValue([window('2026-10-09T12:00:10.000Z')])
+      const items = itemsOf(await (await GET()).text())
+      expect(items.map((i) => i.guid)).toEqual([
+        `https://acme.example.com/status/status_incident_2#edited-${Date.parse('2026-10-09T12:00:10.000Z')}`,
+        'https://acme.example.com/status/status_incident_2#status_update_4',
+      ])
+    })
+
     it('adds one item for the latest edit, not one per save, and none for posting an update', async () => {
       const guids = async (editedAt: string) => {
         listStatusFeedFn.mockResolvedValue([window(editedAt)])
