@@ -729,6 +729,9 @@ function IncidentTimeline({ incident }: { incident: StatusIncidentAdminDetail })
     [incident.updates]
   )
   const firstUpdateId = updates[updates.length - 1]?.id
+  // A row published with "Email subscribers" off is stamped notified_at too,
+  // without a send; the publisher's choice says whether it was emailed.
+  const emailed = incident.notifySubscribers && !!incident.notifiedAt && !incident.backfilled
 
   return (
     <div>
@@ -755,7 +758,7 @@ function IncidentTimeline({ incident }: { incident: StatusIncidentAdminDetail })
                 <TimeAgo date={u.createdAt} className="text-[11px] text-muted-foreground" />
               </div>
               <p className="text-sm text-foreground/90 mt-1 whitespace-pre-wrap">{u.body}</p>
-              {isPublishRow && incident.notifiedAt && !incident.backfilled && (
+              {isPublishRow && emailed && (
                 <span className="inline-flex items-center gap-1.5 mt-2 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                   <EnvelopeIcon className="h-3 w-3" />
                   Published

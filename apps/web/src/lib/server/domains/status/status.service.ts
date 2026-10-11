@@ -193,6 +193,16 @@ export async function createIncident(
     input.backfill?.startedAt ??
     (plannedStart && (!resolvedAt || plannedStart <= resolvedAt) ? plannedStart : now)
 
+  // Published with "Email subscribers" off: the email is never sent, and
+  // notified_at is stamped all the same. An older version's sweep doesn't
+  // read notify_subscribers and announces every live row with no
+  // notified_at, so the stamp is what keeps one rolled back to (or an old
+  // worker mid-deploy) from sending it. Readers tell this apart from a real
+  // send by notify_subscribers. A backfill is never announced by any version
+  // and keeps notified_at null.
+  const notifySubscribers = !backfilled && (input.notifySubscribers ?? true)
+  const notifiedAt = !backfilled && !notifySubscribers ? now : null
+
   // One transaction: the row, its links, the first update and the component
   // statuses it applies land together or not at all, so a failure part-way
   // can't leave a published incident with no timeline or no services.
@@ -218,7 +228,8 @@ export async function createIncident(
         startedAt,
         resolvedAt,
         backfilled,
-        notifySubscribers: !backfilled && (input.notifySubscribers ?? true),
+        notifySubscribers,
+        notifiedAt,
         createdBy: author.principalId,
       })
       .returning()
@@ -782,8 +793,9 @@ export async function countStatusIncidentsSince(date: Date): Promise<number> {
  * Announce a published incident/maintenance exactly once. Atomically claims
  * via `notified_at`, gated on `backfilled = false` so a backfilled row can
  * never be claimed (Status Product Spec §2), and on `notify_subscribers` so a
- * row published with "Email subscribers" unchecked is never claimed either:
- * its notified_at stays null instead of recording a send that didn't happen.
+ * row published with "Email subscribers" unchecked is never claimed either.
+ * Such a row is already stamped at create (see createIncident); the gate
+ * keeps it unsendable whatever its notified_at says.
  */
 export async function notifyStatusIncidentPublished(
   id: StatusIncidentId,

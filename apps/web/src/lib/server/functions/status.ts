@@ -457,9 +457,11 @@ export const getStatusIncidentAdminFn = createServerFn({ method: 'GET' })
     // Approximate "emailed N subscribers" for the editor's publish marker.
     // The recipient count is not persisted at publish time (the claim only
     // writes notified_at), so this is the CURRENT active pool for the
-    // affected components — the editor copy hedges accordingly ("~N").
+    // affected components — the editor copy hedges accordingly ("~N"). A row
+    // published with "Email subscribers" off is stamped notified_at without
+    // a send, so it has no recipients.
     let notifiedSubscriberCount: number | null = null
-    if (incident.notifiedAt && !incident.backfilled) {
+    if (incident.notifySubscribers && incident.notifiedAt && !incident.backfilled) {
       notifiedSubscriberCount = await countActiveSubscribersForComponents(
         incident.affectedComponents.map((c) => c.componentId)
       )

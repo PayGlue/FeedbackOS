@@ -12,7 +12,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { createId, type PrincipalId, type StatusComponentId } from '@quackback/ids'
 import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
 import {
+  and,
   eq,
+  isNull,
   sql,
   principal,
   statusComponents,
@@ -727,11 +729,10 @@ describe('status lifecycle (Postgres)', () => {
   })
 
   describe('publishing with "Email subscribers" off', () => {
-    it('records no send, and neither the claim nor the sweep sends one later', async () => {
+    it('is never sent, by this version or by an older one rolled back to', async () => {
       const api = await service('API')
       const quiet = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
       expect(quiet.notifySubscribers).toBe(false)
-      expect(quiet.notifiedAt).toBeNull()
 
       const actor = { type: 'service' as const, displayName: 'test' }
       expect(await notifyStatusIncidentPublished(quiet.id, actor)).toBe(false)
@@ -743,13 +744,26 @@ describe('status lifecycle (Postgres)', () => {
         .values({ kind: 'incident', title: 'Pending', status: 'investigating' })
         .returning({ id: statusIncidents.id })
       expect(await reconcileStatusNotifications()).toBe(1)
-
-      expect((await getStatusIncidentById(quiet.id)).notifiedAt).toBeNull()
       expect((await getStatusIncidentById(pending.id)).notifiedAt).not.toBeNull()
       const published = mockProcessEvent.mock.calls.filter(
         ([event]) => (event as { type: string }).type === 'status.incident_created'
       )
       expect(published).toHaveLength(1)
+
+      // A version without notify_subscribers sweeps every live row with no
+      // notified_at. Rolled back to, or as an old worker mid-deploy, it must
+      // still find nothing here to announce.
+      const releasedSweep = await testDb
+        .select({ id: statusIncidents.id })
+        .from(statusIncidents)
+        .where(
+          and(
+            isNull(statusIncidents.notifiedAt),
+            eq(statusIncidents.backfilled, false),
+            isNull(statusIncidents.deletedAt)
+          )
+        )
+      expect(releasedSweep).toEqual([])
     })
   })
 

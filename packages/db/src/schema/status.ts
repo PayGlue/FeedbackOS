@@ -113,11 +113,13 @@ export const statusIncidents = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     backfilled: boolean('backfilled').default(false).notNull(),
-    // Publish-email claim column (changelog notify pattern); null until sent.
+    // Publish-email claim column (changelog notify pattern); null until the
+    // email is sent, or stamped at publish when notify_subscribers is false.
     notifiedAt: timestamp('notified_at', { withTimezone: true }),
     // The publisher's "Email subscribers" choice. False means the publish
-    // email is never sent, so notified_at stays null rather than recording a
-    // send that didn't happen.
+    // email is never sent. Such a row is stamped notified_at all the same, so
+    // an older version's sweep (which doesn't read this column) never sends
+    // it; this column, not notified_at, says whether it was emailed.
     notifySubscribers: boolean('notify_subscribers').default(true).notNull(),
     createdBy: typeIdColumnNullable('principal')('created_by').references(() => principal.id, {
       onDelete: 'set null',
