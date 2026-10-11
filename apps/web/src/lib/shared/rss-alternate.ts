@@ -7,17 +7,17 @@
  * TanStack Router concatenates `links` across matches: a child route can add
  * a second feed but cannot replace the root's.
  *
- * Only a public status page advertises its feed. A feed reader has no
- * session, so a page published for signed-in visitors or chosen segments
- * gives it an empty feed; such a page offers the changelog feed like any
- * other.
+ * The status pages advertise their feed only where a feed reader is served
+ * it (`isStatusFeedReadable`): a reader has no session, so a private portal
+ * or a page for signed-in visitors or chosen segments gives it an empty
+ * feed. Such a page offers the changelog feed like any other.
  */
 export function rssAlternateLink(
   routeIds: readonly string[],
-  { statusPagePublic }: { statusPagePublic: boolean }
+  { statusFeedReadable }: { statusFeedReadable: boolean }
 ) {
   const onStatusPage = routeIds.some((id) => id.startsWith('/_portal/status/'))
-  return onStatusPage && statusPagePublic
+  return onStatusPage && statusFeedReadable
     ? {
         rel: 'alternate',
         type: 'application/rss+xml',

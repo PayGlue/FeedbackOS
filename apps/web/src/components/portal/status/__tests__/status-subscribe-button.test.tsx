@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const hoisted = vi.hoisted(() => ({
   session: null as unknown,
-  settings: { statusConfig: { audience: 'public' } } as unknown,
+  settings: null as unknown,
   openAuthPopover: vi.fn(),
   subscribeStatusFn: vi.fn(),
   unsubscribeStatusFn: vi.fn(),
@@ -67,9 +67,14 @@ import { StatusSubscribeButton } from '../status-subscribe-button'
 const PENDING_KEY = 'quackback:pending-status-subscription'
 const signedInUser = { user: { id: 'user_1', principalType: 'user' } }
 
+const publicPage = {
+  featureFlags: { statusPage: true },
+  statusConfig: { enabled: true, audience: 'public' },
+}
+
 beforeEach(() => {
   localStorage.clear()
-  hoisted.settings = { statusConfig: { audience: 'public' } }
+  hoisted.settings = publicPage
   hoisted.openAuthPopover.mockReset()
   hoisted.subscribeStatusFn.mockReset().mockResolvedValue({ subscribed: true })
   hoisted.unsubscribeStatusFn.mockReset().mockResolvedValue({ subscribed: false })
@@ -112,7 +117,7 @@ it('tells a signed-out visitor that email needs an account and offers the RSS fe
 
 it('offers no RSS feed when the page is not public, since a feed reader would get it empty', async () => {
   hoisted.session = null
-  hoisted.settings = { statusConfig: { audience: 'segments' } }
+  hoisted.settings = { ...publicPage, statusConfig: { enabled: true, audience: 'segments' } }
   await openDialog()
   expect(screen.queryByRole('link', { name: 'RSS feed' })).toBeNull()
 })

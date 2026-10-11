@@ -10,8 +10,9 @@
  *   way in, instead of only "not available".
  * - Signing in on the page shows what the new viewer may see without a
  *   reload.
- * - The RSS feed is offered only on a public page: a feed reader has no
- *   session, so any other page gives it an empty feed.
+ * - The RSS feed is offered only where a feed reader is served it: a reader
+ *   has no session, so a page for signed-in visitors or segments, or any page
+ *   of a private portal, gives it an empty feed.
  * - Headings never skip a level: sections are h2s and the incidents in them
  *   h3s, including the active-incident cards, which lead the page.
  */
@@ -235,6 +236,19 @@ describe('the RSS feed', () => {
       expect(screen.queryByRole('link', { name: 'RSS Feed' })).toBeNull()
       cleanup()
     }
+  })
+
+  it('is not offered inside a private portal, even on a public page', async () => {
+    // A signed-in visitor got past the portal; a feed reader does not.
+    ctx.session = { user: { id: 'user_1', principalType: 'user' } }
+    ctx.settings = {
+      featureFlags: { statusPage: true },
+      statusConfig: { enabled: true, audience: 'public', pageDescription: null },
+      portalConfig: { access: { visibility: 'private' } },
+    }
+    renderWith(options.component)
+    await screen.findByText('No incidents in the last 14 days.')
+    expect(screen.queryByRole('link', { name: 'RSS Feed' })).toBeNull()
   })
 })
 
