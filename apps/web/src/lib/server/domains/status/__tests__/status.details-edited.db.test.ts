@@ -28,6 +28,7 @@ vi.mock('@/lib/server/events/scheduler', () => ({
 }))
 
 import { ANONYMOUS_ACTOR } from '@/lib/server/policy/types'
+import { deleteStatusComponent } from '../status.components'
 import { createIncident, getStatusIncidentById, updateIncident } from '../status.service'
 import { listStatusFeedItems } from '../status.public'
 import {
@@ -71,6 +72,22 @@ describe('details edited (Postgres)', () => {
     return { id: created.id, start, unchanged }
   }
 
+  /** A window on two services, as the editor would send it back, with no
+   *  edit recorded yet. */
+  async function windowWith(componentId: Awaited<ReturnType<typeof service>>) {
+    const w = await window()
+    const affectedComponents = [
+      ...w.unchanged.affectedComponents,
+      { componentId, componentStatus: 'under_maintenance' as const },
+    ]
+    await updateIncident(w.id, { ...w.unchanged, affectedComponents })
+    await testDb
+      .update(statusIncidents)
+      .set({ detailsEditedAt: null })
+      .where(eq(statusIncidents.id, w.id))
+    return { ...w, unchanged: { ...w.unchanged, affectedComponents } }
+  }
+
   it('is left unset by an autosave that changes nothing a reader sees', async () => {
     const { id, unchanged } = await window()
     await updateIncident(id, unchanged)
@@ -111,6 +128,24 @@ describe('details edited (Postgres)', () => {
       ],
     })
     expect(await detailsEditedAt(added.id)).toBeInstanceOf(Date)
+  })
+
+  it('is stamped when a service is taken off', async () => {
+    const w = await windowWith(await service('API'))
+    await updateIncident(w.id, {
+      ...w.unchanged,
+      affectedComponents: w.unchanged.affectedComponents.slice(0, 1),
+    })
+    expect(await detailsEditedAt(w.id)).toBeInstanceOf(Date)
+  })
+
+  it('is left unset by an autosave that sends back a service deleted since', async () => {
+    // The link to the deleted service stays as history, so nothing changed.
+    const api = await service('API')
+    const w = await windowWith(api)
+    await deleteStatusComponent(api)
+    await updateIncident(w.id, w.unchanged)
+    expect(await detailsEditedAt(w.id)).toBeNull()
   })
 
   describe('in the status feed', () => {
