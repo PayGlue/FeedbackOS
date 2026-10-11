@@ -172,7 +172,7 @@ inside one minute and the database ran out of memory.
 
 So a pooled loop's scheduler carries a **spread key** (its workspace key) and
 evaluates each cron a fixed offset behind real time. `scheduleOffsetMs` derives
-the offset from a stable hash of the key and the schedule, scaled into the
+the offset from a stable hash of the key, scaled into the
 schedule's spread window: the gap between two of its slots, capped at an hour.
 A per-minute sweep therefore starts somewhere inside its minute, a five-minutely
 one inside its five minutes, and an hourly or daily one somewhere inside an
@@ -183,8 +183,10 @@ hour.
   different offset (or none) dedupes against this one.
 - **The offset is stable**, so a workspace starts a schedule at the same point
   in every slot and replicas agree without coordinating.
-- **Each schedule has its own offset**, so one workspace's hourly sweeps do not
-  land together either.
+- **A workspace's schedules on one cadence share its offset**, so its loop
+  still wakes once a minute for its per-minute sweeps. Each tick asks every
+  schedule's gate, and some gates query the database; an offset per schedule
+  would multiply those queries across the fleet.
 - **A single-workspace install has no spread key** and runs on the cron's own
   minute, exactly as before.
 
@@ -479,11 +481,14 @@ workspace, and an operator sizing connections cares about the product.
 **`fleetConcurrency` is the cap across workspaces.** Every other cap here binds
 one workspace's loop, so a pooled process can run a queue's `concurrency` times
 the fleet. A definition that sets `fleetConcurrency` (`analytics` does) is held
-to that many running jobs across every loop in the process. Each claim path
-reserves its slots before it awaits the claim and hands back what the claim did
-not fill, so two loops cannot both count the last slot free; jobs over the cap
-stay `pending`, unclaimed, so no lease runs down while they wait. The cap is per
-process: two worker replicas allow twice as many.
+to that many running jobs across every loop in the process. A slot is held
+while a job runs, not while a claim is in flight: almost every poll finds
+nothing, and a cap spent by polls would be held by idle workspaces whenever a
+slow database stretches the claims. So it is a cap rather than a semaphore,
+and loops claiming in the same instant can each take the last slot; the slot
+offsets keep that to one or two. Jobs over the cap stay `pending`, unclaimed,
+so no lease runs down while they wait. The cap is per process: two worker
+replicas allow twice as many.
 
 ### What the move fixed rather than preserved
 

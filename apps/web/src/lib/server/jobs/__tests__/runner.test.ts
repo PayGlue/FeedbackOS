@@ -314,7 +314,7 @@ describe('spreading a fleet across each slot', () => {
     __setJobDefinitionsForTests([
       { name: q, cron: '0 * * * *', handler: async () => async () => {} },
     ])
-    const offset = scheduleOffsetMs('workspace-alpha', q, '0 * * * *')
+    const offset = scheduleOffsetMs('workspace-alpha', '0 * * * *')
     expect(offset).toBeGreaterThan(1_000)
     expect(offset).toBeLessThan(HOUR)
 
@@ -344,7 +344,7 @@ describe('spreading a fleet across each slot', () => {
   })
 
   it("keeps an unpooled scheduler on the cron's own minute", async () => {
-    expect(scheduleOffsetMs(null, 'any-queue', '0 * * * *')).toBe(0)
+    expect(scheduleOffsetMs(null, '0 * * * *')).toBe(0)
     const q = queue('spread-single')
     __setJobDefinitionsForTests([
       { name: q, cron: '0 * * * *', handler: async () => async () => {} },
@@ -358,34 +358,72 @@ describe('spreading a fleet across each slot', () => {
     const keys = Array.from({ length: 200 }, (_, i) => `inst_${i.toString(36).padStart(8, '0')}`)
     const perMinute = new Map<number, number>()
     for (const key of keys) {
-      const offset = scheduleOffsetMs(key, 'analytics', '0 * * * *')
+      const offset = scheduleOffsetMs(key, '0 * * * *')
       expect(offset).toBeGreaterThanOrEqual(0)
       expect(offset).toBeLessThan(HOUR)
       const minute = Math.floor(offset / 60_000)
       perMinute.set(minute, (perMinute.get(minute) ?? 0) + 1)
     }
-    // 200 workspaces over 60 minutes is about 3 a minute. A uniform spread
-    // stays in single digits; the unspread fleet put all 200 in minute 0.
-    expect(Math.max(...perMinute.values())).toBeLessThanOrEqual(10)
+    // 200 workspaces over 60 minutes is about 3 a minute. Measured against
+    // Math.random over 500 fleets, a uniform spread's busiest minute holds 8
+    // (11 at p99, 14 at worst); the unspread fleet put all 200 in minute 0.
+    expect(Math.max(...perMinute.values())).toBeLessThanOrEqual(14)
     expect(perMinute.size).toBeGreaterThanOrEqual(45)
   })
 
-  it('gives each schedule its own offset, so one workspace does not stack its sweeps', () => {
-    const offsets = new Set(
-      ['analytics', 'usage-report', 'help-center-translate-resume'].map((q) =>
-        scheduleOffsetMs('workspace-alpha', q, '0 * * * *')
-      )
-    )
-    expect(offsets.size).toBe(3)
+  it("keeps one workspace's schedules of a cadence on one tick", async () => {
+    // Each tick asks every schedule's gate, and some gates query the database.
+    // Per-schedule offsets would wake a loop once per per-minute sweep instead
+    // of once a minute, multiplying those queries across the fleet.
+    const a = queue('spread-same-tick-a')
+    const b = queue('spread-same-tick-b')
+    __setJobDefinitionsForTests([
+      { name: a, cron: '* * * * *', handler: async () => async () => {} },
+      { name: b, cron: '* * * * *', handler: async () => async () => {} },
+    ])
+    const state = createScheduleState({ spreadKey: 'workspace-alpha' })
+    const offset = scheduleOffsetMs('workspace-alpha', '* * * * *')
+    const minute = new Date(2026, 7, 9, 14, 0, 0).getTime()
+    await runScheduleTick(state, new Date(minute + offset + 1_000))
+    const both = await runScheduleTick(state, new Date(minute + 60_000 + offset + 1_000))
+    expect(both.attempted).toBe(2)
+    expect(both.nextSlotAt).toEqual(new Date(minute + 120_000 + offset))
+  })
+
+  it('runs a gated slot whose gate opens between the slot and its offset', async () => {
+    // A shut gate adopts the slot it is in. Adopting by the cron's own clock
+    // rather than this scheduler's would mark 15:00 spent before it was due,
+    // and the open gate at 15:00 plus the offset would find nothing to run.
+    const q = queue('spread-gated')
+    let open = true
+    __setJobDefinitionsForTests([
+      {
+        name: q,
+        cron: '0 * * * *',
+        cronEnabled: async () => open,
+        handler: async () => async () => {},
+      },
+    ])
+    const offset = scheduleOffsetMs('workspace-alpha', '0 * * * *')
+    expect(offset).toBeGreaterThan(2_000)
+    const slot = new Date(2026, 7, 9, 15, 0, 0).getTime()
+    const state = createScheduleState({ spreadKey: 'workspace-alpha' })
+
+    await runScheduleTick(state, new Date(slot + offset - 120_000))
+    open = false
+    expect((await runScheduleTick(state, new Date(slot + offset / 2))).attempted).toBe(0)
+    open = true
+    expect((await runScheduleTick(state, new Date(slot + offset + 1_000))).attempted).toBe(1)
+    expect((await rowsFor(q))[0].dedupe_key).toBe(slotKey(q, new Date(slot)))
   })
 
   it('bounds the offset by the interval, so a slot runs before the next one is due', () => {
     for (let i = 0; i < 50; i++) {
       const key = `workspace-${i}`
-      expect(scheduleOffsetMs(key, 'sweep', '* * * * *')).toBeLessThan(60_000)
-      expect(scheduleOffsetMs(key, 'sweep', '*/5 * * * *')).toBeLessThan(5 * 60_000)
+      expect(scheduleOffsetMs(key, '* * * * *')).toBeLessThan(60_000)
+      expect(scheduleOffsetMs(key, '*/5 * * * *')).toBeLessThan(5 * 60_000)
       // A daily sweep spreads across an hour, not across its whole day.
-      expect(scheduleOffsetMs(key, 'sweep', '0 3 * * *')).toBeLessThan(HOUR)
+      expect(scheduleOffsetMs(key, '0 3 * * *')).toBeLessThan(HOUR)
     }
   })
 })
@@ -796,20 +834,20 @@ describe('the fleet-wide cap', () => {
     await awaitPool(bravo)
   })
 
-  it('returns the part of a reservation the claim did not use', async () => {
+  it('leaves the rest of the cap free when a claim finds fewer rows than it could take', async () => {
     const { q, releases, releaseAll } = parkedQueue('fleet-cap-unused', {
       concurrency: 2,
       fleetConcurrency: 2,
     })
     await enqueueJob({ queue: q })
     const alpha = createJobPool()
-    // Alpha asks for two and finds one, so one of its two slots must come back.
+    // Alpha could take two and finds one, so one slot is still free.
     expect((await dispatchPass({ pool: alpha, config: CONFIG, run: runJob })).claimed).toBe(1)
 
     await enqueueJob({ queue: q })
     await enqueueJob({ queue: q })
     const bravo = createJobPool()
-    // Exactly one: two would ignore the cap, none would leak alpha's spare.
+    // Exactly one: two would ignore the cap, none would hold alpha's spare.
     expect((await dispatchPass({ pool: bravo, config: CONFIG, run: runJob })).claimed).toBe(1)
 
     await vi.waitFor(() => expect(releases).toHaveLength(2))
@@ -837,6 +875,29 @@ describe('the fleet-wide cap', () => {
     const bravo = createJobPool()
     expect((await dispatchPass({ pool: bravo, config: CONFIG, run: runJob })).claimed).toBe(1)
     await awaitPool(bravo)
+  })
+
+  it('counts a job started by id against the cap', async () => {
+    const { q, releases, releaseAll } = parkedQueue('fleet-cap-by-id-holds', {
+      concurrency: 1,
+      fleetConcurrency: 1,
+    })
+    const first = await enqueueJob({ queue: q })
+    await enqueueJob({ queue: q })
+    const bravo = createJobPool()
+    expect(
+      await startJobsById({ pool: bravo, config: CONFIG, jobIds: [first.jobId], run: runJob })
+    ).toBe(1)
+    const alpha = createJobPool()
+    expect((await dispatchPass({ pool: alpha, config: CONFIG, run: runJob })).claimed).toBe(0)
+
+    await vi.waitFor(() => expect(releases).toHaveLength(1))
+    releaseAll()
+    await awaitPool(bravo)
+    expect((await dispatchPass({ pool: alpha, config: CONFIG, run: runJob })).claimed).toBe(1)
+    await vi.waitFor(() => expect(releases).toHaveLength(1))
+    releaseAll()
+    await awaitPool(alpha)
   })
 
   it('holds start-by-id to the same cap, leaving the row for the sweeper', async () => {

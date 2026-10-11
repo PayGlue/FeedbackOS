@@ -397,26 +397,30 @@ async function withClaimLock<T>(pool: JobPool, work: () => Promise<T>): Promise<
   }
 }
 
-/** Give back one running or reserved job's slot, in its pool and in the process. */
 function releaseReservation(pool: JobPool, queue: string): void {
   const held = pool.inFlight.get(queue) ?? 1
   if (held <= 1) pool.inFlight.delete(queue)
   else pool.inFlight.set(queue, held - 1)
-  adjustFleet(queue, -1)
 }
 
 /**
- * Jobs reserved or running per queue across every pool in this process — the
- * budget `fleetConcurrency` is spent from.
+ * Jobs running per queue across every pool in this process — what
+ * `fleetConcurrency` caps.
  *
- * Every claim path reserves here before it awaits the claim and hands back
- * what the claim did not use, and every started job releases one slot when it
- * settles. Reserving before the await is what makes the cap exact: the
- * workspace loops in one process interleave only at awaits, so a slot one pool
- * has reserved can never also be counted free by another.
+ * **Running, not reserved.** A slot is taken when a claimed job starts and
+ * given back when it settles; a claim in flight holds none. Every loop polls
+ * about once a second and almost every poll finds nothing, so a cap spent by
+ * polls in flight would be held by idle workspaces whenever a slow database
+ * stretches the claims, which is exactly when the cap matters, and a workspace
+ * with real work due could not ask for it.
+ *
+ * The cost is that this is a cap, not a semaphore: loops whose claims are in
+ * flight together can each take the last free slot. The overshoot is bounded
+ * by how many loops have due work in that instant, which the slot offsets keep
+ * to one or two.
  *
  * Counted for every queue, enforced only where a definition sets a cap, so a
- * definition swapped between a reservation and its release cannot strand one.
+ * definition swapped while a job runs cannot strand its slot.
  */
 const fleetInFlight = new Map<string, number>()
 
@@ -481,16 +485,7 @@ export async function dispatchPass(opts: {
     const specs = claimSpecsFor(pool, opts.config)
     if (specs.length === 0) return { claimed: 0, saturated: true }
 
-    for (const spec of specs) adjustFleet(spec.queue, spec.limit)
-    let jobs: ClaimedJob[] = []
-    try {
-      jobs = await claimJobs({ specs })
-    } finally {
-      // Hand back the part of each reservation the claim did not fill.
-      const filled = new Map<string, number>()
-      for (const job of jobs) filled.set(job.queue, (filled.get(job.queue) ?? 0) + 1)
-      for (const spec of specs) adjustFleet(spec.queue, (filled.get(spec.queue) ?? 0) - spec.limit)
-    }
+    const jobs = await claimJobs({ specs })
     for (const job of jobs) startClaimedJob({ pool, job, run: opts.run, onSettled: opts.onSettled })
     return { claimed: jobs.length, saturated: false }
   })
@@ -499,9 +494,8 @@ export async function dispatchPass(opts: {
 /**
  * Put an already-claimed row on the pool. `counted` means the caller already
  * reserved the inFlight slot (start-by-id does this before `claimById` so a
- * failed claim does not leave a running row with no runner). The caller always
- * holds the job's process-wide slot (`fleetInFlight`); `releaseReservation`
- * gives back both when the job settles.
+ * failed claim does not leave a running row with no runner). The job holds its
+ * process-wide slot (`fleetInFlight`) for exactly as long as it runs.
  */
 export function startClaimedJob(opts: {
   pool: JobPool
@@ -512,6 +506,7 @@ export function startClaimedJob(opts: {
 }): void {
   const { pool, job } = opts
   if (!opts.counted) pool.inFlight.set(job.queue, (pool.inFlight.get(job.queue) ?? 0) + 1)
+  adjustFleet(job.queue, 1)
   const promise = opts
     .run(job)
     .catch((err): 'failed' => {
@@ -523,6 +518,7 @@ export function startClaimedJob(opts: {
     })
     .then((outcome) => {
       releaseReservation(pool, job.queue)
+      adjustFleet(job.queue, -1)
       pool.active.delete(promise)
       opts.onSettled?.(job.queue, outcome)
     })
@@ -554,7 +550,6 @@ export async function startJobsById(opts: {
       )
       if (free < 1) continue
       opts.pool.inFlight.set(peek.queue, (opts.pool.inFlight.get(peek.queue) ?? 0) + 1)
-      adjustFleet(peek.queue, 1)
       let job: ClaimedJob | null = null
       try {
         job = await claimById(jobId, leaseMsFor(def))
@@ -660,12 +655,15 @@ function cachedCron(pattern: string): CachedCron {
  * two hundred workspaces: every hourly analytics refresh started inside one
  * minute, and the database ran out of memory.
  *
- * The offset is a stable hash of the scheduler's spread key and the schedule,
- * scaled into the schedule's spread window, so:
+ * The offset is a stable hash of the scheduler's spread key, scaled into the
+ * schedule's spread window, so:
  *
- * - a workspace starts a given schedule at the same point in every slot, and
- *   every replica agrees on that point without coordinating;
- * - one workspace's hourly schedules land at different points, not together;
+ * - a workspace starts a schedule at the same point in every slot, and every
+ *   replica agrees on that point without coordinating;
+ * - a workspace's schedules on one cadence share a point, so its loop still
+ *   wakes once a minute for its per-minute sweeps. Each tick asks every gate,
+ *   and some gates query the database, so a point per schedule would multiply
+ *   those queries across the fleet;
  * - the slot itself does not move. The dedupe key and `scheduledFor` are still
  *   the slot's instant, so a replica that computes no offset dedupes against
  *   one that does.
@@ -673,14 +671,10 @@ function cachedCron(pattern: string): CachedCron {
  * A scheduler with no spread key (a single-workspace install) gets zero and
  * runs on the cron's own minute, as it always has.
  */
-export function scheduleOffsetMs(
-  spreadKey: string | null,
-  scheduleKey: string,
-  pattern: string
-): number {
+export function scheduleOffsetMs(spreadKey: string | null, pattern: string): number {
   if (spreadKey === null) return 0
   const { spreadMs } = cachedCron(pattern)
-  return Math.floor(stableFraction(`${spreadKey}\u0000${scheduleKey}`) * spreadMs)
+  return Math.floor(stableFraction(spreadKey) * spreadMs)
 }
 
 /**
@@ -738,12 +732,11 @@ export function createScheduleState(opts: { spreadKey?: string | null } = {}): S
  */
 function scheduleView(
   state: ScheduleState,
-  stateKey: string,
   pattern: string,
   now: Date
 ): { slot: Date | null; nextDueAt: Date | null } {
   const { cron } = cachedCron(pattern)
-  const offset = scheduleOffsetMs(state.spreadKey, stateKey, pattern)
+  const offset = scheduleOffsetMs(state.spreadKey, pattern)
   const shifted = new Date(now.getTime() - offset)
   const next = nextSlotAfter(cron, shifted)
   return {
@@ -790,7 +783,7 @@ export async function runScheduleTick(
     payload: Record<string, unknown>
   ): Promise<void> => {
     live.add(stateKey)
-    const { slot, nextDueAt: next } = scheduleView(state, stateKey, pattern, now)
+    const { slot, nextDueAt: next } = scheduleView(state, pattern, now)
     const seen = state.seen.get(stateKey)
     if (seen === undefined) {
       // First pass for THIS scheduler: adopt the current slot, do not run it.
@@ -837,7 +830,7 @@ export async function runScheduleTick(
    */
   const adopt = (stateKey: string, pattern: string): void => {
     live.add(stateKey)
-    const { slot, nextDueAt: next } = scheduleView(state, stateKey, pattern, now)
+    const { slot, nextDueAt: next } = scheduleView(state, pattern, now)
     if (slot) state.seen.set(stateKey, slot.getTime())
     if (next && (!nextSlotAt || next < nextSlotAt)) nextSlotAt = next
   }
