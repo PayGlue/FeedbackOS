@@ -510,5 +510,37 @@ describe('status lifecycle (Postgres)', () => {
       expect(completed.updates.filter((u) => u.status === 'completed')).toHaveLength(1)
       expect(dispatched('status.maintenance_completed')).toHaveLength(1)
     })
+
+    it('a job left over after its automation was switched off does nothing', async () => {
+      // Switching automation off cancels the queued job, but one can still
+      // fire: already picked up, or queued under an earlier schedule.
+      const scheduled = await scheduleWindow(
+        new Date(Date.now() - HOUR),
+        new Date(Date.now() + HOUR)
+      )
+      await updateIncident(scheduled.id, { autoStart: false })
+      await handleMaintenanceStart(scheduled.id)
+      expect((await getStatusIncidentById(scheduled.id)).status).toBe('scheduled')
+
+      const db = await service('Database')
+      const running = await createIncident(
+        {
+          kind: 'maintenance',
+          title: 'Upgrade',
+          status: 'in_progress',
+          body: 'Upgrading.',
+          affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+          scheduledStartAt: new Date(Date.now() - 2 * HOUR),
+          scheduledEndAt: new Date(Date.now() - HOUR),
+          notifySubscribers: false,
+        },
+        { principalId: author }
+      )
+      await updateIncident(running.id, { autoComplete: false })
+      await handleMaintenanceComplete(running.id)
+      expect((await getStatusIncidentById(running.id)).status).toBe('in_progress')
+      expect(dispatched('status.maintenance_started')).toEqual([])
+      expect(dispatched('status.maintenance_completed')).toEqual([])
+    })
   })
 })
