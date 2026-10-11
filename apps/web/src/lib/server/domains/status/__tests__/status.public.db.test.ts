@@ -299,7 +299,9 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
         title: `pub-${runSuffix}-limit-${n}`,
         impact: 'major' as never,
         startedAt: later(10),
+        // Resolving writes the row, so it was last written when it resolved.
         resolvedAt: later(id === visible ? 10.5 : 11 + n),
+        updatedAt: later(id === visible ? 10.5 : 11 + n),
       }))
     )
     await activeDb.insert(statusIncidentComponents).values(
@@ -326,6 +328,47 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
       expect(forMember).not.toContain(visible)
     } finally {
       await activeDb.delete(statusIncidents).where(inArray(statusIncidents.id, [...gated, visible]))
+    }
+  })
+
+  it('feeds an older resolved incident edited since, however many resolved after it', async () => {
+    // Three incidents resolved after it, but it was edited (or updated) last:
+    // its newest item must still reach readers.
+    if (!activeDb) throw new Error('no database')
+    const newer = [1, 2, 3].map(() => createId('status_incident') as StatusIncidentId)
+    const edited = createId('status_incident') as StatusIncidentId
+    const later = (days: number) => new Date(now + days * DAY)
+    const rows = [
+      { id: edited, resolvedAt: later(20), updatedAt: later(30) },
+      ...newer.map((id, n) => ({ id, resolvedAt: later(21 + n), updatedAt: later(21 + n) })),
+    ]
+    await activeDb.insert(statusIncidents).values(
+      rows.map((row, n) => ({
+        ...row,
+        kind: 'incident' as const,
+        status: 'resolved' as never,
+        title: `pub-${runSuffix}-edited-${n}`,
+        impact: 'major' as never,
+        startedAt: later(19),
+      }))
+    )
+    await activeDb.insert(statusIncidentComponents).values(
+      rows.map((row) => ({
+        incidentId: row.id,
+        componentId: COMPONENT,
+        componentStatus: 'partial_outage' as const,
+      }))
+    )
+    try {
+      const ids = (await listStatusFeedItems(ANONYMOUS_ACTOR, 2)).map((i) => i.id)
+      expect(ids).toContain(edited)
+    } finally {
+      await activeDb.delete(statusIncidents).where(
+        inArray(
+          statusIncidents.id,
+          rows.map((row) => row.id)
+        )
+      )
     }
   })
 

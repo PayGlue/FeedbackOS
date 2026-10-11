@@ -353,8 +353,9 @@ export interface StatusFeedIncident extends PublicStatusIncident {
 /**
  * Everything a status feed carries, most recent activity first: every open
  * incident and every window that is scheduled or under way, plus the `limit`
- * most recently resolved incidents and completed windows. The limit counts
- * only resolved history, so what is happening now is always listed.
+ * resolved incidents and completed windows with the most recent activity. The
+ * limit counts only resolved history, so what is happening now is always
+ * listed.
  * Visibility is the public page's, so a feed never lists what the page would
  * hide.
  */
@@ -376,7 +377,9 @@ export async function listStatusFeedItems(
       ),
     }),
     // The viewer's visibility applies before the limit, so incidents they
-    // can't see never take the places of older ones they can.
+    // can't see never take the places of older ones they can. Ordered by when
+    // the row was last written (an update, an edit, the resolution), so an
+    // older incident updated or edited since still reaches the feed.
     db
       .select()
       .from(statusIncidents)
@@ -387,7 +390,7 @@ export async function listStatusFeedItems(
           visibleIncidentFilter(actor)
         )
       )
-      .orderBy(desc(statusIncidents.resolvedAt), desc(statusIncidents.id))
+      .orderBy(desc(statusIncidents.updatedAt), desc(statusIncidents.id))
       .limit(limit),
   ])
 
