@@ -5,7 +5,7 @@
  * just before posting lands relative to the post.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { IntlProvider } from 'react-intl'
 
 const INCIDENT_ID = 'status_incident_01h455vb4pex5vsknk084sn02q'
@@ -247,5 +247,64 @@ describe('incident editor, posting with a sidebar edit still pending', () => {
     expect(screen.getByPlaceholderText(/What's the latest\?/)).toHaveValue(
       'Still checking replicas.'
     )
+  })
+
+  it('keeps a window edit made while the post is in flight, on top of the post', async () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'UTC'
+    try {
+      vi.useFakeTimers()
+      detail = completedWindow()
+      let finishPost!: () => void
+      mockUpdate.mockImplementation(async (input: Save) => ({ ...detail, title: input.title }))
+      mockPost.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishPost = () =>
+              resolve({
+                ...detail,
+                status: 'verifying',
+                resolvedAt: null,
+                scheduledStartAt: '2026-10-10T07:30:00.000Z',
+                scheduledEndAt: '2026-10-10T09:30:00.000Z',
+                autoComplete: false,
+              })
+          })
+      )
+      renderEditor()
+
+      reopenAsVerifying()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      // The end moved by hand while the post is still on its way.
+      const endField = screen.getByText('Scheduled end').parentElement as HTMLElement
+      fireEvent.click(within(endField).getByRole('button'))
+      const times = document.querySelectorAll<HTMLInputElement>('input[type="time"]')
+      fireEvent.change(times[times.length - 1], { target: { value: '11:00' } })
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+      await act(async () => {
+        finishPost()
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000)
+      })
+
+      const field = (label: string) =>
+        (screen.getByText(label).parentElement as HTMLElement).textContent ?? ''
+      expect(field('Scheduled end')).toContain('11:00')
+      expect(field('Scheduled start')).toContain('07:30')
+      expect(mockUpdate).toHaveBeenCalledTimes(1)
+      const save = mockUpdate.mock.calls[0][0] as {
+        scheduledStartAt: Date
+        scheduledEndAt: Date
+        autoComplete: boolean
+      }
+      expect(save.scheduledEndAt.toISOString()).toBe('2026-10-10T11:00:00.000Z')
+      expect(save.scheduledStartAt.toISOString()).toBe('2026-10-10T07:30:00.000Z')
+      expect(save.autoComplete).toBe(false)
+    } finally {
+      process.env.TZ = tz
+    }
   })
 })
