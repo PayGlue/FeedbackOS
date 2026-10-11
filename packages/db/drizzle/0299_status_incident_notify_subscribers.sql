@@ -1,0 +1,13 @@
+-- @contract: additive
+-- Records the publisher's "Email subscribers" choice. Publishing with it
+-- unchecked still stamps notified_at, without a send: a version without
+-- this column sweeps every live row with no notified_at and announces it, so
+-- the stamp keeps a version rolled back to (or an old worker mid-deploy)
+-- from emailing rows published unchecked. The claim and the
+-- sweep also skip rows with this false, and whatever shows a send or a
+-- recipient count checks it before notified_at.
+--
+-- Existing rows default to true. A row published with the box unchecked
+-- before this change carries a notified_at that can't be told apart from a
+-- real send, so it keeps reading as sent.
+ALTER TABLE "status_incidents" ADD COLUMN IF NOT EXISTS "notify_subscribers" boolean DEFAULT true NOT NULL;
