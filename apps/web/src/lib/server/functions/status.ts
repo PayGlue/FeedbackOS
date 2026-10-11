@@ -59,7 +59,6 @@ import {
   getUptimeSeries,
   listIncidentHistory,
   listStatusFeedItems,
-  statusIncidentLastActivityAt,
 } from '@/lib/server/domains/status'
 import type {
   StatusIncidentWithDetails,
@@ -893,6 +892,6 @@ export const listStatusFeedFn = createServerFn({ method: 'GET' })
     const items = await listStatusFeedItems(gate.actor, data.limit)
     return items.map((incident) => ({
       ...serializePublicIncident(incident),
-      lastActivityAt: toIsoString(statusIncidentLastActivityAt(incident)),
+      editedAt: toIsoString(incident.editedAt),
     }))
   })

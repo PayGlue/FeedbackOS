@@ -343,6 +343,12 @@ export function statusIncidentLastActivityAt(incident: PublicStatusIncident): Da
   return latest ?? incident.startedAt
 }
 
+/** A feed item: the public incident, and when its row was last edited
+ *  (a reschedule or a change of title or services posts no update). */
+export interface StatusFeedIncident extends PublicStatusIncident {
+  editedAt: Date
+}
+
 /**
  * Everything a status feed carries, most recent activity first: every open
  * incident and every window that is scheduled or under way, plus the `limit`
@@ -354,7 +360,7 @@ export function statusIncidentLastActivityAt(incident: PublicStatusIncident): Da
 export async function listStatusFeedItems(
   actor: Actor,
   limit: number = 50
-): Promise<PublicStatusIncident[]> {
+): Promise<StatusFeedIncident[]> {
   const [openRows, resolvedRows] = await Promise.all([
     db.query.statusIncidents.findMany({
       where: and(
@@ -385,9 +391,13 @@ export async function listStatusFeedItems(
   })
   const links = await getComponentLinksForIncidents(rows.map((r) => r.id))
   const items = await projectIncidents(rows, groupLinksByIncident(links), actor)
+  const editedAt = new Map(rows.map((row) => [row.id, row.updatedAt]))
 
   return items
     .map((incident) => ({ incident, at: statusIncidentLastActivityAt(incident).getTime() }))
     .sort((a, b) => b.at - a.at)
-    .map(({ incident }) => incident)
+    .map(({ incident }) => ({
+      ...incident,
+      editedAt: editedAt.get(incident.id) ?? incident.startedAt,
+    }))
 }

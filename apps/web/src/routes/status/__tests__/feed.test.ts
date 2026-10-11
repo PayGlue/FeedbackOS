@@ -20,7 +20,7 @@ type Handler = () => Promise<Response>
 const GET = (Route.options.server!.handlers as unknown as { GET: Handler }).GET
 
 function item(overrides: Record<string, unknown>) {
-  return {
+  const row = {
     id: 'status_incident_1',
     kind: 'incident',
     title: 'API errors',
@@ -41,9 +41,11 @@ function item(overrides: Record<string, unknown>) {
         createdAt: '2026-10-10T09:00:00.000Z',
       },
     ],
-    lastActivityAt: '2026-10-10T09:00:00.000Z',
     ...overrides,
   }
+  // Posting an update writes the row too, so unless a test says otherwise the
+  // row was last written with its latest update.
+  return { editedAt: row.updates[row.updates.length - 1]?.createdAt, ...row }
 }
 
 /** What a feed reader does with a description: decode the XML, then read the
@@ -93,7 +95,6 @@ describe('GET /status/feed', () => {
             createdAt: '2026-10-10T10:00:00.000Z',
           },
         ],
-        lastActivityAt: '2026-10-10T10:00:00.000Z',
       }),
       item({
         id: 'status_incident_2',
@@ -111,7 +112,6 @@ describe('GET /status/feed', () => {
             createdAt: '2026-10-09T12:00:00.000Z',
           },
         ],
-        lastActivityAt: '2026-10-09T12:00:00.000Z',
       }),
       item({
         id: 'status_incident_3',
@@ -126,7 +126,6 @@ describe('GET /status/feed', () => {
             createdAt: '2026-10-01T10:00:00.000Z',
           },
         ],
-        lastActivityAt: '2026-10-01T10:00:00.000Z',
       }),
     ])
 
@@ -171,7 +170,6 @@ describe('GET /status/feed', () => {
         updates: [
           { id: `status_update_r${n}`, status: 'resolved', body: 'Fixed.', createdAt: at(100 + n) },
         ],
-        lastActivityAt: at(100 + n),
       })
     )
     const scheduled = item({
@@ -184,7 +182,6 @@ describe('GET /status/feed', () => {
       updates: [
         { id: 'status_update_open', status: 'scheduled', body: 'Planned.', createdAt: at(0) },
       ],
-      lastActivityAt: at(0),
     })
     listStatusFeedFn.mockResolvedValue([...resolved, scheduled])
 
@@ -193,6 +190,66 @@ describe('GET /status/feed', () => {
     expect(items[0].title).toBe('Resolved 59 (Resolved)')
     expect(items[48].title).toBe('Resolved 11 (Resolved)')
     expect(items[49].title).toBe('Maintenance: Database upgrade (Scheduled)')
+  })
+
+  describe('a change made without posting an update', () => {
+    const window = (editedAt: string) =>
+      item({
+        id: 'status_incident_2',
+        kind: 'maintenance',
+        title: 'Database upgrade',
+        status: 'scheduled',
+        scheduledStartAt: '2026-10-13T02:00:00.000Z',
+        scheduledEndAt: '2026-10-13T04:00:00.000Z',
+        updates: [
+          {
+            id: 'status_update_4',
+            status: 'scheduled',
+            body: 'Writes pause briefly.',
+            createdAt: '2026-10-09T12:00:00.000Z',
+          },
+        ],
+        editedAt,
+      })
+
+    it('reaches readers as a new item carrying the details as they are now', async () => {
+      // Rescheduled after its only update: a reader that already read that
+      // update learns the new window from a new item.
+      listStatusFeedFn.mockResolvedValue([window('2026-10-10T11:00:00.000Z')])
+      const xml = await (await GET()).text()
+      const items = itemsOf(xml)
+      expect(items.map((i) => i.title)).toEqual([
+        'Maintenance: Database upgrade (Scheduled)',
+        'Maintenance: Database upgrade (Scheduled)',
+      ])
+      expect(items[0].guid).toBe(
+        `https://acme.example.com/status/status_incident_2#edited-${Date.parse('2026-10-10T11:00:00.000Z')}`
+      )
+      expect(items[0].pubDate).toBe('Sat, 10 Oct 2026 11:00:00 GMT')
+      expect(items[0].description).toBe(
+        'Details updated · Window: October 13, 2026 at 02:00 UTC to October 13, 2026 at 04:00 UTC · Affected: API'
+      )
+      expect(items[1].guid).toBe(
+        'https://acme.example.com/status/status_incident_2#status_update_4'
+      )
+      expect(xml).toContain('<lastBuildDate>Sat, 10 Oct 2026 11:00:00 GMT</lastBuildDate>')
+    })
+
+    it('adds one item for the latest edit, not one per save, and none for posting an update', async () => {
+      const guids = async (editedAt: string) => {
+        listStatusFeedFn.mockResolvedValue([window(editedAt)])
+        return itemsOf(await (await GET()).text()).map((i) => i.guid)
+      }
+      // Posting an update stamps the row a moment after the update itself.
+      expect(await guids('2026-10-09T12:00:00.400Z')).toHaveLength(1)
+
+      const firstSave = await guids('2026-10-10T11:00:00.000Z')
+      const secondSave = await guids('2026-10-10T11:00:05.000Z')
+      expect(firstSave).toHaveLength(2)
+      expect(secondSave).toHaveLength(2)
+      expect(secondSave[0]).not.toBe(firstSave[0])
+      expect(secondSave[1]).toBe(firstSave[1])
+    })
   })
 
   it('escapes markup in titles and bodies', async () => {

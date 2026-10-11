@@ -15,7 +15,7 @@
  * dev DB; skips when neither is reachable, like changelog-segment-targets.db.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
-import { sql, inArray } from 'drizzle-orm'
+import { sql, eq, inArray } from 'drizzle-orm'
 import {
   statusComponents,
   statusIncidents,
@@ -270,6 +270,18 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
     expect(mine(items.map((i) => i.id))).toEqual(
       expect.arrayContaining([OPEN_INCIDENT, SCHEDULED_MAINTENANCE])
     )
+  })
+
+  it('says when each feed item was last edited, for edits that post no update', async () => {
+    // A reschedule through the editor writes the row, not the timeline.
+    if (!activeDb) throw new Error('no database')
+    const edited = ago(0.2)
+    await activeDb
+      .update(statusIncidents)
+      .set({ updatedAt: edited })
+      .where(eq(statusIncidents.id, SCHEDULED_MAINTENANCE))
+    const items = await listStatusFeedItems(ANONYMOUS_ACTOR, 50)
+    expect(items.find((i) => i.id === SCHEDULED_MAINTENANCE)?.editedAt).toEqual(edited)
   })
 
   it('reads a link that is not an incident id as not found, not an error', async () => {
