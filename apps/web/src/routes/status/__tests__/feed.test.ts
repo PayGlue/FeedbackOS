@@ -46,6 +46,17 @@ function item(overrides: Record<string, unknown>) {
   }
 }
 
+/** What a feed reader does with a description: decode the XML, then read the
+ *  result as HTML. Returns that HTML, with the tags it would render. */
+function descriptionHtml(xmlDescription: string | undefined) {
+  return (xmlDescription ?? '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
 function itemsOf(xml: string) {
   return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(([, body]) => ({
     title: /<title>([\s\S]*?)<\/title>/.exec(body)?.[1],
@@ -123,22 +134,46 @@ describe('GET /status/feed', () => {
     expect(xml).toContain('<title>A &amp; B &lt;outage&gt; (Investigating)</title>')
   })
 
-  it('keeps text in a plain-text body that looks like markup', async () => {
-    // Bodies are plain text: what the admin typed is what the page shows.
+  it('shows a plain-text body that looks like markup as the text the admin typed', async () => {
+    // Readers render a description as HTML, so the body must reach them as
+    // text: "<b>v2</b>" stays those characters, never a bold "v2".
     listStatusFeedFn.mockResolvedValue([
       item({
         updates: [
           {
             id: 'status_update_1',
             status: 'investigating',
-            body: 'Calls to <b>v2</b> fail',
+            body: 'Calls to <b>v2</b> & <script>x</script> fail',
             createdAt: '2026-10-10T09:00:00.000Z',
           },
         ],
       }),
     ])
     const xml = await (await GET()).text()
-    expect(itemsOf(xml)[0].description).toContain('Calls to &lt;b&gt;v2&lt;/b&gt; fail')
+    const html = descriptionHtml(itemsOf(xml)[0].description)
+    expect(html).toContain(
+      'Calls to &lt;b&gt;v2&lt;/b&gt; &amp; &lt;script&gt;x&lt;/script&gt; fail'
+    )
+    expect(html).not.toMatch(/<(b|script)>/)
+  })
+
+  it('keeps the line breaks of a body', async () => {
+    listStatusFeedFn.mockResolvedValue([
+      item({
+        updates: [
+          {
+            id: 'status_update_1',
+            status: 'investigating',
+            body: 'First line.\nSecond line.\r\nThird line.',
+            createdAt: '2026-10-10T09:00:00.000Z',
+          },
+        ],
+      }),
+    ])
+    const xml = await (await GET()).text()
+    expect(descriptionHtml(itemsOf(xml)[0].description)).toContain(
+      'First line.<br>Second line.<br>Third line.'
+    )
   })
 
   it('still returns a valid, empty feed when the page is gated out', async () => {

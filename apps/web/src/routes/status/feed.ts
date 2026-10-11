@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { truncate } from '@/lib/shared/utils'
+import { escapeHtmlAttr, truncate } from '@/lib/shared/utils'
 
 export const Route = createFileRoute('/status/feed')({
   server: {
@@ -155,12 +155,14 @@ function buildRssFeed(options: RssFeedOptions): string {
     return date.toUTCString()
   }
 
+  // A reader renders a description as HTML. Bodies are plain text, so they
+  // are HTML-escaped (text that looks like a tag stays text) with their line
+  // breaks kept, then XML-escaped like every other value.
+  const toDescriptionHtml = (text: string): string =>
+    escapeHtmlAttr(truncate(text, 500)).replace(/\r?\n/g, '<br>')
+
   const items = entries
     .map((entry) => {
-      // Status update bodies are plain text: escaping is all they need, and
-      // stripping would drop anything an admin typed that looks like a tag.
-      const truncatedContent = truncate(entry.content, 500)
-
       return `    <item>
       <title>${escapeXml(entry.title)}</title>
       <link>${escapeXml(entry.link)}</link>
@@ -169,7 +171,7 @@ function buildRssFeed(options: RssFeedOptions): string {
           ? `<guid isPermaLink="false">${escapeXml(entry.guid)}</guid>`
           : `<guid isPermaLink="true">${escapeXml(entry.link)}</guid>`
       }
-      <description>${escapeXml(truncatedContent)}</description>
+      <description>${escapeXml(toDescriptionHtml(entry.content))}</description>
       <pubDate>${formatRfc822Date(entry.publishedAt)}</pubDate>
     </item>`
     })
