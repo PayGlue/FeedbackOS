@@ -45,7 +45,14 @@ vi.mock('@/lib/server/db', async (importOriginal) => {
       const chain: Record<string, unknown> = {}
       chain.from = () => chain
       chain.innerJoin = () => chain
-      chain.where = () => Promise.resolve([])
+      // A lifecycle write locks and re-reads the incident row first.
+      chain.where = () =>
+        Object.assign(Promise.resolve([]), {
+          for: async () => {
+            const row = await mockIncidentFindFirst()
+            return row ? [row] : []
+          },
+        })
       return chain
     },
     transaction: (fn: (tx: unknown) => unknown) => fn(db),

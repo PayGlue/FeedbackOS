@@ -217,19 +217,19 @@ export async function handleMaintenanceStart(incidentId: StatusIncidentId): Prom
 
 /** Start a scheduled window now: status, real start, component statuses and
  *  the timeline row in one transaction, then the started event. The planned
- *  window (scheduled_start_at / scheduled_end_at) is left as planned. False
- *  when the window was no longer scheduled by the time it was claimed. */
-async function beginMaintenance(incident: {
-  id: StatusIncidentId
-  title: string
-}): Promise<boolean> {
+ *  window (scheduled_start_at / scheduled_end_at) is left as planned. Returns
+ *  the window as started, or null when it was no longer scheduled by the
+ *  time it was claimed. */
+async function beginMaintenance(incident: { id: StatusIncidentId; title: string }) {
   const incidentId = incident.id
-  const links = await db.transaction(async (tx) => {
+  const started = await db.transaction(async (tx) => {
     // started_at becomes the real start; until now it held the planned one.
     // The update claims the start: it only matches a window still scheduled,
     // so when the start job and the sweep (or "Start now") both read the
     // window as scheduled, the one that commits second matches nothing and
-    // stops here instead of starting it again.
+    // stops here instead of starting it again. Its row lock is the one
+    // manual lifecycle writes take first (lockIncident in status.service.ts),
+    // so one racing this waits for it and then sees the window started.
     const now = new Date()
     const [claimed] = await tx
       .update(statusIncidents)
@@ -241,7 +241,7 @@ async function beginMaintenance(incident: {
           isNull(statusIncidents.deletedAt)
         )
       )
-      .returning({ id: statusIncidents.id })
+      .returning()
     if (!claimed) return null
 
     const links = await affectedComponentIds(incidentId, tx)
@@ -262,18 +262,18 @@ async function beginMaintenance(incident: {
       createdAt: now,
     })
     await settleMaintenanceStart(incidentId, tx)
-    return links
+    return { window: claimed, links }
   })
-  if (!links) return false
+  if (!started) return null
 
   await dispatchStatusEvent('status.maintenance_started', SCHEDULER_ACTOR, {
     incidentId,
     title: incident.title,
-    componentIds: links.map((l) => l.componentId),
+    componentIds: started.links.map((l) => l.componentId),
   }).catch((err) =>
     log.error({ err, incident_id: incidentId }, 'failed to dispatch status.maintenance_started')
   )
-  return true
+  return started.window
 }
 
 /** Flip a window to completed + restore the services it was holding.
@@ -371,9 +371,11 @@ export async function startMaintenanceNow(incidentId: StatusIncidentId): Promise
   await cancelScheduledDispatch(startJobId(incident.id, scheduleHash(incident)))
 
   // Started (or completed, or deleted) by something else since the read.
-  if (!(await beginMaintenance(incident))) throw notStartable()
+  const started = await beginMaintenance(incident)
+  if (!started) throw notStartable()
 
-  await enqueueMaintenanceJobs({ ...incident, status: 'in_progress' }).catch((err) =>
+  // Re-armed from the window as claimed, not as first read.
+  await enqueueMaintenanceJobs(started).catch((err) =>
     log.error(
       { err, incident_id: incidentId },
       'failed to re-enqueue maintenance jobs on start-now'
