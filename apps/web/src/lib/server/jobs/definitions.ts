@@ -52,7 +52,11 @@ export interface JobDefinition {
    * may take".
    */
   leaseMs?: number
-  /** Delay before the first retry; doubled per attempt. Ignored when maxAttempts is 1. */
+  /**
+   * Delay before the first retry; doubled per attempt, plus up to half again at
+   * random so jobs that failed together do not retry together. Ignored when
+   * maxAttempts is 1.
+   */
   retryBackoffMs?: number
   /**
    * Per-attempt backoff, when a doubling curve is not what the queue had.
@@ -325,6 +329,9 @@ export const JOB_DEFINITIONS: readonly JobDefinition[] = [
     cron: '0 * * * *',
     fleetConcurrency: 4,
     maxAttempts: 3,
+    // Past a database restart's recovery, not inside it. The next slot is an
+    // hour away, so a late retry costs nothing.
+    retryBackoffMs: 60_000,
     handler: () =>
       import('@/lib/server/domains/analytics/analytics-queue').then((m) => m.runAnalyticsRefresh),
   },
@@ -636,10 +643,18 @@ export function fleetConcurrencyFor(def: JobDefinition): number {
  * definition may supply its own curve instead — `events` does, because its
  * BullMQ `backoffStrategy` was not geometric.
  */
-export function retryBackoffMs(def: JobDefinition, attemptsMade: number): number {
+export function retryBackoffMs(
+  def: JobDefinition,
+  attemptsMade: number,
+  random: () => number = Math.random
+): number {
   if (def.backoffMs) return def.backoffMs(attemptsMade)
   const base = def.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS
-  return base * Math.pow(2, Math.max(0, attemptsMade - 1))
+  const delay = base * Math.pow(2, Math.max(0, attemptsMade - 1))
+  // Jobs that fail together (a database restart fails every running job at
+  // once) would otherwise retry together and meet the same overload. Each
+  // retry lands somewhere in [delay, 1.5 x delay): never sooner than the curve.
+  return Math.floor(delay * (1 + random() / 2))
 }
 
 /**
