@@ -11,7 +11,7 @@
  * shared with status.lifecycle.db.test.ts).
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { StatusIncidentId } from '@quackback/ids'
+import type { SegmentId, StatusIncidentId } from '@quackback/ids'
 import { testDb } from '@/lib/server/__tests__/db-test-fixture'
 import { eq, statusIncidents } from '@/lib/server/db'
 
@@ -28,7 +28,7 @@ vi.mock('@/lib/server/events/scheduler', () => ({
 }))
 
 import { ANONYMOUS_ACTOR } from '@/lib/server/policy/types'
-import { deleteStatusComponent } from '../status.components'
+import { createStatusComponent, deleteStatusComponent } from '../status.components'
 import {
   createIncident,
   getStatusIncidentById,
@@ -151,6 +151,43 @@ describe('details edited (Postgres)', () => {
     await deleteStatusComponent(api)
     await updateIncident(w.id, w.unchanged)
     expect(await detailsEditedAt(w.id)).toBeNull()
+  })
+
+  it('counts only services every viewer of the page can see', async () => {
+    // The stamp is the same for every reader, and the feed's edit item shows
+    // only the services a reader can see. A change to a service gated to
+    // some segments would announce, to everyone else, a change they can't
+    // see and when it happened.
+    const gatedTo = async (name: string) =>
+      (await createStatusComponent({ name, segmentIds: ['segment_staff' as SegmentId] })).id
+    const gated = await gatedTo('Internal admin')
+    const changes = [
+      (w: Awaited<ReturnType<typeof windowWith>>) =>
+        w.unchanged.affectedComponents.map((c) =>
+          c.componentId === gated ? { ...c, componentStatus: 'major_outage' as const } : c
+        ),
+      (w: Awaited<ReturnType<typeof windowWith>>) =>
+        w.unchanged.affectedComponents.filter((c) => c.componentId !== gated),
+      async (w: Awaited<ReturnType<typeof windowWith>>) => [
+        ...w.unchanged.affectedComponents,
+        { componentId: await gatedTo('Billing jobs'), componentStatus: 'major_outage' as const },
+      ],
+    ]
+    for (const change of changes) {
+      const w = await windowWith(gated)
+      await updateIncident(w.id, { ...w.unchanged, affectedComponents: await change(w) })
+      expect(await detailsEditedAt(w.id)).toBeNull()
+    }
+
+    // The same change to a service everyone can see is announced.
+    const w = await windowWith(gated)
+    await updateIncident(w.id, {
+      ...w.unchanged,
+      affectedComponents: w.unchanged.affectedComponents.map((c) =>
+        c.componentId === gated ? c : { ...c, componentStatus: 'major_outage' as const }
+      ),
+    })
+    expect(await detailsEditedAt(w.id)).toBeInstanceOf(Date)
   })
 
   describe('in the status feed', () => {

@@ -414,15 +414,30 @@ export async function updateIncident(
         throw new ValidationError('VALIDATION_ERROR', DELETED_SERVICE_MESSAGE)
       }
       // Links to deleted services are kept either way, so only the live ones
-      // can change: which services, and the status set on each.
+      // can change: which services, and the status set on each. Of those,
+      // only services every viewer of the page can see count: the stamp is
+      // shared by every reader, so a change to a service gated to some
+      // segments would tell everyone else that something they can't see
+      // changed, and when.
+      const seenByEveryone = new Set(
+        (
+          await tx
+            .select({ id: statusComponents.id, segmentIds: statusComponents.segmentIds })
+            .from(statusComponents)
+            .where(inArray(statusComponents.id, [...live]))
+        )
+          .filter((component) => component.segmentIds.length === 0)
+          .map((component) => component.id)
+      )
       const before = new Map(
         previousLinks
-          .filter((link) => live.has(link.componentId))
+          .filter((link) => seenByEveryone.has(link.componentId))
           .map((link) => [link.componentId, link.componentStatus])
       )
+      const after = nextComponents.filter((c) => seenByEveryone.has(c.componentId))
       detailsChanged ||=
-        nextComponents.length !== before.size ||
-        nextComponents.some((c) => before.get(c.componentId) !== c.componentStatus)
+        after.length !== before.size ||
+        after.some((c) => before.get(c.componentId) !== c.componentStatus)
     }
     // Stamped by the database's clock, the one that dates most updates, so
     // the feed's "edited after the latest update" never turns on clock skew.
