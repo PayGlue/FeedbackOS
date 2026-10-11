@@ -128,8 +128,32 @@ calls `claimById` (same lease stamp as `claimJobs`) and `runJob`. Cloud
 claim. A parked workspace's loop is started, then the id is claimed.
 
 The poll loop is the **sweeper**, not how Slack work starts. Lost HTTP, a
-full concurrency slot, a future `run_at`, or a worker restart still drain on
+full concurrency slot, or a worker restart still drain on
 `JOB_POLL_INTERVAL_MS`. There is no second scheduler.
+
+### An idle loop wakes when it has something to do
+
+After a pass that claims nothing, a loop sleeps until the first of: its next
+schedule slot, the `run_at` of its next delayed job, or the poll interval. The
+poll interval is a ceiling, not a beat.
+
+Under pooled tenancy that is a resource decision, not a latency one. Every wake
+is a connection to the workspace's database, and a connection the pooler has
+closed since the last one is a new server process with its own memory. A loop
+that slept the poll interval whatever its slots were woke on its poll and again
+on its slot; every loop booted at the same moment polled in step with the
+others, so the whole fleet's connections opened together and closed together.
+Sleeping to the slot puts each loop's wake at its own offset (§6), so they are
+spread across the slot instead.
+
+- A delayed job runs at its `run_at` instead of at the poll after it. The loop
+  asks for the next one only when it is about to sleep for more than a few
+  seconds; a loop that polls every second finds it anyway.
+- A pass that fails sleeps the whole poll interval. Its schedule may not have
+  moved past the slot it was working on, and sleeping to that slot would retry
+  a failing database at once, for ever.
+- The reaper and prune ride whichever pass comes first after they fall due. They
+  never wake a loop on their own.
 
 **LISTEN/NOTIFY is not the doorbell.** It does not survive a transaction-mode
 pooler (measured: pooled endpoint delivered 0/N while `pg_listening_channels()`
@@ -269,7 +293,7 @@ has not loaded the full application config.
 
 | Variable                   | Default | Meaning                                                                                                                                                                                 |
 | -------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `JOB_POLL_INTERVAL_MS`     | 1000    | How often each workspace loop claims work                                                                                                                                               |
+| `JOB_POLL_INTERVAL_MS`     | 1000    | Longest an idle workspace loop sleeps. It wakes sooner for its next schedule slot or a delayed job (§5). Under pooled tenancy, a minute keeps each loop to one wake per slot            |
 | `JOB_BATCH_SIZE`           | 5       | Jobs claimed per drain pass                                                                                                                                                             |
 | `JOB_REAP_INTERVAL_MS`     | 15000   | How often expired leases are adjudicated                                                                                                                                                |
 | `JOB_PRUNE_INTERVAL_MS`    | 1 hour  | How often terminal rows past retention are dropped (a per-workspace table scan; keep it slow)                                                                                           |
