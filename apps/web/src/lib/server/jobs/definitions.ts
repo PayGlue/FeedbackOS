@@ -381,6 +381,9 @@ export const JOB_DEFINITIONS: readonly JobDefinition[] = [
     name: 'integration-sync-retention',
     cron: '45 2 * * *',
     concurrency: 1,
+    // Retried like the other retention schedules: its statements are safe to
+    // repeat, and one attempt would leave a transient failure for a day.
+    maxAttempts: 3,
     handler: () =>
       import('@/lib/server/integrations/sync/retention-queue').then(
         (m) => m.pruneIntegrationSyncHistory
