@@ -397,10 +397,12 @@ async function withClaimLock<T>(pool: JobPool, work: () => Promise<T>): Promise<
   }
 }
 
+/** Give back one running or reserved job's slot, in its pool and in the process. */
 function releaseReservation(pool: JobPool, queue: string): void {
   const held = pool.inFlight.get(queue) ?? 1
   if (held <= 1) pool.inFlight.delete(queue)
   else pool.inFlight.set(queue, held - 1)
+  adjustFleet(queue, -1)
 }
 
 /**
@@ -485,10 +487,9 @@ export async function dispatchPass(opts: {
       jobs = await claimJobs({ specs })
     } finally {
       // Hand back the part of each reservation the claim did not fill.
-      for (const spec of specs) {
-        const used = jobs.filter((job) => job.queue === spec.queue).length
-        adjustFleet(spec.queue, used - spec.limit)
-      }
+      const filled = new Map<string, number>()
+      for (const job of jobs) filled.set(job.queue, (filled.get(job.queue) ?? 0) + 1)
+      for (const spec of specs) adjustFleet(spec.queue, (filled.get(spec.queue) ?? 0) - spec.limit)
     }
     for (const job of jobs) startClaimedJob({ pool, job, run: opts.run, onSettled: opts.onSettled })
     return { claimed: jobs.length, saturated: false }
@@ -499,8 +500,8 @@ export async function dispatchPass(opts: {
  * Put an already-claimed row on the pool. `counted` means the caller already
  * reserved the inFlight slot (start-by-id does this before `claimById` so a
  * failed claim does not leave a running row with no runner). The caller always
- * holds the job's process-wide slot (`fleetInFlight`); it is released here when
- * the job settles.
+ * holds the job's process-wide slot (`fleetInFlight`); `releaseReservation`
+ * gives back both when the job settles.
  */
 export function startClaimedJob(opts: {
   pool: JobPool
@@ -522,7 +523,6 @@ export function startClaimedJob(opts: {
     })
     .then((outcome) => {
       releaseReservation(pool, job.queue)
-      adjustFleet(job.queue, -1)
       pool.active.delete(promise)
       opts.onSettled?.(job.queue, outcome)
     })
@@ -559,10 +559,7 @@ export async function startJobsById(opts: {
       try {
         job = await claimById(jobId, leaseMsFor(def))
       } finally {
-        if (!job) {
-          releaseReservation(opts.pool, peek.queue)
-          adjustFleet(peek.queue, -1)
-        }
+        if (!job) releaseReservation(opts.pool, peek.queue)
       }
       if (!job) continue
       startClaimedJob({
@@ -734,10 +731,25 @@ export function createScheduleState(opts: { spreadKey?: string | null } = {}): S
   return { seen: new Map<string, number>(), spreadKey: opts.spreadKey ?? null }
 }
 
-/** When the slot after `shifted` falls due for a scheduler `offset` behind the cron. */
-function dueAfter(cron: ParsedCron, shifted: Date, offset: number): Date | null {
+/**
+ * One schedule as this scheduler sees it at `now`: the cron is evaluated the
+ * scheduler's offset behind real time, so a slot is due once its instant plus
+ * the offset has passed.
+ */
+function scheduleView(
+  state: ScheduleState,
+  stateKey: string,
+  pattern: string,
+  now: Date
+): { slot: Date | null; nextDueAt: Date | null } {
+  const { cron } = cachedCron(pattern)
+  const offset = scheduleOffsetMs(state.spreadKey, stateKey, pattern)
+  const shifted = new Date(now.getTime() - offset)
   const next = nextSlotAfter(cron, shifted)
-  return next ? new Date(next.getTime() + offset) : null
+  return {
+    slot: latestSlotAtOrBefore(cron, shifted),
+    nextDueAt: next ? new Date(next.getTime() + offset) : null,
+  }
 }
 
 /**
@@ -777,14 +789,8 @@ export async function runScheduleTick(
     pattern: string,
     payload: Record<string, unknown>
   ): Promise<void> => {
-    const { cron } = cachedCron(pattern)
     live.add(stateKey)
-
-    // Evaluate the cron `offset` behind real time: a slot is due once its
-    // instant plus this scheduler's offset has passed.
-    const offset = scheduleOffsetMs(state.spreadKey, stateKey, pattern)
-    const shifted = new Date(now.getTime() - offset)
-    const slot = latestSlotAtOrBefore(cron, shifted)
+    const { slot, nextDueAt: next } = scheduleView(state, stateKey, pattern, now)
     const seen = state.seen.get(stateKey)
     if (seen === undefined) {
       // First pass for THIS scheduler: adopt the current slot, do not run it.
@@ -804,7 +810,6 @@ export async function runScheduleTick(
       }
     }
 
-    const next = dueAfter(cron, shifted, offset)
     if (next && (!nextSlotAt || next < nextSlotAt)) nextSlotAt = next
     if (next && (!nextEnabledSlotAt || next < nextEnabledSlotAt)) nextEnabledSlotAt = next
   }
@@ -831,13 +836,9 @@ export async function runScheduleTick(
    * this — the process scheduler must not heap a gated-off per-minute cron.
    */
   const adopt = (stateKey: string, pattern: string): void => {
-    const { cron } = cachedCron(pattern)
     live.add(stateKey)
-    const offset = scheduleOffsetMs(state.spreadKey, stateKey, pattern)
-    const shifted = new Date(now.getTime() - offset)
-    const slot = latestSlotAtOrBefore(cron, shifted)
+    const { slot, nextDueAt: next } = scheduleView(state, stateKey, pattern, now)
     if (slot) state.seen.set(stateKey, slot.getTime())
-    const next = dueAfter(cron, shifted, offset)
     if (next && (!nextSlotAt || next < nextSlotAt)) nextSlotAt = next
   }
 

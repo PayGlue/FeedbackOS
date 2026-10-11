@@ -1171,7 +1171,7 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
     category: 'content-addressed',
     owner: 'Piece 6 (saas/queue-lease)',
     reason:
-      'Parsed cron expressions, and each one s slot spread window, keyed by the pattern string. ' +
+      'Parsed cron expressions and their slot spread windows, keyed by the pattern string. ' +
       'Both are pure functions of that string, so a cross-workspace hit returns exactly what the ' +
       'requesting workspace would have computed - and the patterns are compile-time constants in ' +
       'jobs/definitions.ts anyway. The per-workspace offset is derived from the spread key at ' +
