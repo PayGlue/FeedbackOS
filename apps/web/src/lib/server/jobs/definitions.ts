@@ -370,6 +370,21 @@ export const JOB_DEFINITIONS: readonly JobDefinition[] = [
     concurrency: 1,
     handler: () =>
       import('@/lib/server/integrations/sync/sweep-queue').then((m) => m.sweepIntegrationSync),
+    // Only a running sync can need recovering. Most workspaces have none, and
+    // without the gate each of them ran this job every minute to find so.
+    cronEnabled: () =>
+      import('@/lib/server/integrations/sync/sweep-queue').then((m) =>
+        m.isIntegrationSyncSweepDue()
+      ),
+  },
+  {
+    name: 'integration-sync-retention',
+    cron: '45 2 * * *',
+    concurrency: 1,
+    handler: () =>
+      import('@/lib/server/integrations/sync/retention-queue').then(
+        (m) => m.pruneIntegrationSyncHistory
+      ),
   },
   {
     // Drains one job-owned outbox row. The row is written in emit()'s

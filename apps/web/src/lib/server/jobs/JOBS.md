@@ -424,6 +424,7 @@ went stale the moment a queue moved.
 | `events`                        | —              | 5           | 6        | 60s   |
 | `integration-sync`              | —              | 5           | 6        | 90s   |
 | `integration-sync-sweep`        | `* * * * *`    | 1           | 1        | 60s   |
+| `integration-sync-retention`    | `45 2 * * *`   | 1           | 1        | 60s   |
 | `event-dispatch`                | —              | 5           | 10       | 60s   |
 | `event-reactions`               | —              | 1           | 3        | 60s   |
 | `event-summaries`               | —              | 2           | 3        | 60s   |
