@@ -393,6 +393,28 @@ describe('status lifecycle (Postgres)', () => {
       expect(await statusOf(api)).toBe('operational')
     })
 
+    it('leaves services alone when the row was not holding them', async () => {
+      const start = new Date(Date.now() + 24 * HOUR)
+      const window = await scheduleWindow(start, new Date(start.getTime() + HOUR))
+      const [link] = window.affectedComponents
+      await setComponentStatus(link.componentId, 'degraded_performance', 'manual')
+
+      await deleteIncident(window.id)
+      expect(await statusOf(link.componentId)).toBe('degraded_performance')
+
+      const api = await service('API')
+      const resolved = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
+      await postIncidentUpdate(
+        resolved.id,
+        { status: 'resolved', body: 'Fixed.' },
+        { principalId: author }
+      )
+      await setComponentStatus(api, 'partial_outage', 'api')
+
+      await deleteIncident(resolved.id)
+      expect(await statusOf(api)).toBe('partial_outage')
+    })
+
     it('reads back as missing (null) for the editor, not as an error', async () => {
       const api = await service('API')
       const incident = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])

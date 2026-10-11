@@ -559,7 +559,7 @@ export async function postIncidentUpdate(
 }
 
 /** Soft delete. Cancels any pending maintenance automation jobs and releases
- *  the services the incident was holding. */
+ *  the services the incident was holding, if it was holding any. */
 export async function deleteIncident(id: StatusIncidentId): Promise<void> {
   const existing = await requireIncident(id)
 
@@ -583,6 +583,10 @@ export async function deleteIncident(id: StatusIncidentId): Promise<void> {
     // A deleted incident no longer holds its services down: recompute each
     // one from whatever is still open (reconcile's active set skips deleted
     // rows), or an active incident's services would stay degraded forever.
+    // A row that wasn't holding them (a window still scheduled, a resolved
+    // incident, a completed window) leaves them as they are, so a status set
+    // by hand or through the API since is kept.
+    if (!holdsComponents(existing.kind, existing.status)) return
     const links = await tx.query.statusIncidentComponents.findMany({
       where: eq(statusIncidentComponents.incidentId, id),
     })
