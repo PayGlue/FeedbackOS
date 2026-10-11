@@ -846,5 +846,85 @@ describe('status lifecycle (Postgres)', () => {
       expect(sweepRead?.query).toMatch(/\."status" <> \$\d+ and [^)]*"auto_complete"/)
       expect(sweepRead?.params).toContain('completed')
     })
+
+    /** Runs `handler` with its read of the window answered from before
+     *  `other` ran: the job and the sweep (or "Start now") both read the
+     *  window, then both write. */
+    async function raceOnStaleRead(handler: () => Promise<void>, other: () => Promise<void>) {
+      const read = testDb.query.statusIncidents
+      const realFindFirst = read.findFirst.bind(read)
+      const spy = vi.spyOn(read, 'findFirst').mockImplementationOnce((async (
+        config: Parameters<typeof realFindFirst>[0]
+      ) => {
+        const stale = await realFindFirst(config)
+        await other()
+        return stale
+      }) as never)
+      try {
+        await handler()
+      } finally {
+        spy.mockRestore()
+      }
+    }
+
+    function dispatched(type: string) {
+      return mockProcessEvent.mock.calls.filter(
+        ([event]) => (event as { type: string }).type === type
+      )
+    }
+
+    it('starts a window once when two callers read it as scheduled', async () => {
+      const window = await scheduleWindow(new Date(Date.now() - HOUR), new Date(Date.now() + HOUR))
+      await raceOnStaleRead(
+        () => handleMaintenanceStart(window.id),
+        () => handleMaintenanceStart(window.id)
+      )
+
+      const started = await getStatusIncidentById(window.id)
+      expect(started.status).toBe('in_progress')
+      expect(started.updates.filter((u) => u.status === 'in_progress')).toHaveLength(1)
+      expect(dispatched('status.maintenance_started')).toHaveLength(1)
+
+      // "Start now" that loses the same race says the window can't be started.
+      const other = await scheduleWindow(
+        new Date(Date.now() + HOUR),
+        new Date(Date.now() + 2 * HOUR)
+      )
+      let lost: unknown
+      await raceOnStaleRead(
+        () => startMaintenanceNow(other.id).catch((err: unknown) => void (lost = err)),
+        () => startMaintenanceNow(other.id)
+      )
+      expect(lost).toBeInstanceOf(ValidationError)
+      expect(
+        (await getStatusIncidentById(other.id)).updates.filter((u) => u.status === 'in_progress')
+      ).toHaveLength(1)
+    })
+
+    it('completes a window once when two callers read it as running', async () => {
+      const db = await service('Database')
+      const window = await createIncident(
+        {
+          kind: 'maintenance',
+          title: 'Upgrade',
+          status: 'in_progress',
+          body: 'Upgrading.',
+          affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+          scheduledStartAt: new Date(Date.now() - 2 * HOUR),
+          scheduledEndAt: new Date(Date.now() - HOUR),
+          notifySubscribers: false,
+        },
+        { principalId: author }
+      )
+      await raceOnStaleRead(
+        () => handleMaintenanceComplete(window.id),
+        () => handleMaintenanceComplete(window.id)
+      )
+
+      const completed = await getStatusIncidentById(window.id)
+      expect(completed.status).toBe('completed')
+      expect(completed.updates.filter((u) => u.status === 'completed')).toHaveLength(1)
+      expect(dispatched('status.maintenance_completed')).toHaveLength(1)
+    })
   })
 })

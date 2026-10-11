@@ -134,16 +134,32 @@ export async function handleMaintenanceStart(incidentId: StatusIncidentId): Prom
 
 /** Start a scheduled window now: status, real start, component statuses and
  *  the timeline row in one transaction, then the started event. The planned
- *  window (scheduled_start_at / scheduled_end_at) is left as planned. */
-async function beginMaintenance(incident: { id: StatusIncidentId; title: string }): Promise<void> {
+ *  window (scheduled_start_at / scheduled_end_at) is left as planned. False
+ *  when the window was no longer scheduled by the time it was claimed. */
+async function beginMaintenance(incident: {
+  id: StatusIncidentId
+  title: string
+}): Promise<boolean> {
   const incidentId = incident.id
   const links = await db.transaction(async (tx) => {
     // started_at becomes the real start; until now it held the planned one.
+    // The update claims the start: it only matches a window still scheduled,
+    // so when the start job and the sweep (or "Start now") both read the
+    // window as scheduled, the one that commits second matches nothing and
+    // stops here instead of starting it again.
     const now = new Date()
-    await tx
+    const [claimed] = await tx
       .update(statusIncidents)
       .set({ status: 'in_progress', startedAt: now, updatedAt: now })
-      .where(eq(statusIncidents.id, incidentId))
+      .where(
+        and(
+          eq(statusIncidents.id, incidentId),
+          eq(statusIncidents.status, 'scheduled'),
+          isNull(statusIncidents.deletedAt)
+        )
+      )
+      .returning({ id: statusIncidents.id })
+    if (!claimed) return null
 
     const links = await affectedComponentIds(incidentId, tx)
     await reconcileComponentStatuses(
@@ -161,6 +177,7 @@ async function beginMaintenance(incident: { id: StatusIncidentId; title: string 
     })
     return links
   })
+  if (!links) return false
 
   await dispatchStatusEvent('status.maintenance_started', SCHEDULER_ACTOR, {
     incidentId,
@@ -169,6 +186,7 @@ async function beginMaintenance(incident: { id: StatusIncidentId; title: string 
   }).catch((err) =>
     log.error({ err, incident_id: incidentId }, 'failed to dispatch status.maintenance_started')
   )
+  return true
 }
 
 /** Flip a window to completed + restore affected components to operational.
@@ -186,14 +204,24 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
   // failure can't leave the window completed with its services still under
   // maintenance.
   const links = await db.transaction(async (tx) => {
-    await tx
+    // Claimed like a start: only a window not yet completed matches, so of
+    // two callers that both read it as open, only one completes it.
+    const [claimed] = await tx
       .update(statusIncidents)
       .set({
         status: 'completed',
         resolvedAt: incident.resolvedAt ?? new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(statusIncidents.id, incidentId))
+      .where(
+        and(
+          eq(statusIncidents.id, incidentId),
+          ne(statusIncidents.status, 'completed'),
+          isNull(statusIncidents.deletedAt)
+        )
+      )
+      .returning({ id: statusIncidents.id })
+    if (!claimed) return null
 
     const links = await affectedComponentIds(incidentId, tx)
     await reconcileComponentStatuses(
@@ -211,6 +239,7 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
     })
     return links
   })
+  if (!links) return
 
   await dispatchStatusEvent('status.maintenance_completed', SCHEDULER_ACTOR, {
     incidentId,
@@ -218,6 +247,13 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
     componentIds: links.map((l) => l.componentId),
   }).catch((err) =>
     log.error({ err, incident_id: incidentId }, 'failed to dispatch status.maintenance_completed')
+  )
+}
+
+function notStartable(): ValidationError {
+  return new ValidationError(
+    'STATUS_MAINTENANCE_NOT_STARTABLE',
+    'Only a scheduled maintenance window can be started now'
   )
 }
 
@@ -237,16 +273,12 @@ export async function startMaintenanceNow(incidentId: StatusIncidentId): Promise
     where: and(eq(statusIncidents.id, incidentId), isNull(statusIncidents.deletedAt)),
   })
   if (!incident) throw new NotFoundError('STATUS_INCIDENT_NOT_FOUND', 'Maintenance not found')
-  if (incident.kind !== 'maintenance' || incident.status !== 'scheduled') {
-    throw new ValidationError(
-      'STATUS_MAINTENANCE_NOT_STARTABLE',
-      'Only a scheduled maintenance window can be started now'
-    )
-  }
+  if (incident.kind !== 'maintenance' || incident.status !== 'scheduled') throw notStartable()
 
   await cancelScheduledDispatch(startJobId(incident.id, scheduleHash(incident)))
 
-  await beginMaintenance(incident)
+  // Started (or completed, or deleted) by something else since the read.
+  if (!(await beginMaintenance(incident))) throw notStartable()
 
   await enqueueMaintenanceJobs({ ...incident, status: 'in_progress' }).catch((err) =>
     log.error(

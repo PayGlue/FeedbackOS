@@ -34,7 +34,10 @@ vi.mock('@/lib/server/db', async (importOriginal) => {
     update: () => ({
       set: (arg: unknown) => {
         mockIncidentUpdateSet(arg)
-        return { where: () => Promise.resolve() }
+        // The start/complete claim reads back the row it matched.
+        return {
+          where: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: 'row' }] }),
+        }
       },
     }),
     insert: () => ({
