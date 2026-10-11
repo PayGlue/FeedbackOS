@@ -15,6 +15,7 @@ import {
   ilike,
   inArray,
   lt,
+  lte,
   or,
   sql,
   statusIncidents,
@@ -882,11 +883,20 @@ export async function notifyStatusIncidentPublished(
   }
 }
 
+/** How old an unclaimed row must be before the sweep announces it. Every
+ *  publish path claims (or, publishing without the email, stamps) a row
+ *  within milliseconds of inserting it, so the sweep only needs rows whose
+ *  own claim was lost. Leaving the newest alone also keeps it from racing a
+ *  publish in flight: an older version publishing without the email inserts
+ *  the row (notify_subscribers then defaults to true) and stamps notified_at
+ *  a moment later. */
+const NOTIFY_SWEEP_MIN_AGE_MS = 2 * 60 * 1000
+
 /**
- * Safety net for publish notifications — mirrors
+ * Safety net for publish notifications, mirroring
  * `reconcileChangelogNotifications`. Finds live, unclaimed, non-backfilled
- * incidents/maintenance whose publisher asked for the email, and announces
- * each.
+ * incidents/maintenance whose publisher asked for the email, published at
+ * least NOTIFY_SWEEP_MIN_AGE_MS ago, and announces each.
  */
 export async function reconcileStatusNotifications(): Promise<number> {
   const due = await db
@@ -897,7 +907,8 @@ export async function reconcileStatusNotifications(): Promise<number> {
         isNull(statusIncidents.notifiedAt),
         eq(statusIncidents.backfilled, false),
         eq(statusIncidents.notifySubscribers, true),
-        isNull(statusIncidents.deletedAt)
+        isNull(statusIncidents.deletedAt),
+        lte(statusIncidents.createdAt, new Date(Date.now() - NOTIFY_SWEEP_MIN_AGE_MS))
       )
     )
     .orderBy(asc(statusIncidents.createdAt))
