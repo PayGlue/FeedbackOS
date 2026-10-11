@@ -273,15 +273,17 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
   })
 
   it('says when each feed item was last edited, for edits that post no update', async () => {
-    // A reschedule through the editor writes the row, not the timeline.
+    // A reschedule through the editor changes the details, not the timeline.
     if (!activeDb) throw new Error('no database')
     const edited = ago(0.2)
     await activeDb
       .update(statusIncidents)
-      .set({ updatedAt: edited })
+      .set({ detailsEditedAt: edited })
       .where(eq(statusIncidents.id, SCHEDULED_MAINTENANCE))
     const items = await listStatusFeedItems(ANONYMOUS_ACTOR, 50)
-    expect(items.find((i) => i.id === SCHEDULED_MAINTENANCE)?.editedAt).toEqual(edited)
+    expect(items.find((i) => i.id === SCHEDULED_MAINTENANCE)?.detailsEditedAt).toEqual(edited)
+    // A row with no such edit carries none, whenever it was last written.
+    expect(items.find((i) => i.id === OPEN_INCIDENT)?.detailsEditedAt).toBeNull()
   })
 
   it('fills the resolved part of the feed with what the viewer can see', async () => {

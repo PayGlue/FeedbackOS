@@ -20,7 +20,7 @@ type Handler = () => Promise<Response>
 const GET = (Route.options.server!.handlers as unknown as { GET: Handler }).GET
 
 function item(overrides: Record<string, unknown>) {
-  const row = {
+  return {
     id: 'status_incident_1',
     kind: 'incident',
     title: 'API errors',
@@ -41,11 +41,10 @@ function item(overrides: Record<string, unknown>) {
         createdAt: '2026-10-10T09:00:00.000Z',
       },
     ],
+    // No edit of its details since it was created.
+    detailsEditedAt: null,
     ...overrides,
   }
-  // Posting an update writes the row too, so unless a test says otherwise the
-  // row was last written with its latest update.
-  return { editedAt: row.updates[row.updates.length - 1]?.createdAt, ...row }
 }
 
 /** What a feed reader does with a description: decode the XML, then read the
@@ -193,7 +192,7 @@ describe('GET /status/feed', () => {
   })
 
   describe('a change made without posting an update', () => {
-    const window = (editedAt: string) =>
+    const window = (detailsEditedAt: string | null) =>
       item({
         id: 'status_incident_2',
         kind: 'maintenance',
@@ -209,7 +208,7 @@ describe('GET /status/feed', () => {
             createdAt: '2026-10-09T12:00:00.000Z',
           },
         ],
-        editedAt,
+        detailsEditedAt,
       })
 
     it('reaches readers as a new item carrying the details as they are now', async () => {
@@ -236,21 +235,22 @@ describe('GET /status/feed', () => {
     })
 
     it('reaches readers even when made seconds after an update, like a corrected typo', async () => {
-      listStatusFeedFn.mockResolvedValue([window('2026-10-09T12:00:10.000Z')])
+      listStatusFeedFn.mockResolvedValue([window('2026-10-09T12:00:02.000Z')])
       const items = itemsOf(await (await GET()).text())
       expect(items.map((i) => i.guid)).toEqual([
-        `https://acme.example.com/status/status_incident_2#edited-${Date.parse('2026-10-09T12:00:10.000Z')}`,
+        `https://acme.example.com/status/status_incident_2#edited-${Date.parse('2026-10-09T12:00:02.000Z')}`,
         'https://acme.example.com/status/status_incident_2#status_update_4',
       ])
     })
 
-    it('adds one item for the latest edit, not one per save, and none for posting an update', async () => {
-      const guids = async (editedAt: string) => {
-        listStatusFeedFn.mockResolvedValue([window(editedAt)])
+    it('adds one item for the latest edit, not one per save, and none without an edit', async () => {
+      const guids = async (detailsEditedAt: string | null) => {
+        listStatusFeedFn.mockResolvedValue([window(detailsEditedAt)])
         return itemsOf(await (await GET()).text()).map((i) => i.guid)
       }
-      // Posting an update stamps the row a moment after the update itself.
-      expect(await guids('2026-10-09T12:00:00.400Z')).toHaveLength(1)
+      expect(await guids(null)).toHaveLength(1)
+      // An edit made before the latest update is already in that update's item.
+      expect(await guids('2026-10-09T11:00:00.000Z')).toHaveLength(1)
 
       const firstSave = await guids('2026-10-10T11:00:00.000Z')
       const secondSave = await guids('2026-10-10T11:00:05.000Z')

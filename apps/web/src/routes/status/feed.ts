@@ -69,8 +69,8 @@ interface FeedItem {
   resolvedAt: string | null
   affectedComponents: Array<{ name: string }>
   updates: Array<{ id: string; status: string; body: string; createdAt: string }>
-  /** When the row was last written: an edit, or the stamp an update leaves. */
-  editedAt: string
+  /** When the title, window or services were last edited without an update. */
+  detailsEditedAt: string | null
 }
 
 interface FeedEntry {
@@ -92,26 +92,17 @@ interface FeedEntryGroup {
 const FEED_ITEM_LIMIT = 50
 
 /**
- * A row written within this long of its latest update counts as that update,
- * not an edit. Posting an update writes the incident's row in the same
- * request, milliseconds after the update itself; the only other gap is the
- * app's clock against the database's. A sidebar save the editor still had
- * pending (it waits 800 ms) lands about a second later. Anything later is an
- * edit, so a correction made seconds after an update still reaches readers.
- */
-const EDIT_GRACE_MS = 5 * 1000
-
-/**
  * One feed item per update, so every update reaches a reader as its own item
  * even when several land between two polls. Each names the incident and the
  * status that update set, and carries the window and services as they are
  * now.
  *
  * An edit that posts no update (a reschedule, a new title, other services)
- * adds one more item, identified by the edit's time: a reader that already
- * read the latest update still learns of the change. Only the latest edit
- * has an item, so a run of saves adds one item per state a reader polls, and
- * the update items never change identity.
+ * and comes after the latest update adds one more item, identified by the
+ * edit's time: a reader that already read that update still learns of the
+ * change. An edit before it is already in the update's item. Only the latest
+ * edit has an item, so a run of edits adds one item per state a reader polls,
+ * and the update items never change identity.
  */
 function toFeedEntries(
   item: FeedItem,
@@ -144,9 +135,9 @@ function toFeedEntries(
     guid: `${link}#${update.id}`,
   }))
 
-  const editedAt = new Date(item.editedAt)
+  const editedAt = item.detailsEditedAt ? new Date(item.detailsEditedAt) : null
   const latestUpdateAt = Math.max(...entries.map((entry) => entry.publishedAt.getTime()))
-  if (entries.length === 0 || editedAt.getTime() > latestUpdateAt + EDIT_GRACE_MS) {
+  if (editedAt && editedAt.getTime() > latestUpdateAt) {
     entries.push({
       title: titleFor(item.status),
       content: ['Details updated', ...context].join(' · '),

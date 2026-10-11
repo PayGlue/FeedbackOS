@@ -27,8 +27,17 @@ vi.mock('@/lib/server/events/scheduler', () => ({
   cancelScheduledDispatch: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { getStatusIncidentById, updateIncident } from '../status.service'
-import { HOUR, beginTest, fixture, scheduleWindow, service } from './status-lifecycle-harness'
+import { ANONYMOUS_ACTOR } from '@/lib/server/policy/types'
+import { createIncident, getStatusIncidentById, updateIncident } from '../status.service'
+import { listStatusFeedItems } from '../status.public'
+import {
+  HOUR,
+  author,
+  beginTest,
+  fixture,
+  scheduleWindow,
+  service,
+} from './status-lifecycle-harness'
 
 async function detailsEditedAt(id: StatusIncidentId) {
   const row = await testDb.query.statusIncidents.findFirst({
@@ -102,5 +111,32 @@ describe('details edited (Postgres)', () => {
       ],
     })
     expect(await detailsEditedAt(added.id)).toBeInstanceOf(Date)
+  })
+
+  describe('in the status feed', () => {
+    it('is the edit a feed item carries, and a logged past incident has none', async () => {
+      // A logged past incident is written now, but its update is dated at its
+      // resolution: its row's own write is not an edit to announce.
+      const resolvedAt = new Date(Date.now() - 48 * HOUR)
+      const logged = await createIncident(
+        {
+          kind: 'incident',
+          title: 'Login delays',
+          status: 'resolved',
+          body: 'Fixed.',
+          affectedComponents: [
+            { componentId: await service('Login'), componentStatus: 'major_outage' },
+          ],
+          backfill: { startedAt: new Date(resolvedAt.getTime() - HOUR), resolvedAt },
+        },
+        { principalId: author }
+      )
+      const w = await window()
+      await updateIncident(w.id, { ...w.unchanged, title: 'Database upgrade' })
+
+      const items = await listStatusFeedItems(ANONYMOUS_ACTOR, 50)
+      expect(items.find((i) => i.id === logged.id)?.detailsEditedAt).toBeNull()
+      expect(items.find((i) => i.id === w.id)?.detailsEditedAt).toEqual(await detailsEditedAt(w.id))
+    })
   })
 })

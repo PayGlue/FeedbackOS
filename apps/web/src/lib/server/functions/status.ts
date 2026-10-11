@@ -939,6 +939,6 @@ export const listStatusFeedFn = createServerFn({ method: 'GET' })
     const items = await listStatusFeedItems(gate.actor, data.limit)
     return items.map((incident) => ({
       ...serializePublicIncident(incident),
-      editedAt: toIsoString(incident.editedAt),
+      detailsEditedAt: toIsoStringOrNull(incident.detailsEditedAt),
     }))
   })
