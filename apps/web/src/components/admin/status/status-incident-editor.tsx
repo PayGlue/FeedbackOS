@@ -229,9 +229,11 @@ function StatusIncidentEditorContent({
   }, [incident])
 
   const { mutateAsync: saveDetailsAsync } = updateMutation
-  async function flushSave(next: DetailsState, kind: 'incident' | 'maintenance') {
-    if (next.title.trim().length === 0 || next.affected.length === 0) return
-    if (kind === 'maintenance' && !windowInOrder(next)) return
+  /** False when the save failed (and said so); true when it saved, or when
+   *  the details are incomplete and the sidebar says they aren't saved. */
+  async function flushSave(next: DetailsState, kind: 'incident' | 'maintenance'): Promise<boolean> {
+    if (next.title.trim().length === 0 || next.affected.length === 0) return true
+    if (kind === 'maintenance' && !windowInOrder(next)) return true
     setSaveState('saving')
     try {
       const saved = await saveDetailsAsync({
@@ -255,19 +257,21 @@ function StatusIncidentEditorContent({
       const linked = new Set<string>(saved.affectedComponents.map((c) => c.componentId))
       dropDeletedServices(next.affected.map((a) => a.componentId).filter((id) => !linked.has(id)))
       setSaveState('saved')
+      return true
     } catch (error) {
       setSaveState('idle')
       toast.error(error instanceof Error ? error.message : 'Failed to save details')
       // The save may have failed on a service deleted since; the server's
       // copy says which.
       void refetch()
+      return false
     }
   }
 
   const kindRef = useRef<'incident' | 'maintenance'>('incident')
   if (incident) kindRef.current = incident.kind
   // Saves sent and not answered yet. Posting waits for them (see handlePost).
-  const inFlightSaves = useRef(new Set<Promise<void>>())
+  const inFlightSaves = useRef(new Set<Promise<boolean>>())
   // Debounced autosave with flush-on-unmount (shared hook; same mechanism
   // as the status settings page's text fields).
   const detailsSave = useDebouncedSave<DetailsState>((next) => {
@@ -301,8 +305,12 @@ function StatusIncidentEditorContent({
       // post. Save it now, and let any save already sent finish, so neither
       // lands after the post and writes the window as it was before the
       // transition (its start, or automation the post switched off) back.
+      // If one fails, don't post: the post would act on the details as the
+      // server still has them. The failed save has said so, and the update
+      // stays in the composer to post again.
       detailsSave.flush()
-      await Promise.all(inFlightSaves.current)
+      const saved = await Promise.all(inFlightSaves.current)
+      if (saved.includes(false)) return
       const posted = await postMutation.mutateAsync({
         id: incidentId,
         status: effectiveTarget,

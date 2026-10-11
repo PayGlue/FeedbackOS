@@ -228,4 +228,24 @@ describe('incident editor, posting with a sidebar edit still pending', () => {
       autoComplete: false,
     })
   })
+
+  it('does not post when the pending edit fails to save, and keeps the update', async () => {
+    vi.useFakeTimers()
+    detail = completedWindow()
+    mockUpdate.mockRejectedValue(new Error('Could not save'))
+    renderEditor()
+
+    editTitle('Database upgrade, phase 2')
+    reopenAsVerifying()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    // Posting now would act on the window as the database still has it.
+    expect(mockPost).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText(/What's the latest\?/)).toHaveValue(
+      'Still checking replicas.'
+    )
+  })
 })
