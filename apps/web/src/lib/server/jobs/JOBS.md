@@ -197,7 +197,7 @@ inside one minute and the database ran out of memory.
 So a pooled loop's scheduler carries a **spread key** (its workspace key) and
 evaluates each cron a fixed offset behind real time. `scheduleOffsetMs` derives
 the offset from a stable hash of the key, scaled into the
-schedule's spread window: the gap between two of its slots, capped at an hour.
+schedule's spread window: the smallest gap between two of its slots, capped at an hour.
 A per-minute sweep therefore starts somewhere inside its minute, a five-minutely
 one inside its five minutes, and an hourly or daily one somewhere inside an
 hour.

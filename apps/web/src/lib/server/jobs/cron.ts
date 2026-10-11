@@ -173,20 +173,32 @@ export const MAX_SLOT_SPREAD_MS = 60 * MINUTE_MS
 
 /**
  * How widely a fleet may spread its starts for one slot of this schedule: the
- * gap between two consecutive slots, capped at an hour.
+ * smallest gap between consecutive slots, capped at an hour.
  *
  * Bounded by the gap so a delayed start still lands before the next slot is
  * due, which keeps "every minute" meaning once a minute. Capped so a daily
  * sweep spreads across an hour rather than across its whole day. A schedule
  * with no second slot inside the search window gets the cap.
+ *
+ * The smallest gap, not any one gap: `0,5 12 * * *` is five minutes apart at
+ * noon and a day apart otherwise, and spreading its 12:00 slot by the day's gap
+ * would start it after 12:05 was due. The scan covers eight days, which takes
+ * in every day of the week and any schedule the evaluator supports (each fires
+ * at least once in its 48-hour search window), and stops at a minute, the
+ * smallest gap a cron can have. Those eight days are early January, when no
+ * time zone changes its clocks, so every gap is the schedule's own.
  */
 export function slotSpreadMs(cron: ParsedCron): number {
-  // Measured from a midday instant in a month with no daylight-saving
-  // transition anywhere, so the gap is the schedule's own, not a transition's.
-  const first = nextSlotAfter(cron, new Date(2026, 0, 5, 12, 0, 0))
-  const second = first ? nextSlotAfter(cron, first) : null
-  if (!first || !second) return MAX_SLOT_SPREAD_MS
-  return Math.min(second.getTime() - first.getTime(), MAX_SLOT_SPREAD_MS)
+  const end = new Date(2026, 0, 9, 0, 0, 0).getTime()
+  let smallest = MAX_SLOT_SPREAD_MS
+  let slot = nextSlotAfter(cron, new Date(2026, 0, 1, 0, 0, 0))
+  while (slot && smallest > MINUTE_MS) {
+    const next = nextSlotAfter(cron, slot)
+    if (!next || next.getTime() > end) break
+    smallest = Math.min(smallest, next.getTime() - slot.getTime())
+    slot = next
+  }
+  return smallest
 }
 
 /**
