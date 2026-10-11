@@ -46,6 +46,8 @@ vi.mock('@/lib/server/db', async (importOriginal) => {
         return Promise.resolve()
       },
     }),
+    // Settling started_at builds subqueries; the stubbed updates ignore them.
+    select: () => ({ from: () => ({ where: () => ({}) }) }),
     transaction: (fn: (tx: unknown) => unknown) => fn(db),
   }
   return { ...(await importOriginal<typeof import('@/lib/server/db')>()), db }
@@ -134,14 +136,18 @@ describe('startMaintenanceNow', () => {
       `status-maintenance-complete--${INCIDENT_ID}--${hash}`
     )
 
-    // One write to the row: in_progress with the real start. The scheduled
+    // The start is one write to the row: in_progress with the real start.
+    // Settling started_at after it writes nothing else, and the scheduled
     // bounds are never rewritten.
-    expect(mockIncidentUpdateSet).toHaveBeenCalledTimes(1)
-    const write = mockIncidentUpdateSet.mock.calls[0][0] as Record<string, unknown>
+    const writes = mockIncidentUpdateSet.mock.calls.map(([w]) => w as Record<string, unknown>)
+    const [write, ...settles] = writes
     expect(write).toMatchObject({ status: 'in_progress' })
     expect((write.startedAt as Date).getTime()).toBeLessThanOrEqual(Date.now())
-    expect(write).not.toHaveProperty('scheduledStartAt')
-    expect(write).not.toHaveProperty('scheduledEndAt')
+    expect(settles.map((w) => Object.keys(w))).toEqual(settles.map(() => ['startedAt']))
+    for (const w of writes) {
+      expect(w).not.toHaveProperty('scheduledStartAt')
+      expect(w).not.toHaveProperty('scheduledEndAt')
+    }
 
     // The window actually started: component reconcile + the timeline entry.
     expect(mockReconcileComponentStatus).toHaveBeenCalledWith(

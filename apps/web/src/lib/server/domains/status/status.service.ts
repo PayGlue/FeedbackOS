@@ -41,7 +41,11 @@ import {
   dispatchStatusEvent,
   holdsComponents,
 } from './status.components'
-import { enqueueMaintenanceJobs, cancelMaintenanceJobs } from './status.maintenance'
+import {
+  enqueueMaintenanceJobs,
+  cancelMaintenanceJobs,
+  settleMaintenanceStart,
+} from './status.maintenance'
 import type {
   CreateStatusIncidentInput,
   UpdateStatusIncidentInput,
@@ -255,9 +259,17 @@ export async function createIncident(
       createdBy: author.principalId,
       templateId: input.templateId ?? null,
       // A logged past incident's summary belongs to its resolution, not to
-      // the moment it was logged, or the timeline dates it days late.
-      ...(input.backfill ? { createdAt: input.backfill.resolvedAt } : {}),
+      // the moment it was logged, or the timeline dates it days late. A
+      // window created already under way is dated at the start it records,
+      // so started_at and its start update agree to the millisecond.
+      ...(input.backfill
+        ? { createdAt: input.backfill.resolvedAt }
+        : input.kind === 'maintenance' && holdsComponents(input.kind, input.status)
+          ? { createdAt: startedAt }
+          : {}),
     })
+
+    if (created.kind === 'maintenance') await settleMaintenanceStart(created.id, tx)
 
     // Only a row that holds its services applies them: not a backfill, a
     // window still scheduled, or one created already resolved or completed.
@@ -368,6 +380,7 @@ export async function updateIncident(
     }
 
     await tx.update(statusIncidents).set(updateData).where(eq(statusIncidents.id, id))
+    if (existing.kind === 'maintenance') await settleMaintenanceStart(id, tx)
 
     if (nextComponents === undefined) return
     const replaced = previousLinks
@@ -524,8 +537,11 @@ export async function postIncidentUpdate(
       body,
       createdBy: author.principalId,
       templateId: input.templateId ?? null,
+      // A start is dated at the instant it records in started_at.
+      ...(startsMaintenance ? { createdAt: now } : {}),
     })
     await tx.update(statusIncidents).set(updateData).where(eq(statusIncidents.id, id))
+    if (existing.kind === 'maintenance') await settleMaintenanceStart(id, tx)
 
     if (recomputesComponents) {
       const links = await tx.query.statusIncidentComponents.findMany({

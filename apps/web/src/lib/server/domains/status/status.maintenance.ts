@@ -13,10 +13,16 @@ import {
   db,
   eq,
   and,
+  inArray,
+  isNotNull,
   isNull,
+  lt,
   lte,
+  min,
   ne,
+  notExists,
   or,
+  sql,
   statusIncidents,
   statusIncidentComponents,
   statusIncidentUpdates,
@@ -28,6 +34,7 @@ import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import { scheduleDispatch, cancelScheduledDispatch } from '@/lib/server/events/scheduler'
 import type { EventActor } from '@/lib/server/events/dispatch'
+import type { StatusMaintenanceStatus } from './status.types'
 import {
   reconcileComponentStatuses,
   dispatchStatusEvent,
@@ -114,6 +121,78 @@ export async function cancelMaintenanceJobs(incident: MaintenanceScheduleFields)
   await cancelScheduledDispatch(completeJobId(incident.id, hash))
 }
 
+/** The statuses that mean a window has begun. */
+const BEGUN_STATUSES: StatusMaintenanceStatus[] = ['in_progress', 'verifying']
+
+/**
+ * Dates one window's started_at the way migration 0298 dates existing rows,
+ * at the end of a write that changed the window: a window that has begun,
+ * unless it is scheduled again, started no earlier than its first
+ * in_progress or verifying update; one still scheduled, or that never began,
+ * started no earlier than its plan; and neither is moved past resolved_at.
+ * Both statements only move started_at later, and the write has usually set
+ * it already, so they usually change nothing.
+ *
+ * A fleet replay of 0298 (a gap heal) runs the same UPDATEs over every row.
+ * With each row the app writes settled here, a replay finds nothing to move,
+ * including a row from before the migration that the app has touched since.
+ * The conditions below must stay the same as the migration's.
+ */
+export async function settleMaintenanceStart(
+  incidentId: StatusIncidentId,
+  executor: Database | Transaction
+): Promise<void> {
+  const begun = and(
+    eq(statusIncidentUpdates.incidentId, incidentId),
+    inArray(statusIncidentUpdates.status, BEGUN_STATUSES)
+  )
+  const firstStart = sql`(${executor
+    .select({ at: min(statusIncidentUpdates.createdAt) })
+    .from(statusIncidentUpdates)
+    .where(begun)})`
+  const window = and(
+    eq(statusIncidents.id, incidentId),
+    eq(statusIncidents.kind, 'maintenance'),
+    eq(statusIncidents.backfilled, false)
+  )
+
+  await executor
+    .update(statusIncidents)
+    .set({ startedAt: firstStart })
+    .where(
+      and(
+        window,
+        ne(statusIncidents.status, 'scheduled'),
+        lt(statusIncidents.startedAt, firstStart),
+        or(isNull(statusIncidents.resolvedAt), lte(firstStart, statusIncidents.resolvedAt))
+      )
+    )
+
+  await executor
+    .update(statusIncidents)
+    .set({ startedAt: sql`${statusIncidents.scheduledStartAt}` })
+    .where(
+      and(
+        window,
+        isNotNull(statusIncidents.scheduledStartAt),
+        lt(statusIncidents.startedAt, statusIncidents.scheduledStartAt),
+        or(
+          isNull(statusIncidents.resolvedAt),
+          lte(statusIncidents.scheduledStartAt, statusIncidents.resolvedAt)
+        ),
+        or(
+          eq(statusIncidents.status, 'scheduled'),
+          notExists(
+            executor
+              .select({ one: sql`1` })
+              .from(statusIncidentUpdates)
+              .where(begun)
+          )
+        )
+      )
+    )
+}
+
 async function affectedComponentIds(
   incidentId: StatusIncidentId,
   executor: Database | Transaction = db
@@ -173,12 +252,16 @@ async function beginMaintenance(incident: {
       tx
     )
 
+    // Dated at the start it records, so started_at and the window's start
+    // update agree exactly (migration 0298 dates a window by that update).
     await tx.insert(statusIncidentUpdates).values({
       incidentId,
       status: 'in_progress',
       body: 'This scheduled maintenance is now in progress.',
       createdBy: null,
+      createdAt: now,
     })
+    await settleMaintenanceStart(incidentId, tx)
     return links
   })
   if (!links) return false
@@ -246,6 +329,7 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
       body: 'This scheduled maintenance is complete.',
       createdBy: null,
     })
+    await settleMaintenanceStart(incidentId, tx)
     return links
   })
   if (!links) return

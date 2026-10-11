@@ -308,9 +308,11 @@ describe('the real corpus', () => {
     // 0295 marks a settings row only while its metadata lacks brandingLookup,
     // so a second run writes zero rows.
     // 0298 moves a maintenance started_at only while it is earlier than the
-    // window's first in_progress or verifying update (or, with neither, its
-    // scheduled start, when that is not after resolved_at), and leaves the
-    // two equal, so a second run writes zero rows.
+    // window's first in_progress or verifying update (or, for a window still
+    // scheduled or with neither, its scheduled start), never past
+    // resolved_at, and leaves the two equal, so a second run writes zero
+    // rows. The app settles every window it writes the same way
+    // (settleMaintenanceStart), so a later replay writes zero rows too.
     const vouching = files.filter(
       (f) => assessReplaySafety(f, readFileSync(join(MIGRATIONS_DIR, f), 'utf8')).vouched.length > 0
     )

@@ -624,6 +624,10 @@ describe('status lifecycle (Postgres)', () => {
       const started = await getStatusIncidentById(window.id)
       expect(started.status).toBe('in_progress')
       expect(isRecent(started.startedAt)).toBe(true)
+      // Its timeline row is dated at the same instant, to the millisecond.
+      expect(started.updates.find((u) => u.status === 'in_progress')?.createdAt).toEqual(
+        started.startedAt
+      )
     })
 
     it('records the real start on "Start now" and on a posted in-progress update, and keeps the plan', async () => {
@@ -654,6 +658,9 @@ describe('status lifecycle (Postgres)', () => {
         { principalId: author }
       )
       expect(isRecent(after.startedAt)).toBe(true)
+      expect(after.updates.find((u) => u.status === 'in_progress')?.createdAt).toEqual(
+        after.startedAt
+      )
       expect(after.scheduledStartAt?.getTime()).toBe(plannedStart.getTime())
       expect(after.scheduledEndAt?.getTime()).toBe(plannedEnd.getTime())
 
@@ -699,24 +706,62 @@ describe('status lifecycle (Postgres)', () => {
       ).rejects.toBeInstanceOf(ValidationError)
     })
 
-    it('migration 0298 dates existing windows by their real or planned start, and a second run changes nothing', async () => {
+    it('migration 0298 dates existing windows by their real or planned start, and a replay changes nothing', async () => {
       const day = 24 * HOUR
       const now = Date.now()
-      const rows: Record<string, { created: number; start: number; completed?: number }> = {
-        upcoming: { created: now - day, start: now + day },
-        started: { created: now - 3 * day, start: now - 2 * day },
-        createdUnderWay: { created: now - HOUR, start: now - 2 * HOUR },
-        startedEarlyByHand: { created: now - 3 * day, start: now - day },
+      type Legacy = {
+        status: 'scheduled' | 'in_progress' | 'completed'
+        created: number
+        start: number
+        completed?: number
+        /** When the window was started (an in_progress update), if it was. */
+        begun?: number
+      }
+      const rows: Record<string, Legacy> = {
+        upcoming: { status: 'scheduled', created: now - day, start: now + day },
+        planPassed: { status: 'scheduled', created: now - 3 * day, start: now - 2 * day },
+        createdUnderWay: { status: 'scheduled', created: now - HOUR, start: now - 2 * HOUR },
+        // "Start now" a day ahead of the planned start.
+        startedEarlyByHand: {
+          status: 'in_progress',
+          created: now - 3 * day,
+          start: now - day,
+          begun: now - 2 * day,
+        },
         // Moved straight from scheduled to completed: its completion update is
         // not when it started, or it would have lasted no time at all.
         completedWithoutStart: {
+          status: 'completed',
           created: now - 3 * day,
           start: now - 2 * day,
           completed: now - day,
         },
         // Completed (called off) before its planned start: the plan would put
         // started_at after resolved_at, so it keeps its creation time.
-        completedBeforePlan: { created: now - 3 * day, start: now + day, completed: now - 2 * day },
+        completedBeforePlan: {
+          status: 'completed',
+          created: now - 3 * day,
+          start: now + day,
+          completed: now - 2 * day,
+        },
+        // Completed without starting, then moved to in progress, which kept
+        // resolved_at: its start update came after it was resolved, and
+        // started_at must not end up after resolved_at.
+        reopenedAfterCompleting: {
+          status: 'in_progress',
+          created: now - 3 * day,
+          start: now - 2 * day,
+          completed: now - day,
+          begun: now - 12 * HOUR,
+        },
+        // Started early by hand, then moved back to scheduled: a window still
+        // scheduled holds its plan, as the app writes it.
+        movedBackToScheduled: {
+          status: 'scheduled',
+          created: now - 3 * day,
+          start: now + day,
+          begun: now - 2 * day,
+        },
       }
       const ids: Record<string, string> = {}
       for (const [name, row] of Object.entries(rows)) {
@@ -725,7 +770,7 @@ describe('status lifecycle (Postgres)', () => {
           .values({
             kind: 'maintenance',
             title: name,
-            status: row.completed ? 'completed' : 'scheduled',
+            status: row.status,
             impact: 'maintenance',
             scheduledStartAt: new Date(row.start),
             startedAt: new Date(row.created),
@@ -733,23 +778,16 @@ describe('status lifecycle (Postgres)', () => {
           })
           .returning({ id: statusIncidents.id })
         ids[name] = inserted.id
-        if (row.completed) {
-          await testDb.insert(statusIncidentUpdates).values({
-            incidentId: inserted.id,
-            status: 'completed',
-            body: 'Done.',
-            createdAt: new Date(row.completed),
-          })
+        for (const [status, at] of [
+          ['completed', row.completed],
+          ['in_progress', row.begun],
+        ] as const) {
+          if (at === undefined) continue
+          await testDb
+            .insert(statusIncidentUpdates)
+            .values({ incidentId: inserted.id, status, body: status, createdAt: new Date(at) })
         }
       }
-      // "Start now" a day ahead of the planned start posted this update.
-      const startedByHandAt = now - 2 * day
-      await testDb.insert(statusIncidentUpdates).values({
-        incidentId: ids.startedEarlyByHand as never,
-        status: 'in_progress',
-        body: 'Started early.',
-        createdAt: new Date(startedByHandAt),
-      })
       const [incident] = await testDb
         .insert(statusIncidents)
         .values({
@@ -773,12 +811,110 @@ describe('status lifecycle (Postgres)', () => {
           where: eq(statusIncidents.id, id as never),
         }))!.startedAt.getTime()
       expect(await startedAt(ids.upcoming)).toBe(rows.upcoming.start)
-      expect(await startedAt(ids.started)).toBe(rows.started.start)
+      expect(await startedAt(ids.planPassed)).toBe(rows.planPassed.start)
       expect(await startedAt(ids.createdUnderWay)).toBe(rows.createdUnderWay.created)
-      expect(await startedAt(ids.startedEarlyByHand)).toBe(startedByHandAt)
+      expect(await startedAt(ids.startedEarlyByHand)).toBe(rows.startedEarlyByHand.begun)
       expect(await startedAt(ids.completedWithoutStart)).toBe(rows.completedWithoutStart.start)
       expect(await startedAt(ids.completedBeforePlan)).toBe(rows.completedBeforePlan.created)
+      expect(await startedAt(ids.reopenedAfterCompleting)).toBe(
+        rows.reopenedAfterCompleting.created
+      )
+      expect(await startedAt(ids.movedBackToScheduled)).toBe(rows.movedBackToScheduled.start)
       expect(await startedAt(incident.id)).toBe(now - day)
+
+      // Then the app runs, and a gap heal replays the migration. Nothing the
+      // app wrote in between, new windows or ones from before, may move.
+      // The app's clock runs an hour behind the database's here: a start
+      // dated by one clock and its timeline row by the other would show.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      try {
+        vi.setSystemTime(now - HOUR)
+        const tick = () => vi.setSystemTime(Date.now() + 60_000)
+        const post = (id: string, status: 'in_progress' | 'scheduled' | 'completed') =>
+          postIncidentUpdate(id as never, { status, body: status }, { principalId: author })
+        const inAnHour = () => new Date(Date.now() + HOUR)
+        const anHourAgo = () => new Date(Date.now() - HOUR)
+
+        const byScheduler = await scheduleWindow(anHourAgo(), inAnHour())
+        tick()
+        await handleMaintenanceStart(byScheduler.id)
+
+        const byPost = await scheduleWindow(inAnHour(), new Date(Date.now() + 2 * HOUR))
+        tick()
+        await post(byPost.id, 'in_progress')
+
+        const db = await service('Database')
+        await createIncident(
+          {
+            kind: 'maintenance',
+            title: 'Upgrade',
+            status: 'in_progress',
+            body: 'Upgrading.',
+            affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+            scheduledStartAt: anHourAgo(),
+            scheduledEndAt: inAnHour(),
+            notifySubscribers: false,
+          },
+          { principalId: author }
+        )
+
+        // Completed without starting, then reopened as in progress.
+        const reopened = await scheduleWindow(anHourAgo(), inAnHour())
+        tick()
+        await post(reopened.id, 'completed')
+        tick()
+        await post(reopened.id, 'in_progress')
+
+        // Started, then moved back to scheduled with its plan behind it.
+        const movedBack = await scheduleWindow(anHourAgo(), inAnHour())
+        tick()
+        await handleMaintenanceStart(movedBack.id)
+        tick()
+        await post(movedBack.id, 'scheduled')
+
+        // Completed without starting, then its plan corrected.
+        const replanned = await scheduleWindow(
+          new Date(Date.now() - 3 * HOUR),
+          new Date(Date.now() - 2 * HOUR)
+        )
+        tick()
+        await post(replanned.id, 'completed')
+        await updateIncident(replanned.id, {
+          scheduledStartAt: new Date(Date.now() - 150 * 60_000),
+        })
+
+        // Started, moved back to scheduled, then completed from there, by
+        // hand and by the scheduler once its end has passed.
+        const backThenDone = await scheduleWindow(anHourAgo(), inAnHour())
+        const backThenSwept = await scheduleWindow(anHourAgo(), inAnHour())
+        tick()
+        await handleMaintenanceStart(backThenDone.id)
+        await handleMaintenanceStart(backThenSwept.id)
+        tick()
+        await post(backThenDone.id, 'scheduled')
+        await post(backThenSwept.id, 'scheduled')
+        tick()
+        await post(backThenDone.id, 'completed')
+        vi.setSystemTime(Date.now() + 2 * HOUR)
+        await handleMaintenanceComplete(backThenSwept.id)
+
+        // A window from before the migration, completed now.
+        await post(ids.reopenedAfterCompleting, 'completed')
+      } finally {
+        vi.useRealTimers()
+      }
+
+      const windows = async () =>
+        Object.fromEntries(
+          (
+            await testDb.query.statusIncidents.findMany({
+              where: eq(statusIncidents.kind, 'maintenance'),
+            })
+          ).map((w) => [w.title === 'Upgrade' ? w.id : `${w.title} ${w.id}`, w.startedAt.getTime()])
+        )
+      const beforeReplay = await windows()
+      await testDb.execute(sql.raw(migration))
+      expect(await windows()).toEqual(beforeReplay)
     })
 
     it('a window completed straight from scheduled keeps its planned start, never one after it completed', async () => {

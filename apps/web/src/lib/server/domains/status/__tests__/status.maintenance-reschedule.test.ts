@@ -47,6 +47,8 @@ vi.mock('@/lib/server/db', async (importOriginal) => {
         return Promise.resolve()
       },
     }),
+    // Settling started_at builds subqueries; the stubbed updates ignore them.
+    select: () => ({ from: () => ({ where: () => ({}) }) }),
     transaction: (fn: (tx: unknown) => unknown) => fn(db),
   }
   return { ...(await importOriginal<typeof import('@/lib/server/db')>()), db }
