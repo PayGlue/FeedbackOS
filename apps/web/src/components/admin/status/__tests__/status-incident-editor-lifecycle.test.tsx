@@ -5,7 +5,7 @@
  * just before posting lands relative to the post.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { IntlProvider } from 'react-intl'
 
 const INCIDENT_ID = 'status_incident_01h455vb4pex5vsknk084sn02q'
@@ -133,5 +133,99 @@ describe('incident editor, a logged past incident', () => {
     detail = incident({ status: 'resolved', resolvedAt: '2026-10-10T09:00:00.000Z' })
     renderEditor()
     expect(screen.getByRole('radio', { name: /Monitoring/ })).toBeEnabled()
+  })
+})
+
+describe('incident editor, posting with a sidebar edit still pending', () => {
+  // A completed window whose end has passed. Reopening it switches
+  // auto-complete off server-side, or the sweep would complete it again.
+  const completedWindow = () =>
+    incident({
+      kind: 'maintenance',
+      title: 'Database upgrade',
+      status: 'completed',
+      impact: 'maintenance',
+      scheduledStartAt: '2026-10-10T08:00:00.000Z',
+      scheduledEndAt: '2026-10-10T09:00:00.000Z',
+      resolvedAt: '2026-10-10T09:00:00.000Z',
+      affectedComponents: [{ componentId: API, componentStatus: 'under_maintenance', name: 'API' }],
+      updates: [
+        {
+          id: 'status_incident_update_1',
+          status: 'completed',
+          body: 'Done.',
+          createdAt: '2026-10-10T09:00:00.000Z',
+        },
+      ],
+    })
+  type Save = { title: string; autoComplete: boolean }
+
+  function editTitle(value: string) {
+    fireEvent.change(screen.getAllByDisplayValue(/^Database upgrade/)[0], { target: { value } })
+  }
+  function reopenAsVerifying() {
+    fireEvent.click(screen.getByRole('radio', { name: /Verifying/ }))
+    fireEvent.change(screen.getByPlaceholderText(/What's the latest\?/), {
+      target: { value: 'Still checking replicas.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Post update & reopen as Verifying' }))
+  }
+
+  it('saves the edit before posting, so it never lands on top of the reopen', async () => {
+    vi.useFakeTimers()
+    detail = completedWindow()
+    const calls: string[] = []
+    mockUpdate.mockImplementation(async (input: Save) => {
+      calls.push(`save ${input.title}`)
+      return { ...detail, title: input.title }
+    })
+    mockPost.mockImplementation(async () => {
+      calls.push('post')
+      return { ...detail, status: 'verifying', resolvedAt: null, autoComplete: false }
+    })
+    renderEditor()
+
+    editTitle('Database upgrade, phase 2')
+    reopenAsVerifying()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+
+    expect(calls).toEqual(['save Database upgrade, phase 2', 'post'])
+  })
+
+  it('takes the reopen into an edit made while the post is in flight', async () => {
+    vi.useFakeTimers()
+    detail = completedWindow()
+    let finishPost!: () => void
+    mockUpdate.mockImplementation(async (input: Save) => ({ ...detail, title: input.title }))
+    mockPost.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishPost = () =>
+            resolve({ ...detail, status: 'verifying', resolvedAt: null, autoComplete: false })
+        })
+    )
+    renderEditor()
+
+    reopenAsVerifying()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    editTitle('Database upgrade, phase 2')
+    // The post answers (and the editor renders it) before the edit's
+    // debounce runs out.
+    await act(async () => {
+      finishPost()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    expect(mockUpdate.mock.calls[0][0]).toMatchObject({
+      title: 'Database upgrade, phase 2',
+      autoComplete: false,
+    })
   })
 })

@@ -266,12 +266,15 @@ function StatusIncidentEditorContent({
 
   const kindRef = useRef<'incident' | 'maintenance'>('incident')
   if (incident) kindRef.current = incident.kind
+  // Saves sent and not answered yet. Posting waits for them (see handlePost).
+  const inFlightSaves = useRef(new Set<Promise<void>>())
   // Debounced autosave with flush-on-unmount (shared hook; same mechanism
   // as the status settings page's text fields).
-  const detailsSave = useDebouncedSave<DetailsState>(
-    (next) => void flushSave(next, kindRef.current),
-    800
-  )
+  const detailsSave = useDebouncedSave<DetailsState>((next) => {
+    const saving = flushSave(next, kindRef.current)
+    inFlightSaves.current.add(saving)
+    void saving.finally(() => inFlightSaves.current.delete(saving))
+  }, 800)
 
   function patchDetails(patch: Partial<DetailsState>) {
     if (!incident) return
@@ -289,9 +292,17 @@ function StatusIncidentEditorContent({
   const effectiveTarget = target ?? currentStatus ?? 'investigating'
   const terminal = isTerminalLifecycle(effectiveTarget)
 
+  const posting = useRef(false)
   async function handlePost() {
-    if (!incident || !body.trim() || postMutation.isPending) return
+    if (!incident || !body.trim() || postMutation.isPending || posting.current) return
+    posting.current = true
     try {
+      // A sidebar edit still waiting out its debounce was made before this
+      // post. Save it now, and let any save already sent finish, so neither
+      // lands after the post and writes the window as it was before the
+      // transition (its start, or automation the post switched off) back.
+      detailsSave.flush()
+      await Promise.all(inFlightSaves.current)
       const posted = await postMutation.mutateAsync({
         id: incidentId,
         status: effectiveTarget,
@@ -301,21 +312,21 @@ function StatusIncidentEditorContent({
       })
       // Reopening or moving a window back can switch its automation off
       // server-side. Take the server's window into the sidebar, or the next
-      // autosave would write stale values back.
+      // autosave would write stale values back; that includes a save queued
+      // by an edit made while the post was in flight.
       if (posted.kind === 'maintenance') {
-        setDetails((prev) =>
-          prev
-            ? {
-                ...prev,
-                scheduledStart: posted.scheduledStartAt
-                  ? new Date(posted.scheduledStartAt)
-                  : undefined,
-                scheduledEnd: posted.scheduledEndAt ? new Date(posted.scheduledEndAt) : undefined,
-                autoStart: posted.autoStart,
-                autoComplete: posted.autoComplete,
-              }
-            : prev
-        )
+        setDetails((prev) => {
+          if (!prev) return prev
+          const next = {
+            ...prev,
+            scheduledStart: posted.scheduledStartAt ? new Date(posted.scheduledStartAt) : undefined,
+            scheduledEnd: posted.scheduledEndAt ? new Date(posted.scheduledEndAt) : undefined,
+            autoStart: posted.autoStart,
+            autoComplete: posted.autoComplete,
+          }
+          if (detailsSave.hasPending()) detailsSave.queue(next)
+          return next
+        })
       }
       setBody('')
       setRestore(true)
@@ -324,6 +335,8 @@ function StatusIncidentEditorContent({
       toast.success('Update posted')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to post update')
+    } finally {
+      posting.current = false
     }
   }
 
