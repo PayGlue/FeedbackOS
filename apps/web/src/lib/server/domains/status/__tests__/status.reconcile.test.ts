@@ -30,7 +30,7 @@ function createSelectChain() {
   return chain
 }
 
-/** The component lookup, which locks the row (`select().from().where().for('update')`). */
+/** The component lookup, which locks the row (`select().from().where().for('no key update')`). */
 function createLockedLookupChain() {
   const chain: Record<string, unknown> = {}
   chain.from = vi.fn(() => chain)
@@ -105,7 +105,7 @@ describe('reconcileComponentStatus', () => {
 
     await reconcileComponentStatus(COMPONENT_ID, 'incident', INCIDENT_A)
 
-    expect(mockLockMode).toHaveBeenCalledWith('update')
+    expect(mockLockMode).toHaveBeenCalledWith('no key update')
     expect(order).toEqual(['lock', 'read active links'])
   })
 

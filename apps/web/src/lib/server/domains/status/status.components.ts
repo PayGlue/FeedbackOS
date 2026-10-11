@@ -331,11 +331,16 @@ export async function reconcileComponentStatus(
   // otherwise each read the other's change as not yet made, and the later
   // commit would restore a status neither incident still sets. Holding the
   // row, the second waits for the first to commit and then reads its result.
+  // NO KEY UPDATE, not UPDATE: a caller has usually just inserted a link to
+  // this service, whose foreign key check holds KEY SHARE on the row. Two
+  // writes linking the same service both hold it, and FOR UPDATE would make
+  // each wait on the other's (a deadlock); NO KEY UPDATE still serialises
+  // recomputes against each other without conflicting with it.
   const [component] = await executor
     .select()
     .from(statusComponents)
     .where(and(eq(statusComponents.id, componentId), isNull(statusComponents.deletedAt)))
-    .for('update')
+    .for('no key update')
   if (!component) return
 
   const active = await executor
