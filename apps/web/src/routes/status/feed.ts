@@ -6,10 +6,10 @@ export const Route = createFileRoute('/status/feed')({
     handlers: {
       /**
        * GET /status/feed
-       * Returns an RSS 2.0 feed of the status page: open incidents,
-       * scheduled and in-progress maintenance, and recently resolved items,
-       * newest activity first. Same XML builder and "denied caller still
-       * gets a valid, empty feed" shape as `routes/changelog/feed.ts`.
+       * Returns an RSS 2.0 feed of the status page: one item per update of
+       * open incidents, scheduled and in-progress maintenance, and recently
+       * resolved items, newest first. Same XML builder and "denied caller
+       * still gets a valid, empty feed" shape as `routes/changelog/feed.ts`.
        */
       GET: async () => {
         const [{ config }, { getSettingsBrandingData }, { listStatusFeedFn }, labels] =
@@ -44,7 +44,7 @@ export const Route = createFileRoute('/status/feed')({
           description: `Incidents and maintenance for ${siteName}`,
           link: `${baseUrl}/status`,
           feedUrl: `${baseUrl}/status/feed`,
-          entries: items.map((item) => toFeedEntry(item, baseUrl, labels)),
+          entries: pickFeedEntries(items.map((item) => toFeedEntries(item, baseUrl, labels))),
         })
 
         return new Response(rssXml, {
@@ -66,8 +66,9 @@ interface FeedItem {
   status: string
   scheduledStartAt: string | null
   scheduledEndAt: string | null
+  resolvedAt: string | null
   affectedComponents: Array<{ name: string }>
-  updates: Array<{ id: string; status: string; body: string }>
+  updates: Array<{ id: string; status: string; body: string; createdAt: string }>
   lastActivityAt: string
 }
 
@@ -80,41 +81,82 @@ interface FeedEntry {
   guid?: string
 }
 
+/** The entries one incident or window contributes, and whether it is still open. */
+interface FeedEntryGroup {
+  open: boolean
+  entries: FeedEntry[]
+}
+
+/** The most items the feed carries (more only if more incidents are open). */
+const FEED_ITEM_LIMIT = 50
+
 /**
- * One feed item per incident or maintenance window, carrying its current
- * state. The guid names the latest update, so each new update reaches a
- * reader as a new item rather than a silent edit to one it already read.
+ * One feed item per update, so every update reaches a reader as its own item
+ * even when several land between two polls. Each names the incident and the
+ * status that update set, and carries the window and services as they are
+ * now.
  */
-function toFeedEntry(
+function toFeedEntries(
   item: FeedItem,
   baseUrl: string,
   labels: { STATUS_LIFECYCLE_LABELS: Record<string, string> }
-): FeedEntry {
+): FeedEntryGroup {
   const label = (status: string) => labels.STATUS_LIFECYCLE_LABELS[status] ?? status
   const link = `${baseUrl}/status/${item.id}`
-  const latest = item.updates[item.updates.length - 1]
+  const titleFor = (status: string) =>
+    `${item.kind === 'maintenance' ? 'Maintenance: ' : ''}${item.title} (${label(status)})`
 
-  const details: string[] = []
-  if (latest) details.push(`${label(latest.status)}: ${latest.body}`)
+  const context: string[] = []
   if (item.kind === 'maintenance' && item.scheduledStartAt) {
     const start = formatUtc(item.scheduledStartAt)
-    details.push(
+    context.push(
       item.scheduledEndAt
         ? `Window: ${start} to ${formatUtc(item.scheduledEndAt)}`
         : `Starts: ${start}`
     )
   }
   if (item.affectedComponents.length > 0) {
-    details.push(`Affected: ${item.affectedComponents.map((c) => c.name).join(', ')}`)
+    context.push(`Affected: ${item.affectedComponents.map((c) => c.name).join(', ')}`)
   }
 
-  return {
-    title: `${item.kind === 'maintenance' ? 'Maintenance: ' : ''}${item.title} (${label(item.status)})`,
-    content: details.join(' · '),
-    publishedAt: new Date(item.lastActivityAt),
-    link,
-    guid: latest ? `${link}#${latest.id}` : undefined,
+  const entries: FeedEntry[] =
+    item.updates.length > 0
+      ? item.updates.map((update) => ({
+          title: titleFor(update.status),
+          content: [update.body, ...context].join(' · '),
+          publishedAt: new Date(update.createdAt),
+          link,
+          guid: `${link}#${update.id}`,
+        }))
+      : [
+          {
+            title: titleFor(item.status),
+            content: context.join(' · '),
+            publishedAt: new Date(item.lastActivityAt),
+            link,
+          },
+        ]
+  return { open: item.resolvedAt === null, entries }
+}
+
+/**
+ * The newest entries, newest first, up to {@link FEED_ITEM_LIMIT}. The newest
+ * entry of every open incident or window always stays, in place of an older
+ * one, so what is happening now is never pushed out by a busy history.
+ */
+function pickFeedEntries(groups: FeedEntryGroup[]): FeedEntry[] {
+  const newestFirst = (a: FeedEntry, b: FeedEntry) =>
+    b.publishedAt.getTime() - a.publishedAt.getTime()
+  const kept = new Set<FeedEntry>()
+  for (const group of groups) {
+    if (group.open && group.entries.length > 0) kept.add([...group.entries].sort(newestFirst)[0])
   }
+  const rest = groups
+    .flatMap((group) => group.entries)
+    .filter((entry) => !kept.has(entry))
+    .sort(newestFirst)
+  for (const entry of rest.slice(0, Math.max(0, FEED_ITEM_LIMIT - kept.size))) kept.add(entry)
+  return [...kept].sort(newestFirst)
 }
 
 /** ISO string → "October 12, 2026 at 02:00 UTC" (the page and emails state UTC too). */

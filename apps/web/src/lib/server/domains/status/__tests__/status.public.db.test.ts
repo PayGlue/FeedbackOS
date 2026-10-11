@@ -264,6 +264,14 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
     expect(activity).toEqual([...activity].sort((a, b) => b - a))
   })
 
+  it('keeps every open incident and window in the feed, however many resolved ones are newer', async () => {
+    // The limit counts resolved history; what is happening now always stays.
+    const items = await listStatusFeedItems(ANONYMOUS_ACTOR, 1)
+    expect(mine(items.map((i) => i.id))).toEqual(
+      expect.arrayContaining([OPEN_INCIDENT, SCHEDULED_MAINTENANCE])
+    )
+  })
+
   it('reads a link that is not an incident id as not found, not an error', async () => {
     expect(await getPublicStatusIncident(ANONYMOUS_ACTOR, 'history' as StatusIncidentId)).toBeNull()
     expect(

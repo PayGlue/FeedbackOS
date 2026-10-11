@@ -442,10 +442,12 @@ export function statusIncidentLastActivityAt(incident: PublicStatusIncident): Da
 }
 
 /**
- * Everything a status feed carries, most recent activity first: open
- * incidents, maintenance that is scheduled or under way, and the most
- * recently resolved incidents and completed windows. Visibility is the
- * public page's, so a feed never lists what the page would hide.
+ * Everything a status feed carries, most recent activity first: every open
+ * incident and every window that is scheduled or under way, plus the `limit`
+ * most recently resolved incidents and completed windows. The limit counts
+ * only resolved history, so what is happening now is always listed.
+ * Visibility is the public page's, so a feed never lists what the page would
+ * hide.
  */
 export async function listStatusFeedItems(
   actor: Actor,
@@ -485,6 +487,5 @@ export async function listStatusFeedItems(
   return items
     .map((incident) => ({ incident, at: statusIncidentLastActivityAt(incident).getTime() }))
     .sort((a, b) => b.at - a.at)
-    .slice(0, limit)
     .map(({ incident }) => incident)
 }
