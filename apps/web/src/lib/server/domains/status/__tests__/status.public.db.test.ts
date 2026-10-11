@@ -14,7 +14,7 @@
  * Connects via DATABASE_URL (vitest pins quackback_test), falling back to the
  * dev DB; skips when neither is reachable, like changelog-segment-targets.db.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { sql, inArray } from 'drizzle-orm'
 import {
   statusComponents,
@@ -222,6 +222,23 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
     // The 14-day incident is not repeated; older incidents follow, and a
     // window completed this week (never in the recent list) is still shown.
     expect(mine(history.items.map((i) => i.id))).toEqual([RECENT_MAINTENANCE, OLD_INCIDENT])
+  })
+
+  it('keeps the recent window where it was when the page is read again', async () => {
+    // The page's history query is keyed on the window start, so a refetch a
+    // minute later must not move it (that reset an expanded history).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-11T15:30:00.000Z'))
+      const first = await getStatusPageSnapshot(ANONYMOUS_ACTOR, { pageDescription: null })
+      vi.setSystemTime(new Date('2026-10-11T15:31:00.000Z'))
+      const second = await getStatusPageSnapshot(ANONYMOUS_ACTOR, { pageDescription: null })
+      expect(second.recentWindow.start).toEqual(first.recentWindow.start)
+      // It still covers at least the 14 days the page says it does.
+      expect(first.recentWindow.start).toEqual(new Date('2026-09-27T00:00:00.000Z'))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('without a cutoff, history still lists every resolved item', async () => {

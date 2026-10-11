@@ -126,6 +126,18 @@ function utcDayKey(date: Date): string {
   return date.toISOString().slice(0, 10)
 }
 
+/**
+ * Where the page's recent window starts: 14 days back, rounded down to the
+ * start of that UTC day. The page's history query is keyed on this value and
+ * continues from it, so it holds still between refetches (it moves once a
+ * day), and the window always covers at least the 14 days the page names.
+ */
+function recentWindowStartFor(now: Date): Date {
+  const start = new Date(now.getTime() - RECENT_INCIDENTS_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+  start.setUTCHours(0, 0, 0, 0)
+  return start
+}
+
 export async function getStatusPageSnapshot(
   actor: Actor,
   settings: Pick<StatusSettings, 'pageDescription'>
@@ -219,9 +231,7 @@ export async function getStatusPageSnapshot(
     actor
   )
 
-  const recentWindowStart = new Date(
-    now.getTime() - RECENT_INCIDENTS_WINDOW_DAYS * 24 * 60 * 60 * 1000
-  )
+  const recentWindowStart = recentWindowStartFor(now)
   const recentRows = await db.query.statusIncidents.findMany({
     where: and(
       isNull(statusIncidents.deletedAt),
