@@ -1,0 +1,106 @@
+/**
+ * When an incident's details were last edited (details_edited_at, migration
+ * 0300), against real Postgres. The status feed announces an edit that comes
+ * after the latest update, so only a change a feed item shows may stamp it:
+ * the title, the scheduled window, or the affected services. The editor
+ * autosaves its whole sidebar, so a save that changes none of those, or only
+ * the automation switches or the impact, must leave it as it was.
+ *
+ * Event dispatch and the delayed-job scheduler are stubbed; everything else
+ * runs for real inside the fixture's always-rolled-back transaction (setup
+ * shared with status.lifecycle.db.test.ts).
+ */
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { StatusIncidentId } from '@quackback/ids'
+import { testDb } from '@/lib/server/__tests__/db-test-fixture'
+import { eq, statusIncidents } from '@/lib/server/db'
+
+vi.mock('@/lib/server/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/server/db')>()),
+  db: (await import('@/lib/server/__tests__/db-test-fixture')).testDb,
+}))
+vi.mock('@/lib/server/events/process', () => ({
+  processEvent: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('@/lib/server/events/scheduler', () => ({
+  scheduleDispatch: vi.fn().mockResolvedValue(undefined),
+  cancelScheduledDispatch: vi.fn().mockResolvedValue(undefined),
+}))
+
+import { getStatusIncidentById, updateIncident } from '../status.service'
+import { HOUR, beginTest, fixture, scheduleWindow, service } from './status-lifecycle-harness'
+
+async function detailsEditedAt(id: StatusIncidentId) {
+  const row = await testDb.query.statusIncidents.findFirst({
+    where: eq(statusIncidents.id, id),
+    columns: { detailsEditedAt: true },
+  })
+  return row?.detailsEditedAt
+}
+
+describe('details edited (Postgres)', () => {
+  beforeEach(async () => {
+    expect(fixture.available).toBe(true)
+    await beginTest()
+  })
+  afterEach(fixture.rollback)
+  afterAll(fixture.close)
+
+  async function window() {
+    const start = new Date(Date.now() + 24 * HOUR)
+    const created = await scheduleWindow(start, new Date(start.getTime() + HOUR))
+    // Everything the editor's sidebar sends back on an autosave.
+    const unchanged = {
+      title: created.title,
+      scheduledStartAt: created.scheduledStartAt,
+      scheduledEndAt: created.scheduledEndAt,
+      affectedComponents: created.affectedComponents.map((c) => ({
+        componentId: c.componentId,
+        componentStatus: c.componentStatus,
+      })),
+    }
+    return { id: created.id, start, unchanged }
+  }
+
+  it('is left unset by an autosave that changes nothing a reader sees', async () => {
+    const { id, unchanged } = await window()
+    await updateIncident(id, unchanged)
+    await updateIncident(id, { ...unchanged, autoStart: false, autoComplete: false })
+    expect(await detailsEditedAt(id)).toBeNull()
+    // The row itself was written all the same.
+    expect((await getStatusIncidentById(id)).autoStart).toBe(false)
+  })
+
+  it('is stamped by a new title, a moved window, or other services', async () => {
+    const edits = [
+      (w: Awaited<ReturnType<typeof window>>) => ({ ...w.unchanged, title: 'Database upgrade' }),
+      (w: Awaited<ReturnType<typeof window>>) => ({
+        ...w.unchanged,
+        scheduledEndAt: new Date(w.start.getTime() + 2 * HOUR),
+      }),
+      (w: Awaited<ReturnType<typeof window>>) => ({
+        ...w.unchanged,
+        affectedComponents: w.unchanged.affectedComponents.map((c) => ({
+          ...c,
+          componentStatus: 'major_outage' as const,
+        })),
+      }),
+    ]
+    for (const edit of edits) {
+      const w = await window()
+      await updateIncident(w.id, edit(w))
+      expect(await detailsEditedAt(w.id)).toBeInstanceOf(Date)
+    }
+
+    const added = await window()
+    const api = await service('API')
+    await updateIncident(added.id, {
+      ...added.unchanged,
+      affectedComponents: [
+        ...added.unchanged.affectedComponents,
+        { componentId: api, componentStatus: 'under_maintenance' },
+      ],
+    })
+    expect(await detailsEditedAt(added.id)).toBeInstanceOf(Date)
+  })
+})

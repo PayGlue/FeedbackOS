@@ -313,12 +313,26 @@ export async function updateIncident(
 ): Promise<StatusIncidentWithDetails> {
   const existing = await requireIncident(id)
 
-  const updateData: Record<string, unknown> = { updatedAt: new Date() }
+  const now = new Date()
+  const updateData: Record<string, unknown> = { updatedAt: now }
   if (input.title !== undefined) updateData.title = validateTitle(input.title)
   if (input.scheduledStartAt !== undefined) updateData.scheduledStartAt = input.scheduledStartAt
   if (input.scheduledEndAt !== undefined) updateData.scheduledEndAt = input.scheduledEndAt
   if (input.autoStart !== undefined) updateData.autoStart = input.autoStart
   if (input.autoComplete !== undefined) updateData.autoComplete = input.autoComplete
+
+  // details_edited_at records a change a status feed item shows: the title,
+  // the window or the services. The editor autosaves its whole sidebar, so
+  // a value sent back unchanged, or a change to automation or impact alone,
+  // is not an edit a reader needs to hear about.
+  const sameInstant = (a: Date | null, b: Date | null) =>
+    (a?.getTime() ?? null) === (b?.getTime() ?? null)
+  let detailsChanged =
+    (updateData.title !== undefined && updateData.title !== existing.title) ||
+    (input.scheduledStartAt !== undefined &&
+      !sameInstant(input.scheduledStartAt, existing.scheduledStartAt)) ||
+    (input.scheduledEndAt !== undefined &&
+      !sameInstant(input.scheduledEndAt, existing.scheduledEndAt))
 
   if (input.affectedComponents !== undefined && input.affectedComponents.length === 0) {
     throw new ValidationError('VALIDATION_ERROR', 'At least one affected component is required')
@@ -347,7 +361,7 @@ export async function updateIncident(
   await db.transaction(async (tx) => {
     // A link to a service deleted since is history: it stays as it is, and a
     // stale editor that sends the deleted service back doesn't relink it.
-    let previousLinks: { componentId: StatusComponentId }[] = []
+    let previousLinks: { componentId: StatusComponentId; componentStatus: string }[] = []
     let nextComponents = input.affectedComponents
     let live = new Set<StatusComponentId>()
     if (input.affectedComponents !== undefined) {
@@ -369,7 +383,18 @@ export async function updateIncident(
       if (nextComponents.length === 0) {
         throw new ValidationError('VALIDATION_ERROR', DELETED_SERVICE_MESSAGE)
       }
+      // Links to deleted services are kept either way, so only the live ones
+      // can change: which services, and the status set on each.
+      const before = new Map(
+        previousLinks
+          .filter((link) => live.has(link.componentId))
+          .map((link) => [link.componentId, link.componentStatus])
+      )
+      detailsChanged ||=
+        nextComponents.length !== before.size ||
+        nextComponents.some((c) => before.get(c.componentId) !== c.componentStatus)
     }
+    if (detailsChanged) updateData.detailsEditedAt = now
 
     if (existing.kind === 'incident') {
       if (impactOverride && input.impact !== undefined) {
