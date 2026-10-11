@@ -29,7 +29,12 @@ vi.mock('@/lib/server/events/scheduler', () => ({
 
 import { ANONYMOUS_ACTOR } from '@/lib/server/policy/types'
 import { deleteStatusComponent } from '../status.components'
-import { createIncident, getStatusIncidentById, updateIncident } from '../status.service'
+import {
+  createIncident,
+  getStatusIncidentById,
+  postIncidentUpdate,
+  updateIncident,
+} from '../status.service'
 import { listStatusFeedItems } from '../status.public'
 import {
   HOUR,
@@ -149,6 +154,29 @@ describe('details edited (Postgres)', () => {
   })
 
   describe('in the status feed', () => {
+    it('is not newer than an update posted after the edit, whatever the app clock says', async () => {
+      // The feed compares the stamp with update times the database dates, so
+      // the stamp takes the database's time too: an app clock running ahead
+      // must not make an edit look newer than the update that followed it.
+      const w = await window()
+      vi.useFakeTimers({ toFake: ['Date'] })
+      try {
+        vi.setSystemTime(Date.now() + HOUR)
+        await updateIncident(w.id, { ...w.unchanged, title: 'Database upgrade' })
+      } finally {
+        vi.useRealTimers()
+      }
+      await postIncidentUpdate(
+        w.id,
+        { status: 'scheduled', body: 'New title, same plan.' },
+        { principalId: author }
+      )
+
+      const item = (await listStatusFeedItems(ANONYMOUS_ACTOR, 50)).find((i) => i.id === w.id)
+      const latestUpdateAt = Math.max(...(item?.updates ?? []).map((u) => u.createdAt.getTime()))
+      expect(item?.detailsEditedAt?.getTime()).toBeLessThanOrEqual(latestUpdateAt)
+    })
+
     it('is the edit a feed item carries, and a logged past incident has none', async () => {
       // A logged past incident is written now, but its update is dated at its
       // resolution: its row's own write is not an edit to announce.

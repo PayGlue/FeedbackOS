@@ -347,8 +347,7 @@ export async function updateIncident(
   const existing = await db.transaction(async (tx) => {
     const existing = await lockIncident(id, tx)
 
-    const now = new Date()
-    const updateData: Record<string, unknown> = { updatedAt: now }
+    const updateData: Record<string, unknown> = { updatedAt: new Date() }
     if (title !== undefined) updateData.title = title
     if (input.scheduledStartAt !== undefined) updateData.scheduledStartAt = input.scheduledStartAt
     if (input.scheduledEndAt !== undefined) updateData.scheduledEndAt = input.scheduledEndAt
@@ -425,7 +424,9 @@ export async function updateIncident(
         nextComponents.length !== before.size ||
         nextComponents.some((c) => before.get(c.componentId) !== c.componentStatus)
     }
-    if (detailsChanged) updateData.detailsEditedAt = now
+    // Stamped by the database's clock, the one that dates most updates, so
+    // the feed's "edited after the latest update" never turns on clock skew.
+    if (detailsChanged) updateData.detailsEditedAt = sql`now()`
 
     if (existing.kind === 'incident') {
       if (impactOverride && input.impact !== undefined) {
