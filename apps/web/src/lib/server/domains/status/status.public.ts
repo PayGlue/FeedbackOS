@@ -34,6 +34,7 @@ import {
   groupLinksByIncident,
   projectIncidents,
   toPublicIncident,
+  visibleIncidentFilter,
 } from './status.projection'
 import type {
   StatusPageSnapshot,
@@ -374,11 +375,20 @@ export async function listStatusFeedItems(
         )
       ),
     }),
-    db.query.statusIncidents.findMany({
-      where: and(isNull(statusIncidents.deletedAt), isNotNull(statusIncidents.resolvedAt)),
-      orderBy: [desc(statusIncidents.resolvedAt), desc(statusIncidents.id)],
-      limit,
-    }),
+    // The viewer's visibility applies before the limit, so incidents they
+    // can't see never take the places of older ones they can.
+    db
+      .select()
+      .from(statusIncidents)
+      .where(
+        and(
+          isNull(statusIncidents.deletedAt),
+          isNotNull(statusIncidents.resolvedAt),
+          visibleIncidentFilter(actor)
+        )
+      )
+      .orderBy(desc(statusIncidents.resolvedAt), desc(statusIncidents.id))
+      .limit(limit),
   ])
 
   // A row can match both reads (a window moved back to "scheduled" before

@@ -284,6 +284,51 @@ describe.skipIf(!dbAvailable)('public status reads past the snapshot (execution-
     expect(items.find((i) => i.id === SCHEDULED_MAINTENANCE)?.editedAt).toEqual(edited)
   })
 
+  it('fills the resolved part of the feed with what the viewer can see', async () => {
+    // Three incidents on a gated service are the newest resolved ones, then
+    // one the visitor can see. The limit must count only visible incidents.
+    if (!activeDb) throw new Error('no database')
+    const gated = [1, 2, 3].map(() => createId('status_incident') as StatusIncidentId)
+    const visible = createId('status_incident') as StatusIncidentId
+    const later = (days: number) => new Date(now + days * DAY)
+    await activeDb.insert(statusIncidents).values(
+      [...gated, visible].map((id, n) => ({
+        id,
+        kind: 'incident' as const,
+        status: 'resolved' as never,
+        title: `pub-${runSuffix}-limit-${n}`,
+        impact: 'major' as never,
+        startedAt: later(10),
+        resolvedAt: later(id === visible ? 10.5 : 11 + n),
+      }))
+    )
+    await activeDb.insert(statusIncidentComponents).values(
+      [...gated, visible].map((id) => ({
+        incidentId: id,
+        componentId: id === visible ? COMPONENT : GATED_COMPONENT,
+        componentStatus: 'partial_outage' as const,
+      }))
+    )
+    try {
+      const forVisitor = (await listStatusFeedItems(ANONYMOUS_ACTOR, 3)).map((i) => i.id)
+      expect(forVisitor).toContain(visible)
+      // Never wider than the page: the gated incidents stay hidden.
+      expect(forVisitor.filter((id) => gated.includes(id))).toEqual([])
+
+      const member: Actor = {
+        principalId: createId('principal') as PrincipalId,
+        role: 'user',
+        principalType: 'user',
+        segmentIds: new Set(['segment_nobody' as SegmentId]),
+      }
+      const forMember = (await listStatusFeedItems(member, 3)).map((i) => i.id)
+      expect(forMember).toEqual(expect.arrayContaining(gated))
+      expect(forMember).not.toContain(visible)
+    } finally {
+      await activeDb.delete(statusIncidents).where(inArray(statusIncidents.id, [...gated, visible]))
+    }
+  })
+
   it('reads a link that is not an incident id as not found, not an error', async () => {
     expect(await getPublicStatusIncident(ANONYMOUS_ACTOR, 'history' as StatusIncidentId)).toBeNull()
     expect(

@@ -5,18 +5,22 @@
  * policy/status.ts), and is hidden entirely when they can see none of them
  * (Status Product Spec §4).
  */
+import type { SQL } from 'drizzle-orm'
 import {
   db,
   eq,
+  and,
   asc,
+  exists,
   inArray,
+  sql,
   statusComponents,
   statusIncidents,
   statusIncidentUpdates,
   statusIncidentComponents,
 } from '@/lib/server/db'
 import type { StatusComponentId, StatusIncidentId } from '@quackback/ids'
-import { canViewStatusComponent } from '@/lib/server/policy/status'
+import { canViewStatusComponent, statusComponentViewFilter } from '@/lib/server/policy/status'
 import type { Actor } from '@/lib/server/policy/types'
 import { deriveViewerImpact } from './status.calc'
 import type { PublicStatusIncident } from './status.types'
@@ -78,6 +82,29 @@ export async function toPublicIncident(
       createdAt: u.createdAt,
     })),
   }
+}
+
+/**
+ * SQL twin of {@link toPublicIncident}'s rule, for a query over
+ * `statusIncidents` that must count only incidents the viewer can see (before
+ * a limit, say): the incident has an affected service the viewer can see.
+ * Same links, same gate, so it never admits a row the projection would hide.
+ * For core `select` queries only: the relational builder would rewrite these
+ * column references onto its own alias.
+ */
+export function visibleIncidentFilter(actor: Actor): SQL {
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(statusIncidentComponents)
+      .innerJoin(statusComponents, eq(statusIncidentComponents.componentId, statusComponents.id))
+      .where(
+        and(
+          eq(statusIncidentComponents.incidentId, statusIncidents.id),
+          statusComponentViewFilter(actor)
+        )
+      )
+  )
 }
 
 /** Fetch the affected-component links (with component name/segmentIds) for a set of incidents. */
