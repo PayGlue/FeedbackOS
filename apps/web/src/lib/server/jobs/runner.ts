@@ -404,20 +404,21 @@ function releaseReservation(pool: JobPool, queue: string): void {
 }
 
 /**
- * Jobs running per queue across every pool in this process — what
+ * Slots held per queue across every pool in this process — what
  * `fleetConcurrency` caps.
  *
- * **Running, not reserved.** A slot is taken when a claimed job starts and
- * given back when it settles; a claim in flight holds none. Every loop polls
- * about once a second and almost every poll finds nothing, so a cap spent by
- * polls in flight would be held by idle workspaces whenever a slow database
- * stretches the claims, which is exactly when the cap matters, and a workspace
- * with real work due could not ask for it.
+ * **Reserved before the claim, held while the job runs.** A claim takes the
+ * slots it asks for before it goes to the database, gives back the ones it did
+ * not fill when it returns, and each job it started gives its own back when it
+ * settles. Counting only once a claim returned made this a cap and not a
+ * semaphore: loops claiming together each saw the last slot free and each took
+ * it. They claim together exactly when the cap matters, on a worker start or
+ * after a database restart, when every loop finds the same backlog at once.
  *
- * The cost is that this is a cap, not a semaphore: loops whose claims are in
- * flight together can each take the last free slot. The overshoot is bounded
- * by how many loops have due work in that instant, which the slot offsets keep
- * to one or two.
+ * The cost is that a claim in flight holds its slots until it returns, so a slow
+ * database defers capped work. That is the backpressure a heavy queue wants,
+ * and it is short: an idle loop claims about once a slot, so the polls of a
+ * whole fleet only hold a small cap between them when each claim takes seconds.
  *
  * Counted for every queue, enforced only where a definition sets a cap, so a
  * definition swapped while a job runs cannot strand its slot.
@@ -485,8 +486,20 @@ export async function dispatchPass(opts: {
     const specs = claimSpecsFor(pool, opts.config)
     if (specs.length === 0) return { claimed: 0, saturated: true }
 
-    const jobs = await claimJobs({ specs })
-    for (const job of jobs) startClaimedJob({ pool, job, run: opts.run, onSettled: opts.onSettled })
+    for (const spec of specs) adjustFleet(spec.queue, spec.limit)
+    let jobs: ClaimedJob[] = []
+    try {
+      jobs = await claimJobs({ specs })
+    } finally {
+      // The slots this claim asked for and did not fill, all of them if it threw.
+      for (const spec of specs) {
+        const filled = jobs.filter((job) => job.queue === spec.queue).length
+        adjustFleet(spec.queue, filled - spec.limit)
+      }
+    }
+    for (const job of jobs) {
+      startClaimedJob({ pool, job, run: opts.run, onSettled: opts.onSettled, fleetHeld: true })
+    }
     return { claimed: jobs.length, saturated: false }
   })
 }
@@ -494,8 +507,10 @@ export async function dispatchPass(opts: {
 /**
  * Put an already-claimed row on the pool. `counted` means the caller already
  * reserved the inFlight slot (start-by-id does this before `claimById` so a
- * failed claim does not leave a running row with no runner). The job holds its
- * process-wide slot (`fleetInFlight`) for exactly as long as it runs.
+ * failed claim does not leave a running row with no runner). `fleetHeld` means
+ * the caller reserved the job's process-wide slot (`fleetInFlight`) before its
+ * claim, as `dispatchPass` and `startJobsById` do; otherwise it is taken here.
+ * Either way the job gives it back when it settles.
  */
 export function startClaimedJob(opts: {
   pool: JobPool
@@ -503,10 +518,11 @@ export function startClaimedJob(opts: {
   run: (job: ClaimedJob) => Promise<'succeeded' | 'failed' | 'retrying'>
   onSettled?: (queue: string, outcome: 'succeeded' | 'failed' | 'retrying') => void
   counted?: boolean
+  fleetHeld?: boolean
 }): void {
   const { pool, job } = opts
   if (!opts.counted) pool.inFlight.set(job.queue, (pool.inFlight.get(job.queue) ?? 0) + 1)
-  adjustFleet(job.queue, 1)
+  if (!opts.fleetHeld) adjustFleet(job.queue, 1)
   const promise = opts
     .run(job)
     .catch((err): 'failed' => {
@@ -550,11 +566,15 @@ export async function startJobsById(opts: {
       )
       if (free < 1) continue
       opts.pool.inFlight.set(peek.queue, (opts.pool.inFlight.get(peek.queue) ?? 0) + 1)
+      adjustFleet(peek.queue, 1)
       let job: ClaimedJob | null = null
       try {
         job = await claimById(jobId, leaseMsFor(def))
       } finally {
-        if (!job) releaseReservation(opts.pool, peek.queue)
+        if (!job) {
+          releaseReservation(opts.pool, peek.queue)
+          adjustFleet(peek.queue, -1)
+        }
       }
       if (!job) continue
       startClaimedJob({
@@ -563,6 +583,7 @@ export async function startJobsById(opts: {
         run: opts.run,
         onSettled: opts.onSettled,
         counted: true,
+        fleetHeld: true,
       })
       claimed += 1
     }

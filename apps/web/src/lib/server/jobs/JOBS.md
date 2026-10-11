@@ -506,14 +506,17 @@ workspace, and an operator sizing connections cares about the product.
 **`fleetConcurrency` is the cap across workspaces.** Every other cap here binds
 one workspace's loop, so a pooled process can run a queue's `concurrency` times
 the fleet. A definition that sets `fleetConcurrency` (`analytics` does) is held
-to that many running jobs across every loop in the process. A slot is held
-while a job runs, not while a claim is in flight: almost every poll finds
-nothing, and a cap spent by polls would be held by idle workspaces whenever a
-slow database stretches the claims. So it is a cap rather than a semaphore,
-and loops claiming in the same instant can each take the last slot; the slot
-offsets keep that to one or two. Jobs over the cap stay `pending`, unclaimed,
-so no lease runs down while they wait. The cap is per process: two worker
-replicas allow twice as many.
+to that many running jobs across every loop in the process. A claim reserves
+the slots it asks for before it goes to the database and gives back the ones
+it did not fill when it returns; each job it starts holds its slot until it
+settles. Counting only jobs already running let loops that claimed together
+each take the last free slot, and loops claim together exactly when the cap
+matters: on a worker start, or after a database restart, when every loop finds
+the same backlog at once. A claim in flight therefore holds its slots until it
+returns, so a slow database defers capped work, which is the backpressure a
+heavy queue wants. Jobs over the cap stay `pending`, unclaimed, so no lease
+runs down while they wait. The cap is per process: two worker replicas allow
+twice as many.
 
 ### What the move fixed rather than preserved
 

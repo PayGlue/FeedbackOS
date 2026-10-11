@@ -1159,8 +1159,9 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
     category: 'process-lifetime',
     owner: 'Piece 6 (saas/queue-lease)',
     reason:
-      'Jobs running per queue name across every workspace pool in this process - what ' +
-      'fleetConcurrency caps. Being shared across workspaces is its purpose: a ' +
+      'Slots reserved by claims in flight or held by running jobs, per queue name, across ' +
+      'every workspace pool in this process - what fleetConcurrency caps. Being shared ' +
+      'across workspaces is its purpose: a ' +
       'per-workspace count would cap nothing a fleet does at once. It holds queue names and ' +
       'counts only, never a payload or a workspace identity, so a cross-workspace read reveals ' +
       'nothing but how busy the process is.',
