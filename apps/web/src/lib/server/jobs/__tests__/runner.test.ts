@@ -77,6 +77,7 @@ import {
   runMaintenanceTick,
   runScheduleTick,
   runnerConfig,
+  scheduleOffsetMs,
   totalDeclaredConcurrency,
 } from '../runner'
 
@@ -298,6 +299,93 @@ describe('the schedule tick', () => {
     await runScheduleTick(state, new Date(2026, 7, 9, 14, 37, 0))
     await runScheduleTick(state, new Date(2026, 7, 9, 14, 38, 0))
     expect((await rowsFor(q))[0].max_attempts).toBe(3)
+  })
+})
+
+describe('spreading a fleet across each slot', () => {
+  // One process runs a loop per workspace, and every loop evaluates the same
+  // cron. Without an offset, an hourly sweep starts in every workspace in the
+  // same second, and the shared database takes the whole fleet's work at once.
+  const HOUR = 3_600_000
+
+  it("runs a pooled workspace's slot at its own offset, keyed by the slot", async () => {
+    const q = queue('spread-hourly')
+    __setJobDefinitionsForTests([
+      { name: q, cron: '0 * * * *', handler: async () => async () => {} },
+    ])
+    const offset = scheduleOffsetMs('workspace-alpha', q, '0 * * * *')
+    expect(offset).toBeGreaterThan(1_000)
+    expect(offset).toBeLessThan(HOUR)
+
+    const slot = new Date(2026, 7, 9, 15, 0, 0)
+    const at = (ms: number) => new Date(slot.getTime() + ms)
+    const state = createScheduleState({ spreadKey: 'workspace-alpha' })
+
+    // Boot two minutes before this workspace's 15:00 is due: the 14:00 slot is
+    // the one in progress, so it is adopted, and the next one is 15:00 plus
+    // the offset rather than 15:00.
+    const boot = await runScheduleTick(state, at(offset - 120_000))
+    expect(boot.attempted).toBe(0)
+    expect(boot.nextSlotAt).toEqual(at(offset))
+
+    // At 15:00 itself, and up to a second before the offset, nothing is due.
+    expect((await runScheduleTick(state, at(0))).attempted).toBe(0)
+    expect((await runScheduleTick(state, at(offset - 1_000))).attempted).toBe(0)
+    expect(await rowsFor(q)).toHaveLength(0)
+
+    // Past the offset the 15:00 slot runs, keyed and stamped as 15:00, so a
+    // replica without the offset still dedupes against it.
+    expect((await runScheduleTick(state, at(offset + 1_000))).attempted).toBe(1)
+    const rows = await rowsFor(q)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].dedupe_key).toBe(slotKey(q, slot))
+    expect(rows[0].payload.scheduledFor).toBe(slot.toISOString())
+  })
+
+  it("keeps an unpooled scheduler on the cron's own minute", async () => {
+    expect(scheduleOffsetMs(null, 'any-queue', '0 * * * *')).toBe(0)
+    const q = queue('spread-single')
+    __setJobDefinitionsForTests([
+      { name: q, cron: '0 * * * *', handler: async () => async () => {} },
+    ])
+    const state = createScheduleState()
+    await runScheduleTick(state, new Date(2026, 7, 9, 14, 30, 0))
+    expect((await runScheduleTick(state, new Date(2026, 7, 9, 15, 0, 1))).attempted).toBe(1)
+  })
+
+  it('spreads a fleet across the interval rather than stacking it on one minute', () => {
+    const keys = Array.from({ length: 200 }, (_, i) => `inst_${i.toString(36).padStart(8, '0')}`)
+    const perMinute = new Map<number, number>()
+    for (const key of keys) {
+      const offset = scheduleOffsetMs(key, 'analytics', '0 * * * *')
+      expect(offset).toBeGreaterThanOrEqual(0)
+      expect(offset).toBeLessThan(HOUR)
+      const minute = Math.floor(offset / 60_000)
+      perMinute.set(minute, (perMinute.get(minute) ?? 0) + 1)
+    }
+    // 200 workspaces over 60 minutes is about 3 a minute. A uniform spread
+    // stays in single digits; the unspread fleet put all 200 in minute 0.
+    expect(Math.max(...perMinute.values())).toBeLessThanOrEqual(10)
+    expect(perMinute.size).toBeGreaterThanOrEqual(45)
+  })
+
+  it('gives each schedule its own offset, so one workspace does not stack its sweeps', () => {
+    const offsets = new Set(
+      ['analytics', 'usage-report', 'help-center-translate-resume'].map((q) =>
+        scheduleOffsetMs('workspace-alpha', q, '0 * * * *')
+      )
+    )
+    expect(offsets.size).toBe(3)
+  })
+
+  it('bounds the offset by the interval, so a slot runs before the next one is due', () => {
+    for (let i = 0; i < 50; i++) {
+      const key = `workspace-${i}`
+      expect(scheduleOffsetMs(key, 'sweep', '* * * * *')).toBeLessThan(60_000)
+      expect(scheduleOffsetMs(key, 'sweep', '*/5 * * * *')).toBeLessThan(5 * 60_000)
+      // A daily sweep spreads across an hour, not across its whole day.
+      expect(scheduleOffsetMs(key, 'sweep', '0 3 * * *')).toBeLessThan(HOUR)
+    }
   })
 })
 

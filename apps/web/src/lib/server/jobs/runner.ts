@@ -46,7 +46,15 @@ import {
   type JobHandler,
 } from './definitions'
 import { enqueueJob } from './job-queue'
-import { latestSlotAtOrBefore, nextSlotAfter, parseCron, slotKey, type ParsedCron } from './cron'
+import {
+  latestSlotAtOrBefore,
+  nextSlotAfter,
+  parseCron,
+  slotKey,
+  slotSpreadMs,
+  stableFraction,
+  type ParsedCron,
+} from './cron'
 
 const log = logger.child({ component: 'job-runner' })
 
@@ -570,25 +578,67 @@ export interface ScheduleTickResult {
    */
   attempted: number
   enqueued: number
-  /** Earliest next slot across all schedules, including gated-off ones. */
+  /**
+   * Earliest instant a slot falls due across all schedules, including gated-off
+   * ones: the slot plus this scheduler's offset for it.
+   */
   nextSlotAt: Date | null
   /**
-   * Earliest next slot of schedules that actually ran this tick.
-   * Gated-off `* * * * *` must not appear here — the process scheduler
+   * Earliest instant a slot falls due among schedules that actually ran this
+   * tick. Gated-off `* * * * *` must not appear here — the process scheduler
    * heaps this, and a snooze/SLA gate that is off must not wake every minute.
    */
   nextEnabledSlotAt: Date | null
 }
 
-const cronCache = new Map<string, ParsedCron>()
+interface CachedCron {
+  cron: ParsedCron
+  /** How widely a fleet spreads its starts for one slot (`slotSpreadMs`). */
+  spreadMs: number
+}
 
-function cronFor(pattern: string): ParsedCron {
-  let parsed = cronCache.get(pattern)
-  if (!parsed) {
-    parsed = parseCron(pattern)
-    cronCache.set(pattern, parsed)
+const cronCache = new Map<string, CachedCron>()
+
+function cachedCron(pattern: string): CachedCron {
+  let cached = cronCache.get(pattern)
+  if (!cached) {
+    const cron = parseCron(pattern)
+    cached = { cron, spreadMs: slotSpreadMs(cron) }
+    cronCache.set(pattern, cached)
   }
-  return parsed
+  return cached
+}
+
+/**
+ * How long after each slot this scheduler starts it.
+ *
+ * Every pooled workspace loop evaluates the same crons, so without this an
+ * hourly sweep starts in every workspace in the same second and the shared
+ * database takes the whole fleet's work at once. Measured on a fleet of about
+ * two hundred workspaces: every hourly analytics refresh started inside one
+ * minute, and the database ran out of memory.
+ *
+ * The offset is a stable hash of the scheduler's spread key and the schedule,
+ * scaled into the schedule's spread window, so:
+ *
+ * - a workspace starts a given schedule at the same point in every slot, and
+ *   every replica agrees on that point without coordinating;
+ * - one workspace's hourly schedules land at different points, not together;
+ * - the slot itself does not move. The dedupe key and `scheduledFor` are still
+ *   the slot's instant, so a replica that computes no offset dedupes against
+ *   one that does.
+ *
+ * A scheduler with no spread key (a single-workspace install) gets zero and
+ * runs on the cron's own minute, as it always has.
+ */
+export function scheduleOffsetMs(
+  spreadKey: string | null,
+  scheduleKey: string,
+  pattern: string
+): number {
+  if (spreadKey === null) return 0
+  const { spreadMs } = cachedCron(pattern)
+  return Math.floor(stableFraction(`${spreadKey}\u0000${scheduleKey}`) * spreadMs)
 }
 
 /**
@@ -624,11 +674,25 @@ function cronFor(pattern: string): ParsedCron {
  */
 export interface ScheduleState {
   readonly seen: Map<string, number>
+  /** What this scheduler's slot offsets are derived from (`scheduleOffsetMs`). Null runs on the minute. */
+  readonly spreadKey: string | null
 }
 
-/** A scheduler's own state. One per workspace loop — never shared between them. */
-export function createScheduleState(): ScheduleState {
-  return { seen: new Map<string, number>() }
+/**
+ * A scheduler's own state. One per workspace loop — never shared between them.
+ *
+ * A pooled loop passes its workspace key as `spreadKey`, so its slots start at
+ * that workspace's own offset rather than on the same second as the rest of the
+ * fleet.
+ */
+export function createScheduleState(opts: { spreadKey?: string | null } = {}): ScheduleState {
+  return { seen: new Map<string, number>(), spreadKey: opts.spreadKey ?? null }
+}
+
+/** When the slot after `shifted` falls due for a scheduler `offset` behind the cron. */
+function dueAfter(cron: ParsedCron, shifted: Date, offset: number): Date | null {
+  const next = nextSlotAfter(cron, shifted)
+  return next ? new Date(next.getTime() + offset) : null
 }
 
 /**
@@ -637,6 +701,10 @@ export function createScheduleState(): ScheduleState {
  * Only the slot bracketing `now` is emitted — never a backlog. A tier that was
  * down for three hours runs an hourly sweep once on restart rather than three
  * times, which is what the BullMQ repeatable jobs did.
+ *
+ * "Now" is this scheduler's own: `now` less its offset for the schedule
+ * (`scheduleOffsetMs`), so each pooled workspace starts a slot at its own point
+ * inside the slot's spread window.
  *
  * Two replicas racing the same tick both attempt the insert and the unique index
  * on `(queue, dedupe_key)` settles it, so the cross-instance exclusion is a
@@ -664,10 +732,14 @@ export async function runScheduleTick(
     pattern: string,
     payload: Record<string, unknown>
   ): Promise<void> => {
-    const cron = cronFor(pattern)
+    const { cron } = cachedCron(pattern)
     live.add(stateKey)
 
-    const slot = latestSlotAtOrBefore(cron, now)
+    // Evaluate the cron `offset` behind real time: a slot is due once its
+    // instant plus this scheduler's offset has passed.
+    const offset = scheduleOffsetMs(state.spreadKey, stateKey, pattern)
+    const shifted = new Date(now.getTime() - offset)
+    const slot = latestSlotAtOrBefore(cron, shifted)
     const seen = state.seen.get(stateKey)
     if (seen === undefined) {
       // First pass for THIS scheduler: adopt the current slot, do not run it.
@@ -687,7 +759,7 @@ export async function runScheduleTick(
       }
     }
 
-    const next = nextSlotAfter(cron, now)
+    const next = dueAfter(cron, shifted, offset)
     if (next && (!nextSlotAt || next < nextSlotAt)) nextSlotAt = next
     if (next && (!nextEnabledSlotAt || next < nextEnabledSlotAt)) nextEnabledSlotAt = next
   }
@@ -714,11 +786,13 @@ export async function runScheduleTick(
    * this — the process scheduler must not heap a gated-off per-minute cron.
    */
   const adopt = (stateKey: string, pattern: string): void => {
-    const cron = cronFor(pattern)
+    const { cron } = cachedCron(pattern)
     live.add(stateKey)
-    const slot = latestSlotAtOrBefore(cron, now)
+    const offset = scheduleOffsetMs(state.spreadKey, stateKey, pattern)
+    const shifted = new Date(now.getTime() - offset)
+    const slot = latestSlotAtOrBefore(cron, shifted)
     if (slot) state.seen.set(stateKey, slot.getTime())
-    const next = nextSlotAfter(cron, now)
+    const next = dueAfter(cron, shifted, offset)
     if (next && (!nextSlotAt || next < nextSlotAt)) nextSlotAt = next
   }
 

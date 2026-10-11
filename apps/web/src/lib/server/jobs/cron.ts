@@ -168,6 +168,46 @@ export function nextSlotAfter(cron: ParsedCron, now: Date): Date | null {
   return null
 }
 
+/** The widest window one slot's starts are spread across. */
+export const MAX_SLOT_SPREAD_MS = 60 * MINUTE_MS
+
+/**
+ * How widely a fleet may spread its starts for one slot of this schedule: the
+ * gap between two consecutive slots, capped at an hour.
+ *
+ * Bounded by the gap so a delayed start still lands before the next slot is
+ * due, which keeps "every minute" meaning once a minute. Capped so a daily
+ * sweep spreads across an hour rather than across its whole day. A schedule
+ * with no second slot inside the search window gets the cap.
+ */
+export function slotSpreadMs(cron: ParsedCron): number {
+  // Measured from a midday instant in a month with no daylight-saving
+  // transition anywhere, so the gap is the schedule's own, not a transition's.
+  const first = nextSlotAfter(cron, new Date(2026, 0, 5, 12, 0, 0))
+  const second = first ? nextSlotAfter(cron, first) : null
+  if (!first || !second) return MAX_SLOT_SPREAD_MS
+  return Math.min(second.getTime() - first.getTime(), MAX_SLOT_SPREAD_MS)
+}
+
+/**
+ * A stable fraction in `[0, 1)` for a key: FNV-1a with a murmur3 finaliser, so
+ * keys that differ only in their last characters still land far apart, and
+ * every replica derives the same value without coordinating.
+ */
+export function stableFraction(key: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  h ^= h >>> 16
+  h = Math.imul(h, 0x85ebca6b)
+  h ^= h >>> 13
+  h = Math.imul(h, 0xc2b2ae35)
+  h ^= h >>> 16
+  return (h >>> 0) / 0x1_0000_0000
+}
+
 /**
  * The dedupe key for one slot of one schedule.
  *

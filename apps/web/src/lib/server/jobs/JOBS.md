@@ -162,6 +162,32 @@ rather than falling back to a permissive reading. A mis-parsed cron expression
 changes a sweep's cadence with no error anywhere, which is not a failure mode a
 scheduler should be able to have.
 
+### A fleet does not start a slot on the same second
+
+Every pooled workspace loop evaluates the same crons, so a plain slot is a
+fleet-wide starting gun: an hourly sweep starts in every workspace at once and
+the shared database takes the whole fleet's work in one burst. Measured on a
+fleet of about two hundred workspaces, every hourly `analytics` refresh started
+inside one minute and the database ran out of memory.
+
+So a pooled loop's scheduler carries a **spread key** (its workspace key) and
+evaluates each cron a fixed offset behind real time. `scheduleOffsetMs` derives
+the offset from a stable hash of the key and the schedule, scaled into the
+schedule's spread window: the gap between two of its slots, capped at an hour.
+A per-minute sweep therefore starts somewhere inside its minute, a five-minutely
+one inside its five minutes, and an hourly or daily one somewhere inside an
+hour.
+
+- **The slot does not move.** The dedupe key and `scheduledFor` are the slot's
+  instant, so each slot still runs once, and a replica that computes a
+  different offset (or none) dedupes against this one.
+- **The offset is stable**, so a workspace starts a schedule at the same point
+  in every slot and replicas agree without coordinating.
+- **Each schedule has its own offset**, so one workspace's hourly sweeps do not
+  land together either.
+- **A single-workspace install has no spread key** and runs on the cron's own
+  minute, exactly as before.
+
 ### The scheduler's memory is per workspace, and that is structural
 
 `ScheduleState` is created by each workspace loop and **passed in**. It was a

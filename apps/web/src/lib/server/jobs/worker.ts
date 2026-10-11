@@ -166,7 +166,9 @@ function startLoop(opts: {
   let nextMaintenanceAt = 0
   let nextPruneAt = 0
   let descriptor: WorkspaceDescriptor | null = opts.workspace
-  const schedule = createScheduleState()
+  // A pooled loop spreads its slots by its workspace key; a single install runs
+  // on the minute.
+  const schedule = createScheduleState({ spreadKey: opts.workspace ? opts.workspaceKey : null })
   const pool = createJobPool()
   const handle: WorkspaceLoop = {
     workspaceKey: opts.workspaceKey,

@@ -24,6 +24,8 @@ interface ClaimPlan {
   maintenance?: boolean[]
   dispatchCalls?: number
   startByIdCalls?: number
+  /** Options of every `createScheduleState` call, in order, when provided. */
+  scheduleStates?: unknown[]
 }
 
 interface DormancyPlan {
@@ -106,7 +108,10 @@ async function bootJobWorker(
     }),
     createJobPool: () => ({}),
     poolSize: () => 0,
-    createScheduleState: () => ({}),
+    createScheduleState: (opts?: unknown) => {
+      plan.scheduleStates?.push(opts)
+      return {}
+    },
     runScheduleTick: async () => ({ enqueued: 0, attempted: 0, nextSlotAt: null }),
     runMaintenanceTick: async (_config: unknown, opts: { prune?: boolean } = {}) => {
       plan.maintenance?.push(opts.prune !== false)
@@ -180,6 +185,15 @@ describe('pooled job worker', () => {
     await vi.advanceTimersByTimeAsync(POLL_MS * 2)
     expect(handle.status().passes).toBeGreaterThan(before)
     expect(handle.status().claimed).toBeGreaterThanOrEqual(2)
+  })
+
+  it("spreads each workspace's schedule by its own key", async () => {
+    // Every loop evaluates the same crons. Keyed by workspace, each loop runs a
+    // slot at its own offset instead of the whole fleet starting it at once.
+    vi.useFakeTimers()
+    const plan: ClaimPlan = { claimed: 0, scheduleStates: [] }
+    handle = await bootJobWorker(plan)
+    expect(plan.scheduleStates).toEqual([{ spreadKey: WORKSPACE_KEY }])
   })
 
   it('reaps leases on the reap clock and prunes only on the slower prune clock', async () => {
