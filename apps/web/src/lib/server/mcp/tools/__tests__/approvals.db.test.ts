@@ -41,23 +41,54 @@ type Handler = (args: Record<string, unknown>) => Promise<CallToolResult>
 
 const fixture = await createDbTestFixture()
 
-let owner: Actor
-let otherAdmin: Actor
+type Person = Actor & { userId: string }
 
-async function seedAdmin(): Promise<Actor> {
+let owner: Person
+let otherAdmin: Person
+
+async function seedPerson(role: 'admin' | 'member'): Promise<Person> {
   const userId = createId('user')
   const principalId = createId('principal')
   await testDb.insert(user).values({ id: userId, name: 'Acme', email: `${userId}@example.com` })
   await testDb
     .insert(principal)
-    .values({ id: principalId, userId, role: 'admin', type: 'user', createdAt: new Date() })
+    .values({ id: principalId, userId, role, type: 'user', createdAt: new Date() })
   return {
+    userId,
     principalId,
-    role: 'admin',
+    role,
     principalType: 'user',
     segmentIds: new Set(),
-    permissions: new Set(ALL_PERMISSIONS),
+    ...(role === 'admin' ? { permissions: new Set(ALL_PERMISSIONS) } : {}),
   }
+}
+
+const seedAdmin = () => seedPerson('admin')
+
+/** The tools a session registers. */
+function session(auth: McpAuthContext): Map<string, Handler> {
+  const handlers = new Map<string, Handler>()
+  const server = {
+    tool: (name: string, _d: string, _s: unknown, _a: unknown, handler: Handler) => {
+      handlers.set(name, handler)
+    },
+  }
+  registerSettingsTools(server as never, auth)
+  registerApprovalTools(server as never, auth)
+  return handlers
+}
+
+/** A person signed in through a shared assistant client, the way the handler resolves one. */
+function oauthSession(person: Person, scopes: ApiKeyScope[]): Map<string, Handler> {
+  return session({
+    principalId: person.principalId!,
+    userId: person.userId as never,
+    name: 'Acme',
+    role: person.role as 'admin' | 'member',
+    authMethod: 'oauth',
+    credentialId: 'oauth-client-1',
+    scopes,
+  })
 }
 
 /** A key's MCP session, the way the handler resolves one. */
@@ -93,15 +124,7 @@ async function keySession(
     clientName: 'Deploy bot',
     scopes,
   }
-  const handlers = new Map<string, Handler>()
-  const server = {
-    tool: (name: string, _d: string, _s: unknown, _a: unknown, handler: Handler) => {
-      handlers.set(name, handler)
-    },
-  }
-  registerSettingsTools(server as never, auth)
-  registerApprovalTools(server as never, auth)
-  return handlers
+  return session(auth)
 }
 
 const text = (result: CallToolResult) => (result.content[0] as { text: string }).text
@@ -243,5 +266,33 @@ describe('list_approvals', () => {
 
     const rejected = json(await tools.get('list_approvals')!({ status: 'rejected' }))
     expect(rejected.approvals).toEqual([])
+  })
+})
+
+describe('an assistant client many people sign in through', () => {
+  it('shows each person what was filed for them, plus what they could decide', async () => {
+    const scopes: ApiKeyScope[] = ['read:settings', 'write:settings', 'write:changelog']
+    const member = await seedPerson('member')
+    const ownerTools = oauthSession(owner, scopes)
+    const memberTools = oauthSession(member, scopes)
+    const ownersRequest = await propose(ownerTools, 'Acme team')
+    const membersRequest = json(
+      await memberTools.get('propose_settings_change')!({
+        changes: [{ area: 'changelog', patch: { autoSubscribe: false } }],
+      })
+    )
+    const idsFor = async (tools: Map<string, Handler>) =>
+      (json(await tools.get('list_approvals')!({})).approvals as Array<{ id: string }>).map(
+        (item) => item.id
+      )
+
+    // The owner filed one, and may decide the member's changelog request.
+    expect(await idsFor(ownerTools)).toEqual([membersRequest.approvalId, ownersRequest.approvalId])
+    // The member shares the client but not the owner's request: the workspace
+    // name is not theirs to decide.
+    expect(await idsFor(memberTools)).toEqual([membersRequest.approvalId])
+    const hidden = await memberTools.get('get_approval')!({ approval: ownersRequest.approvalId })
+    expect(hidden.isError).toBe(true)
+    expect(text(hidden)).toContain('APPROVAL_NOT_FOUND')
   })
 })

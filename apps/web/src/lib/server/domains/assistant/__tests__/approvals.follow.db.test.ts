@@ -210,6 +210,30 @@ describe('who follows what', () => {
     expect(await idsOf(await follow(readOnly))).not.toContain(theirs.id)
   })
 
+  it("a member's key keeps a member's reach after its creator becomes an admin", async () => {
+    const memberKey = await seedKey(member)
+    const thread = (await createWorkspaceThread(otherAdmin)).key
+    const theirs = await enqueueWorkspaceSettingsProposal(
+      otherAdmin,
+      [{ area: 'portal', patch: { displayName: 'Other name' } }],
+      thread,
+      'turn-1'
+    )
+    await testDb
+      .update(principal)
+      .set({ role: 'admin' })
+      .where(eq(principal.id, member.principalId!))
+
+    // The workspace name needs a permission a member's key never had.
+    const follower = await follow(memberKey)
+    expect(await idsOf(follower)).not.toContain(theirs.id)
+    await expect(getApprovalForFollower(follower, theirs.id)).rejects.toMatchObject({
+      code: 'APPROVAL_NOT_FOUND',
+    })
+    // An admin's key with the same scopes reads it.
+    expect(await idsOf(await follow(await seedKey(owner)))).toContain(theirs.id)
+  })
+
   it('a client many people sign in through shows each person only what they filed', async () => {
     const asClient = (
       person: Actor,
