@@ -1,12 +1,13 @@
 /**
  * The approvals queue: the requests a viewer may decide, across
- * conversations, tickets, Home threads and requests with no parent, and one
- * request with its diff. The reads behind the Approvals page and the REST and
- * MCP approval reads.
+ * conversations, tickets, Home threads and requests with no parent, the ones
+ * already decided, and one request with its diff. The reads behind the
+ * Approvals page, its rail count and Home, and the REST and MCP approval
+ * reads.
  *
  * The parent each row hangs off is scoped in SQL by the same rule a decision
- * checks for that one item; whether the viewer holds every permission the operation
- * needs is read per row from the operation itself. A decision checks all of
+ * checks for that one item; whether the viewer holds every permission the
+ * operation needs is read per row from the operation itself. A decision checks all of
  * it again, so the queue only decides what is shown, never what is allowed.
  */
 import {
@@ -17,26 +18,32 @@ import {
   gt,
   desc,
   exists,
+  inArray,
   isNull,
   isNotNull,
   tickets,
+  principal,
+  user,
   assistantPendingActions,
   type ApprovalDecisionChannel,
   type ApprovalRequestChannel,
   type ApprovalRisk,
 } from '@/lib/server/db'
-import type { AssistantPendingActionId } from '@quackback/ids'
+import type { AssistantPendingActionId, PrincipalId } from '@quackback/ids'
 import { ticketFilter } from '@/lib/server/policy/tickets'
 import { can } from '@/lib/server/policy/authorize'
 import { isTeamActor, type Actor } from '@/lib/server/policy/types'
 import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
 import type { JsonValue } from '@/lib/shared/json'
-import { settingsProposalSchema } from '@/lib/shared/assistant/settings-proposals'
+import {
+  settingsProposalSchema,
+  type MessengerEffect,
+} from '@/lib/shared/assistant/settings-proposals'
 import { SETTINGS_PROPOSAL_TOOL } from './approval-policy'
 import { isHomeThreadKey } from './workspace-safety'
 import {
-  digestForDisplay,
   approvalNotFound,
+  digestForDisplay,
   approvalRiskOf,
   isDecidableApproval,
   requiredApprovalPermissions,
@@ -54,6 +61,11 @@ export type ApprovalDiff =
         path: string[]
         before: JsonValue
         after: JsonValue
+        /** An image the value stands for, such as a logo. */
+        beforePreview?: string | null
+        afterPreview?: string | null
+        /** What else the change turns on or off. */
+        effects?: MessengerEffect[]
       }>
     }
   | { kind: 'action'; args: JsonValue }
@@ -69,7 +81,11 @@ export interface ApprovalView {
   parent: { kind: 'conversation' | 'ticket' | 'thread' | 'none'; id: string | null }
   requestedVia: ApprovalRequestChannel | null
   requestedById: string | null
+  /** The name of the credential, agent or person that asked. */
+  requestedByName: string | null
   onBehalfOfPrincipalId: string | null
+  /** The name of the person whose authority the request borrows. */
+  onBehalfOfName: string | null
   clientName: string | null
   proposedAt: string
   expiresAt: string
@@ -80,16 +96,29 @@ export interface ApprovalView {
   /** The viewer may decide it now. */
   canDecide: boolean
   decidedById: string | null
+  decidedByName: string | null
   decidedAt: string | null
   decidedVia: ApprovalDecisionChannel | null
   decisionReason: string | null
+  /** An applied change that can still be put back. */
+  undoable: boolean
+  /** An applied change that was put back. */
+  undone: boolean
   diff: ApprovalDiff
+}
+
+/** The requests waiting on a viewer: how many, and the newest few. */
+export interface WaitingApprovals {
+  count: number
+  latest: ApprovalView[]
 }
 
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
 /** Rows read per page before the per-row permission filter. */
 const SCAN_LIMIT = 200
+/** How many waiting requests Home shows. */
+const SUMMARY_LATEST = 3
 
 function diffOf(row: PendingActionRow): ApprovalDiff {
   if (row.toolName === SETTINGS_PROPOSAL_TOOL) {
@@ -103,6 +132,9 @@ function diffOf(row: PendingActionRow): ApprovalDiff {
           path: change.path,
           before: change.before as JsonValue,
           after: change.after as JsonValue,
+          ...(change.beforePreview !== undefined ? { beforePreview: change.beforePreview } : {}),
+          ...(change.afterPreview !== undefined ? { afterPreview: change.afterPreview } : {}),
+          ...(change.effects ? { effects: change.effects } : {}),
         })),
       }
   }
@@ -114,6 +146,16 @@ function parentOf(row: PendingActionRow): ApprovalView['parent'] {
   if (row.ticketId) return { kind: 'ticket', id: row.ticketId }
   if (row.workspaceThreadKey) return { kind: 'thread', id: null }
   return { kind: 'none', id: null }
+}
+
+/** Whether an applied settings change can still be undone, and whether it was. */
+function undoStateOf(row: PendingActionRow): Pick<ApprovalView, 'undoable' | 'undone'> {
+  const result = row.result
+  if (row.toolName !== SETTINGS_PROPOSAL_TOOL || row.status !== 'executed' || !result)
+    return { undoable: false, undone: false }
+  const undone = typeof result.undoneAt === 'string'
+  const effects = result.storageEffects
+  return { undoable: !undone && Array.isArray(effects) && effects.length > 0, undone }
 }
 
 function holdsAll(actor: Actor, required: ReadonlySet<PermissionKey>): boolean {
@@ -188,9 +230,16 @@ export function approvalRequirements(): (
   }
 }
 
-/** A request as shown; showing one stores the digest a decision on it must name. */
-async function toView(row: PendingActionRow, canDecide: boolean): Promise<ApprovalView> {
+type Names = ReadonlyMap<string, string>
+
+function toView(
+  row: PendingActionRow,
+  canDecide: boolean,
+  names: Names,
+  contentHash: string
+): ApprovalView {
   const risk = approvalRiskOf(row)
+  const nameOf = (id: string | null) => (id ? (names.get(id) ?? null) : null)
   return {
     id: row.id,
     toolName: row.toolName,
@@ -200,19 +249,56 @@ async function toView(row: PendingActionRow, canDecide: boolean): Promise<Approv
     parent: parentOf(row),
     requestedVia: row.requestedVia,
     requestedById: row.requestedById,
+    requestedByName: nameOf(row.requestedById) ?? row.clientName,
     onBehalfOfPrincipalId: row.onBehalfOfPrincipalId,
+    onBehalfOfName: nameOf(row.onBehalfOfPrincipalId),
     clientName: row.clientName,
     proposedAt: row.proposedAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
-    contentHash: await digestForDisplay(row),
+    contentHash,
     needsFreshSignIn: risk === 'high',
     canDecide,
     decidedById: row.decidedById,
+    decidedByName: nameOf(row.decidedById),
     decidedAt: row.decidedAt?.toISOString() ?? null,
     decidedVia: row.decidedVia,
     decisionReason: row.decisionReason,
+    ...undoStateOf(row),
     diff: diffOf(row),
   }
+}
+
+/** The names of everyone a set of requests mentions, in one read. */
+async function namesFor(rows: readonly PendingActionRow[]): Promise<Names> {
+  const ids = [
+    ...new Set(
+      rows.flatMap((row) => [row.requestedById, row.onBehalfOfPrincipalId, row.decidedById])
+    ),
+  ].filter((id): id is PrincipalId => !!id)
+  if (ids.length === 0) return new Map()
+  const people = await db
+    .select({ id: principal.id, displayName: principal.displayName, name: user.name })
+    .from(principal)
+    .leftJoin(user, eq(principal.userId, user.id))
+    .where(inArray(principal.id, ids))
+  const names = new Map<string, string>()
+  for (const person of people) {
+    const name = person.name?.trim() || person.displayName?.trim()
+    if (name) names.set(person.id, name)
+  }
+  return names
+}
+
+/** Requests as shown; showing one stores the digest a decision on it must name. */
+async function toViews(
+  rows: readonly PendingActionRow[],
+  canDecide: (row: PendingActionRow) => boolean
+): Promise<ApprovalView[]> {
+  const [names, digests] = await Promise.all([
+    namesFor(rows),
+    Promise.all(rows.map((row) => digestForDisplay(row))),
+  ])
+  return rows.map((row, index) => toView(row, canDecide(row), names, digests[index]!))
 }
 
 /**
@@ -243,16 +329,9 @@ function isTeammate(actor: Actor): boolean {
   return actor.principalType === 'user' && !!actor.principalId && isTeamActor(actor)
 }
 
-/**
- * The pending requests this viewer may decide, newest first. Only people
- * decide, so a credential or agent sees an empty queue.
- */
-export async function listApprovalsForViewer(
-  actor: Actor,
-  options: { limit?: number } = {}
-): Promise<ApprovalView[]> {
+/** The pending rows this viewer may decide, newest first, up to `limit`. */
+async function waitingRowsFor(actor: Actor, limit: number): Promise<PendingActionRow[]> {
   if (!isTeammate(actor)) return []
-  const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT))
   const rows = await db
     .select()
     .from(assistantPendingActions)
@@ -263,17 +342,69 @@ export async function listApprovalsForViewer(
         parentVisible(actor)
       )
     )
-    .orderBy(desc(assistantPendingActions.proposedAt))
+    // Ids are time-ordered, so they break a tie between requests filed together.
+    .orderBy(desc(assistantPendingActions.proposedAt), desc(assistantPendingActions.id))
     .limit(SCAN_LIMIT)
-  const views: ApprovalView[] = []
-  const requirementsOf = approvalRequirements()
+  const requiredFor = approvalRequirements()
+  const decidable: PendingActionRow[] = []
   for (const row of rows) {
-    if (views.length >= limit) break
+    if (decidable.length >= limit) break
     if (!isDecidableApproval(row)) continue
-    const required = await requirementsOf(row)
-    if (required && mayDecide(row, actor, required)) views.push(await toView(row, true))
+    const required = await requiredFor(row)
+    if (required && mayDecide(row, actor, required)) decidable.push(row)
   }
-  return views
+  return decidable
+}
+
+/**
+ * The pending requests this viewer may decide, newest first. Only people
+ * decide, so a credential or agent sees an empty queue.
+ */
+export async function listApprovalsForViewer(
+  actor: Actor,
+  options: { limit?: number } = {}
+): Promise<ApprovalView[]> {
+  const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT))
+  return toViews(await waitingRowsFor(actor, limit), () => true)
+}
+
+/**
+ * How many requests wait on this viewer, and the newest few: the rail's count
+ * and Home's list, in one read.
+ */
+export async function waitingApprovalsSummary(actor: Actor): Promise<WaitingApprovals> {
+  const rows = await waitingRowsFor(actor, MAX_LIMIT)
+  return { count: rows.length, latest: await toViews(rows.slice(0, SUMMARY_LATEST), () => true) }
+}
+
+/**
+ * Requests already decided that this viewer could have decided, decided
+ * themselves, or that were filed on their behalf, most recently decided
+ * first.
+ */
+export async function listDecidedApprovalsForViewer(
+  actor: Actor,
+  options: { limit?: number } = {}
+): Promise<ApprovalView[]> {
+  if (!isTeammate(actor)) return []
+  const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT))
+  const rows = await db
+    .select()
+    .from(assistantPendingActions)
+    .where(and(isNotNull(assistantPendingActions.decidedAt), parentVisible(actor)))
+    .orderBy(desc(assistantPendingActions.decidedAt), desc(assistantPendingActions.id))
+    .limit(SCAN_LIMIT)
+  const requiredFor = approvalRequirements()
+  const shown: PendingActionRow[] = []
+  for (const row of rows) {
+    if (shown.length >= limit) break
+    if (!isDecidableApproval(row)) continue
+    const involved =
+      row.decidedById === actor.principalId || row.onBehalfOfPrincipalId === actor.principalId
+    const required = involved ? null : await requiredFor(row)
+    if (involved || (required && holdsAll(actor, required))) shown.push(row)
+  }
+  return toViews(shown, () => false)
 }
 
 /**
@@ -294,6 +425,12 @@ export async function getApprovalForViewer(
   if (!row || !isDecidableApproval(row)) throw approvalNotFound()
   const required = await requiredApprovalPermissions(row)
   const qualified = !!required && holdsAll(actor, required)
-  if (!qualified && row.onBehalfOfPrincipalId !== actor.principalId) throw approvalNotFound()
-  return toView(row, !!required && mayDecide(row, actor, required))
+  if (
+    !qualified &&
+    row.onBehalfOfPrincipalId !== actor.principalId &&
+    row.decidedById !== actor.principalId
+  )
+    throw approvalNotFound()
+  const [view] = await toViews([row], () => !!required && mayDecide(row, actor, required))
+  return view!
 }
