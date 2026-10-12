@@ -26,6 +26,7 @@ import {
   principal,
   user,
   assistantPendingActions,
+  inAppNotifications,
   type ApprovalDecisionChannel,
   type ApprovalRequestChannel,
   type ApprovalRisk,
@@ -477,6 +478,34 @@ export async function listApprovalsForViewer(
 export async function waitingApprovalsSummary(actor: Actor): Promise<WaitingApprovals> {
   const { rows } = await scan(actor, 'waiting', MAX_COUNT, null)
   return { count: rows.length, latest: await toViews(rows.slice(0, SUMMARY_LATEST), () => true) }
+}
+
+/**
+ * The rail's counts for the admin document: the viewer's unread bell and what
+ * waits on them, in one statement. The unread count is a read the document
+ * makes anyway, so while no request is open anywhere the waiting answer rides
+ * along with it and costs no query of its own; the scan runs only once a
+ * request is open.
+ */
+export async function railCountsFor(
+  principalId: PrincipalId,
+  actorOf: () => Promise<Actor>
+): Promise<{ unread: number; waiting: WaitingApprovals }> {
+  const result = await db.execute(sql`
+    select
+      (select count(*)::int from ${inAppNotifications}
+        where ${inAppNotifications.principalId} = ${sql.param(principalId, inAppNotifications.principalId)}
+          and ${inAppNotifications.archivedAt} is null
+          and ${inAppNotifications.readAt} is null) as unread,
+      exists (select 1 from ${assistantPendingActions}
+        where ${assistantPendingActions.status} = 'proposed'
+          and ${assistantPendingActions.expiresAt} > now()) as open
+  `)
+  const [row] = result as unknown as Array<{ unread: number; open: boolean }>
+  return {
+    unread: row?.unread ?? 0,
+    waiting: row?.open ? await waitingApprovalsSummary(await actorOf()) : { count: 0, latest: [] },
+  }
 }
 
 /**

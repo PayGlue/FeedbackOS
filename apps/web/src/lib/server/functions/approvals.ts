@@ -65,6 +65,17 @@ export const getWaitingApprovalsFn = createServerFn({ method: 'GET' }).handler(a
   return waitingApprovalsSummary(actor)
 })
 
+/**
+ * What the admin document warms for the rail: the unread bell count and the
+ * waiting summary, from one read (see railCountsFor).
+ */
+export const getRailCountsFn = createServerFn({ method: 'GET' }).handler(async () => {
+  const auth = await requireAuth()
+  const { railCountsFor } = await import('@/lib/server/domains/assistant/approvals.queue')
+  // The actor costs a read of its own, so it is built only once a request is open.
+  return railCountsFor(auth.principal.id, () => policyActorFromAuth(auth))
+})
+
 export const getApprovalFn = createServerFn({ method: 'GET' })
   .validator(ApprovalInput)
   .handler(async ({ data }) => {

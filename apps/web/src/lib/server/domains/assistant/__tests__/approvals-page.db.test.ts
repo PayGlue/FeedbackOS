@@ -68,6 +68,7 @@ import {
   listDecidedApprovalsForViewer,
   pageApprovalsForViewer,
   waitingApprovalsSummary,
+  railCountsFor,
 } from '../approvals.queue'
 
 const fixture = await createDbTestFixture()
@@ -261,6 +262,25 @@ describe('approving from the page', () => {
 })
 
 describe('the waiting summary', () => {
+  it('rides the unread read while nothing is open, and only then builds the actor', async () => {
+    let actorBuilt = 0
+    const actorOf = async () => {
+      actorBuilt += 1
+      return otherAdmin
+    }
+    expect(await railCountsFor(otherAdmin.principalId!, actorOf)).toEqual({
+      unread: 0,
+      waiting: { count: 0, latest: [] },
+    })
+    expect(actorBuilt).toBe(0)
+
+    await homeProposal()
+    const withOpen = await railCountsFor(otherAdmin.principalId!, actorOf)
+    expect(actorBuilt).toBe(1)
+    expect(withOpen.waiting).toEqual(await waitingApprovalsSummary(otherAdmin))
+    expect(withOpen.waiting.count).toBe(1)
+  })
+
   it('counts and lists only what the viewer may decide, with names', async () => {
     const home = await homeProposal()
     const inbox = await inboxProposal()

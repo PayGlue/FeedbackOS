@@ -316,6 +316,10 @@ export const BARE_GATE_CLASSIFICATIONS: Record<string, Classification> = {
     APPROVAL_PERMISSIONS,
     'counts only requests the caller may decide: the item is visible and every permission the operation needs is held'
   ),
+  'lib/server/functions/approvals.ts::getRailCountsFn': DYNAMIC_PERMISSION(
+    APPROVAL_PERMISSIONS,
+    'the caller own unread count, and a count of only the requests the caller may decide: the item is visible and every permission the operation needs is held'
+  ),
   'lib/server/functions/approvals.ts::getApprovalFn': DYNAMIC_PERMISSION(
     APPROVAL_PERMISSIONS,
     'caller may decide the request, decided it, or it was filed on their behalf; the item must be visible'

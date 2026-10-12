@@ -89,6 +89,7 @@ vi.mock('@/lib/server/functions/notifications', () => ({
 }))
 vi.mock('@/lib/server/functions/approvals', () => ({
   getWaitingApprovalsFn: async () => ({ count: 0, latest: [] }),
+  getRailCountsFn: async () => ({ unread: 0, waiting: { count: 0, latest: [] } }),
   listApprovalsFn: async () => [],
   getApprovalFn: async () => null,
 }))
