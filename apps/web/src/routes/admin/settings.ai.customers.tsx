@@ -1,7 +1,11 @@
+import { useIntl } from 'react-intl'
 import { useQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { AdditionalInstructionsCard } from '@/components/admin/automation/additional-instructions-card'
-import { useAgentStatusLine } from '@/components/admin/automation/assistant-deployment-card'
+import {
+  AgentPauseControl,
+  useAgentStatusLine,
+} from '@/components/admin/automation/assistant-deployment-card'
 import { AssistantIdentityCard } from '@/components/admin/automation/assistant-identity-card'
 import { AssistantPageShell } from '@/components/admin/automation/assistant-page-shell'
 import { AssistantVoiceCard } from '@/components/admin/automation/assistant-basics-card'
@@ -20,7 +24,10 @@ export const Route = createFileRoute('/admin/settings/ai/customers')({
     assertRoutePermission(context.permissions, PERMISSIONS.AI_CUSTOMER_MANAGE)
   },
   loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(assistantQueries.settings())
+    await Promise.all([
+      context.queryClient.ensureQueryData(assistantQueries.settings()),
+      context.queryClient.ensureQueryData(settingsQueries.widgetConfig()),
+    ])
   },
   errorComponent: ({ error, reset }) => (
     <DefaultErrorPage error={error} reset={reset} fullPage={false} />
@@ -29,6 +36,7 @@ export const Route = createFileRoute('/admin/settings/ai/customers')({
 })
 
 function CustomersPage() {
+  const intl = useIntl()
   const settings = useWorkspaceSettings()
   const widget = useQuery(settingsQueries.widgetConfig())
   const flags = settings?.featureFlags as FeatureFlags | undefined
@@ -41,7 +49,30 @@ function CustomersPage() {
     Boolean(flags?.supportTickets)
   )
   return (
-    <AssistantPageShell page="/admin/settings/ai/customers" description={statusLine}>
+    <AssistantPageShell
+      page="/admin/settings/ai/customers"
+      description={statusLine}
+      actions={
+        flags?.supportInbox ? (
+          <Link to="/admin/settings/who-answers" className="text-sm underline">
+            {intl.formatMessage({
+              id: 'ask.destination.settings_who-answers',
+              defaultMessage: 'Who answers',
+            })}
+          </Link>
+        ) : (
+          <AgentPauseControl
+            deployment={{
+              enabled: deployment?.enabled ?? true,
+              respond: deployment?.respond ?? true,
+            }}
+            available={false}
+            ticketsOn={Boolean(flags?.supportTickets)}
+            onChange={() => {}}
+          />
+        )
+      }
+    >
       <div className="space-y-6">
         <AssistantIdentityCard />
         <AssistantVoiceCard />

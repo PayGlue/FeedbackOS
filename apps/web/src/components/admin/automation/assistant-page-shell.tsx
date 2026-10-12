@@ -11,6 +11,7 @@ import { AssistantDirtyStateProvider, useAssistantDirtyState } from './assistant
 
 interface AssistantPageShellProps {
   page: AiPagePath
+  actions?: ReactNode
   description?: string
   children: ReactNode
 }
@@ -28,7 +29,7 @@ export function AssistantPageShell(props: AssistantPageShellProps) {
   )
 }
 
-function AssistantPageFrame({ page, description, children }: AssistantPageShellProps) {
+function AssistantPageFrame({ page, description, actions, children }: AssistantPageShellProps) {
   const intl = useIntl()
   const settingsQuery = useQuery(assistantQueries.settings())
   const { hasUnsavedChanges } = useAssistantDirtyState()
@@ -40,7 +41,7 @@ function AssistantPageFrame({ page, description, children }: AssistantPageShellP
 
   return (
     <>
-      <SettingsPage page={page} description={description}>
+      <SettingsPage page={page} description={description} actions={actions}>
         {settingsQuery.isPending ? (
           <div className="rounded-xl border bg-card p-6" role="status">
             <p className="text-sm text-muted-foreground">
