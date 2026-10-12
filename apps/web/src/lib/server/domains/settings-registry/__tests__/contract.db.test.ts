@@ -8,6 +8,7 @@ import { createId } from '@quackback/ids'
 import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
 import { auditLog, eq, principal, settings, user } from '@/lib/server/db'
 import { ALL_PERMISSIONS } from '@/lib/shared/permissions'
+import { ForbiddenError } from '@/lib/shared/errors'
 import { SETTINGS_AREAS, type SettingsArea } from '@/lib/shared/settings-registry'
 import type { Actor } from '@/lib/server/policy/types'
 
@@ -154,7 +155,7 @@ describe('every settings area keeps one contract', () => {
 
           // Undo restores the value, and only once.
           const undone = await undoSettingsReceipt(caller, result.receipt.id)
-          expect(undone).toMatchObject({ undone: true, area })
+          expect(undone).toMatchObject({ status: 'undone', result: { undone: true, area } })
           expect((await readSettingsArea(actor, area)).revision).toBe(read.revision)
           await expect(undoSettingsReceipt(caller, result.receipt.id)).rejects.toMatchObject({
             code: 'SETTINGS_UNDO_UNAVAILABLE',
@@ -181,8 +182,23 @@ describe('every settings area keeps one contract', () => {
           expect((await readSettingsArea(actor, area)).value[changed]).not.toEqual(
             read.value[changed]
           )
-          await undoSettingsReceipt(caller, pendingId)
+          // A key cannot undo a decided approval: the inverse is filed for a person.
+          const filed = await undoSettingsReceipt(caller, pendingId)
+          if (filed.status !== 'approval_required') throw new Error('expected an approval')
+          expect(filed.approval).toMatchObject({ proposed: true, status: 'pending' })
+          expect(filed.approval.approvalId).not.toBe(pendingId)
+          expect((await readSettingsArea(actor, area)).value[changed]).not.toEqual(
+            read.value[changed]
+          )
+          // A signed-in person undoes it directly, and the audit row names the area.
+          const undone = await undoSettingsReceipt({ ...caller, signedInSession: true }, pendingId)
+          expect(undone).toMatchObject({ status: 'undone', result: { area } })
           expect((await readSettingsArea(actor, area)).revision).toBe(read.revision)
+          const [undoneEvent] = await testDb
+            .select()
+            .from(auditLog)
+            .where(eq(auditLog.eventType, 'settings.undone'))
+          expect(undoneEvent.metadata).toMatchObject({ area })
         }
       }
     )
@@ -237,6 +253,73 @@ describe('every settings area keeps one contract', () => {
       })
     ).rejects.toMatchObject({ code: 'FIELD_LOCKED' })
   })
+
+  it('refuses an undo by a caller without the area permission', async () => {
+    const read = await readSettingsArea(actor, 'portal')
+    const applied = await changeSettingsArea(caller, 'portal', {
+      patch: { displayName: 'Acme Team' },
+      expectedRevision: read.revision,
+    })
+    if (applied.status !== 'applied') throw new Error('expected applied')
+    const limited: SettingsCaller = { ...caller, actor: { ...actor, permissions: new Set() } }
+    await expect(undoSettingsReceipt(limited, applied.receipt.id)).rejects.toMatchObject({
+      code: 'SETTINGS_PERMISSION_REQUIRED',
+    })
+    expect((await readSettingsArea(actor, 'portal')).value.displayName).toBe('Acme Team')
+  })
+
+  it('answers 404 for a malformed receipt id', async () => {
+    await expect(undoSettingsReceipt(caller, 'audit_nope')).rejects.toMatchObject({
+      code: 'SETTINGS_RECEIPT_NOT_FOUND',
+    })
+  })
+
+  it('checks the credential scope for the area before writing or undoing', async () => {
+    const read = await readSettingsArea(actor, 'changelog')
+    const scoped: SettingsCaller = {
+      ...caller,
+      assertAreaScope: () => {
+        throw new ForbiddenError('FORBIDDEN', 'missing scope')
+      },
+    }
+    await expect(
+      changeSettingsArea(scoped, 'changelog', {
+        patch: { emailsDisabled: true },
+        expectedRevision: read.revision,
+      })
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' })
+  })
+
+  it.each(['portal', 'messenger'] as const)(
+    'refuses with the under-lock revision check when a write lands mid-request (%s)',
+    async (area) => {
+      const read = await readSettingsArea(actor, area)
+      const patch = PATCHES[area](read.value)
+      // The competing write is issued while the request's first check holds
+      // the row it already read, so only the check under the lock can refuse.
+      const original = SETTINGS_REGISTRY[area].read
+      let race: PromiseLike<unknown> | undefined
+      const spy = vi.spyOn(SETTINGS_REGISTRY[area], 'read').mockImplementationOnce((row) => {
+        race = testDb
+          .update(settings)
+          .set(
+            area === 'portal'
+              ? { name: 'Written meanwhile' }
+              : { widgetConfig: JSON.stringify({ messenger: { welcomeMessage: 'meanwhile' } }) }
+          )
+          .then(() => undefined)
+        return original(row)
+      })
+      try {
+        await expect(
+          changeSettingsArea(caller, area, { patch, expectedRevision: read.revision })
+        ).rejects.toMatchObject({ code: 'REVISION_MISMATCH', statusCode: 412 })
+        await race
+      } finally {
+        spy.mockRestore()
+      }
+    }
+  )
 
   it('refuses a caller without the area permission', async () => {
     const limited: SettingsCaller = {

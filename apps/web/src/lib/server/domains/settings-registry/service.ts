@@ -37,6 +37,9 @@ import {
   undoWorkspaceSettingsProposal,
 } from '@/lib/server/domains/assistant/workspace-settings-actions.service'
 import type { ApprovalRequester } from '@/lib/server/domains/assistant/approvals.service'
+import { settingsProposalRisk } from '@/lib/server/domains/assistant/approval-policy'
+import { assistantPendingActions } from '@/lib/server/db'
+import { settingsReceiptIdSchema } from '@/lib/shared/settings-registry'
 import {
   getSettingsArea,
   parseAreaPatch,
@@ -50,6 +53,13 @@ export interface SettingsCaller {
   actor: Actor
   /** Recorded on an approval this call files. */
   requester: ApprovalRequester
+  /**
+   * The caller is a person signed in to the app. A key or an OAuth client is
+   * not, and may not undo an approved change without a person deciding it.
+   */
+  signedInSession?: boolean
+  /** Checks the credential's own scope for an area it is about to write. */
+  assertAreaScope?: (area: SettingsArea) => void
 }
 
 /** What a caller must hold or pass for a change to an area to take effect. */
@@ -230,11 +240,32 @@ async function auditActor(tx: Transaction, actor: Actor) {
   return { userId: person?.userId, email: person?.email, role: actor.role, type: 'user' as const }
 }
 
+/** The approval fields every surface returns for a filed change. */
+function filedApproval(action: {
+  id: string
+  args: unknown
+  preparationNotes?: unknown
+  reviewHref?: string
+}): FiledApproval {
+  return {
+    proposed: true,
+    approvalId: action.id,
+    pendingActionId: action.id,
+    status: 'pending',
+    url: approvalUrl(action.id),
+    next: 'Nothing changes until a person approves this in the app, at url. Check its progress with get_approval.',
+    proposal: action.args,
+    ...(action.preparationNotes ? { preparationNotes: action.preparationNotes } : {}),
+    ...(action.reviewHref ? { reviewHref: action.reviewHref } : {}),
+  }
+}
+
 /**
  * Change one area. A low-risk change applies at once, in one transaction that
  * also writes its audit event and returns a receipt. A medium-risk or higher
- * change is filed as an approval, the same one `propose_settings_change`
- * files, and nothing is written until a person decides it.
+ * change, judged from the diff itself, is filed as an approval, the same one
+ * `propose_settings_change` files, and nothing is written until a person
+ * decides it.
  */
 export async function changeSettingsArea(
   caller: SettingsCaller,
@@ -244,28 +275,32 @@ export async function changeSettingsArea(
   const entry = getSettingsArea(id)
   const { actor } = caller
   const patch = parseAreaPatch(entry, input.patch)
+  caller.assertAreaScope?.(entry.id)
   await requireAreaPermission(actor, entry.id, db)
   const row = await requireSettings(db)
   assertNotLocked(entry, row, patch)
   const expected = input.expectedRevision?.trim()
   const revision = expected ? assertRevision(entry, row, expected) : entry.revision(row)
 
+  let proposal: Awaited<ReturnType<typeof prepareSettingsChanges>> | null = null
+  try {
+    proposal = await prepareSettingsChanges(actor, [{ area: entry.id, patch } as never])
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'SETTINGS_ALREADY_MATCH') throw error
+  }
+  // The diff decides the tier, so a bulk change is medium on every surface.
+  const risk: SettingsRisk = proposal ? settingsProposalRisk(proposal) : entry.risk
+
   if (input.dryRun) {
-    let changes: SettingsChangeEntry[] = []
-    try {
-      const proposal = await prepareSettingsChanges(actor, [{ area: entry.id, patch } as never])
-      changes = proposal.changes.map(({ path, before, after }) => ({ path, before, after }))
-    } catch (error) {
-      if ((error as { code?: string }).code !== 'SETTINGS_ALREADY_MATCH') throw error
-    }
     return {
       status: 'dry_run',
       preview: {
         area: entry.id,
-        risk: entry.risk,
+        risk,
         revision,
-        requiresApproval: entry.risk !== 'low' && changes.length > 0,
-        changes,
+        requiresApproval: risk !== 'low' && proposal !== null,
+        changes:
+          proposal?.changes.map(({ path, before, after }) => ({ path, before, after })) ?? [],
       },
     }
   }
@@ -274,36 +309,25 @@ export async function changeSettingsArea(
       'IF_MATCH_REQUIRED',
       'Send the revision you read as If-Match.'
     )
+  if (!proposal) return { status: 'noop', revision }
 
-  if (entry.risk !== 'low') {
-    try {
-      await prepareSettingsChanges(actor, [{ area: entry.id, patch } as never])
-    } catch (error) {
-      if ((error as { code?: string }).code === 'SETTINGS_ALREADY_MATCH')
-        return { status: 'noop', revision }
-      throw error
-    }
+  if (risk !== 'low') {
     const action = await enqueueWorkspaceSettingsProposal(
       actor,
       [{ area: entry.id, patch }],
       undefined,
       undefined,
-      caller.requester
+      caller.requester,
+      // The row is locked while the card is filed, so a write that landed
+      // after the check above is a mismatch, not a card built on old values.
+      async (tx) => {
+        const [locked] = await tx.select().from(settings).limit(1).for('update')
+        if (!locked) throw new NotFoundError('SETTINGS_NOT_FOUND', 'Settings not found')
+        assertNotLocked(entry, locked, patch)
+        assertRevision(entry, locked, expected)
+      }
     )
-    return {
-      status: 'approval_required',
-      approval: {
-        proposed: true,
-        approvalId: action.id,
-        pendingActionId: action.id,
-        status: 'pending',
-        url: approvalUrl(action.id),
-        next: 'Nothing changes until a person approves this in the app, at url. Check its progress with get_approval.',
-        proposal: action.args,
-        ...(action.preparationNotes ? { preparationNotes: action.preparationNotes } : {}),
-        ...(action.reviewHref ? { reviewHref: action.reviewHref } : {}),
-      },
-    }
+    return { status: 'approval_required', approval: filedApproval(action) }
   }
 
   return applyLocked(caller, entry, patch, expected)
@@ -366,26 +390,27 @@ export interface UndoSettingsResult {
   undoneAt: string
 }
 
+export type UndoSettingsOutcome =
+  | { status: 'undone'; result: UndoSettingsResult }
+  | { status: 'approval_required'; approval: FiledApproval }
+
 /**
  * Undo a receipt while the values it wrote have not moved. A receipt is the
- * audit row of a direct write, or the approval a person decided.
+ * audit row of a direct (low-risk) write, or an approval a person decided.
+ *
+ * Undoing an approved change that touched a medium-risk or higher area is
+ * itself a change to that area, so unless a signed-in person asks, the inverse
+ * is filed as a new approval instead of being applied.
  */
 export async function undoSettingsReceipt(
   caller: SettingsCaller,
   receiptId: string
-): Promise<UndoSettingsResult> {
+): Promise<UndoSettingsOutcome> {
   const { actor } = caller
-  if (receiptId.startsWith('assistant_action_')) {
-    const undone = await undoWorkspaceSettingsProposal(actor, receiptId as never)
-    return {
-      id: receiptId,
-      area: null,
-      undone: true,
-      undoneAt: String((undone.result as { undoneAt?: string } | null)?.undoneAt),
-    }
-  }
-  if (!receiptId.startsWith('audit_'))
+  const parsed = settingsReceiptIdSchema.safeParse(receiptId)
+  if (!parsed.success)
     throw new NotFoundError('SETTINGS_RECEIPT_NOT_FOUND', 'Settings receipt not found')
+  if (receiptId.startsWith('assistant_action_')) return undoApproval(caller, receiptId)
   const result = await db.transaction(async (tx) => {
     const [receiptRow] = await tx
       .select()
@@ -395,6 +420,8 @@ export async function undoSettingsReceipt(
     const receipt = (receiptRow?.metadata as { receipt?: SettingsApplyReceipt } | null)?.receipt
     if (!receiptRow || !receipt)
       throw new NotFoundError('SETTINGS_RECEIPT_NOT_FOUND', 'Settings receipt not found')
+    const entry = getSettingsArea(receiptRow.targetId ?? '')
+    caller.assertAreaScope?.(entry.id)
     // Serialise undo and apply on the one settings row.
     await tx.select({ id: settings.id }).from(settings).limit(1).for('update')
     const [already] = await tx
@@ -405,7 +432,7 @@ export async function undoSettingsReceipt(
     if (already)
       throw new ConflictError('SETTINGS_UNDO_UNAVAILABLE', 'This change was already undone')
     try {
-      await getSettingsArea(receiptRow.targetId ?? '').undo(tx, actor, receipt)
+      await entry.undo(tx, actor, receipt)
     } catch (error) {
       if ((error as { code?: string }).code === 'SETTINGS_UNDO_CONFLICT')
         throw new ConflictError('SETTINGS_UNDO_CONFLICT', (error as Error).message)
@@ -419,8 +446,66 @@ export async function undoSettingsReceipt(
       after: receipt.changes.map((change) => ({ id: change.id, value: change.before })),
       metadata: { area: receiptRow.targetId, principalId: actor.principalId },
     })
-    return receiptRow.targetId as SettingsArea
+    return entry.id
   })
   await invalidateSettingsCache()
-  return { id: receiptId, area: result, undone: true, undoneAt: new Date().toISOString() }
+  return {
+    status: 'undone',
+    result: { id: receiptId, area: result, undone: true, undoneAt: new Date().toISOString() },
+  }
+}
+
+async function undoApproval(caller: SettingsCaller, id: string): Promise<UndoSettingsOutcome> {
+  const { actor } = caller
+  const [row] = await db
+    .select()
+    .from(assistantPendingActions)
+    .where(eq(assistantPendingActions.id, id as never))
+    .limit(1)
+  const receipt = row?.result as unknown as SettingsApplyReceipt | null
+  if (!row || row.toolName !== 'propose_settings_change' || !receipt?.changes)
+    throw new NotFoundError('SETTINGS_RECEIPT_NOT_FOUND', 'Settings receipt not found')
+  if (row.status !== 'executed' || (row.result as { undoneAt?: string }).undoneAt)
+    throw new ConflictError('SETTINGS_UNDO_UNAVAILABLE', 'This change cannot be undone')
+  const areas = [...new Set(receipt.changes.map((change) => change.area))]
+  for (const area of areas) {
+    caller.assertAreaScope?.(area)
+    await requireAreaPermission(actor, area, db)
+  }
+
+  if (!caller.signedInSession && settingsProposalRisk(receipt) !== 'low') {
+    // The inverse: each changed value goes back to what it was.
+    const patches = new Map<SettingsArea, Record<string, unknown>>()
+    for (const change of receipt.changes) {
+      const patch = patches.get(change.area) ?? {}
+      let target = patch
+      for (const key of change.path.slice(0, -1))
+        target = (target[key] ??= {}) as Record<string, unknown>
+      target[change.path.at(-1)!] = change.before
+      patches.set(change.area, patch)
+    }
+    const inputs = [...patches].map(([area, patch]) => {
+      parseAreaPatch(getSettingsArea(area), patch)
+      return { area, patch }
+    })
+    const action = await enqueueWorkspaceSettingsProposal(
+      actor,
+      inputs,
+      undefined,
+      undefined,
+      caller.requester
+    )
+    return { status: 'approval_required', approval: filedApproval(action) }
+  }
+
+  const undone = await undoWorkspaceSettingsProposal(actor, id as never, 'settings.undone')
+  return {
+    status: 'undone',
+    result: {
+      id,
+      area: areas.length === 1 ? areas[0] : null,
+      undone: true,
+      undoneAt: String((undone.result as { undoneAt?: string } | null)?.undoneAt),
+    },
+  }
 }

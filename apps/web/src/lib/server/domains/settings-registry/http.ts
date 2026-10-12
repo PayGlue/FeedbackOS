@@ -5,11 +5,12 @@
  * Kept out of the route files so the three settings routes share one scope
  * rule, one actor and one set of headers.
  */
-import type { ApiAuthContext } from '@/lib/server/domains/api/auth'
+import { assertApiPermissions, type ApiAuthContext } from '@/lib/server/domains/api/auth'
+import { SETTINGS_AREA_META } from '@/lib/shared/settings-registry'
 import { ForbiddenError } from '@/lib/shared/errors'
 import { hasApiScope } from '@/lib/server/domains/api-keys/api-key-scopes'
 import type { SettingsCaller } from './service'
-import type { ChangeSettingsResult } from './service'
+import type { ChangeSettingsResult, UndoSettingsOutcome } from './service'
 import { successResponse } from '@/lib/server/domains/api/responses'
 
 /**
@@ -33,6 +34,8 @@ export function assertSettingsScope(
 export function settingsCallerFromApiAuth(auth: ApiAuthContext): SettingsCaller {
   const owner = auth.apiKey.createdById ?? auth.principalId
   return {
+    // A scoped key also needs the scope its area's permission maps to.
+    assertAreaScope: (area) => assertApiPermissions(auth, [SETTINGS_AREA_META[area].permission]),
     actor: {
       principalId: owner,
       role: auth.role,
@@ -78,4 +81,11 @@ export function changeResponse(result: ChangeSettingsResult): Response {
 export function withEtag(response: Response, revision: string): Response {
   response.headers.set('ETag', etag(revision))
   return response
+}
+
+/** The response to an undo: 202 when it was filed as an approval, 200 when it was applied. */
+export function undoResponse(outcome: UndoSettingsOutcome): Response {
+  return outcome.status === 'approval_required'
+    ? successResponse(outcome.approval, { status: 202 })
+    : successResponse(outcome.result)
 }

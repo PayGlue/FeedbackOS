@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { withApiKeyAuth } from '@/lib/server/domains/api/auth'
-import { handleDomainError, successResponse } from '@/lib/server/domains/api/responses'
+import { handleDomainError } from '@/lib/server/domains/api/responses'
 import {
   assertSettingsScope,
   settingsCallerFromApiAuth,
+  undoResponse,
 } from '@/lib/server/domains/settings-registry/http'
 
 export const Route = createFileRoute('/api/v1/settings/receipts/$receiptId/undo')({
@@ -19,7 +20,7 @@ export const Route = createFileRoute('/api/v1/settings/receipts/$receiptId/undo'
           assertSettingsScope(auth, 'write:settings')
           const { undoSettingsReceipt } =
             await import('@/lib/server/domains/settings-registry/service')
-          return successResponse(
+          return undoResponse(
             await undoSettingsReceipt(settingsCallerFromApiAuth(auth), params.receiptId)
           )
         } catch (error) {
