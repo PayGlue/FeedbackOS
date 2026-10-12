@@ -64,6 +64,8 @@ Examples:
     annotations: READ_ONLY,
     scope: 'read:settings',
     teamOnly: true,
+    // Each approval is checked against the follower's permissions row by row.
+    permissions: 'none',
     handler: async ({ approval }) => {
       const id = approvalIdFromReference(approval)
       if (!id)
@@ -93,6 +95,8 @@ Examples:
     annotations: READ_ONLY,
     scope: 'read:settings',
     teamOnly: true,
+    // Each approval is checked against the follower's permissions row by row.
+    permissions: 'none',
     handler: async ({ status, cursor, limit }) => {
       const after = cursor === undefined ? undefined : approvalIdFromReference(cursor)
       if (after === null)

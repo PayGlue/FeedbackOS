@@ -204,6 +204,7 @@ describe('get_approval', () => {
       reason: null,
       undoneAt: null,
       url: filed.url,
+      untrusted: { note: expect.any(String), fields: ['clientName'] },
     })
     const byUrl = json(await tools.get('get_approval')!({ approval: filed.url }))
     expect(byUrl).toEqual(byId)
