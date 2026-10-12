@@ -10,6 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { IntlProvider } from 'react-intl'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  Outlet,
+  RouterProvider,
+  createBrowserHistory,
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+} from '@tanstack/react-router'
 import type { SignInAgainOptions } from '@/lib/shared/sign-in-again'
 
 const hoisted = vi.hoisted(() => ({
@@ -88,15 +96,40 @@ function Page({ onSignedIn }: { onSignedIn: (action: string) => void }) {
   )
 }
 
-function renderPage(onSignedIn = vi.fn()) {
+const ME = { user: { id: 'user_me' } }
+
+/**
+ * The page inside a real router: the session comes from the root route
+ * context, as on every page, and the approvals route validates its search the
+ * way a strict schema does, keeping only what it knows.
+ */
+async function renderPage(onSignedIn = vi.fn(), session: { user: { id: string } } | null = ME) {
+  const root = createRootRouteWithContext<object>()({
+    beforeLoad: () => ({ session }),
+    component: () => <Outlet />,
+  })
+  const approvals = createRoute({
+    getParentRoute: () => root,
+    path: '/admin/approvals',
+    validateSearch: (search: Record<string, unknown>) => ({
+      status: typeof search.status === 'string' ? search.status : undefined,
+    }),
+    component: () => <Page onSignedIn={onSignedIn} />,
+  })
+  const router = createRouter({
+    routeTree: root.addChildren([approvals]),
+    history: createBrowserHistory(),
+    context: {},
+  })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
       <IntlProvider locale="en" defaultLocale="en" messages={{}}>
-        <Page onSignedIn={onSignedIn} />
+        <RouterProvider router={router} />
       </IntlProvider>
     </QueryClientProvider>
   )
+  await screen.findByRole('button', { name: 'Approve' })
   return onSignedIn
 }
 
@@ -113,7 +146,7 @@ describe('asking to sign in again', () => {
   it('sends a person whose workspace enforces SSO through their provider, back to this page', async () => {
     hoisted.options.mockResolvedValue(opts({ providers: [okta], emailMethods: null }))
     hoisted.startOidcSignIn.mockResolvedValue({ data: { url: 'https://idp.example/authorize' } })
-    renderPage()
+    await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
     expect(await screen.findByText('Sign in again')).toBeInTheDocument()
@@ -140,7 +173,7 @@ describe('asking to sign in again', () => {
 
   it("locks the person's own address in the sign-in form for an email account", async () => {
     hoisted.options.mockResolvedValue(opts())
-    renderPage()
+    await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
 
     expect(await screen.findByText('SIGN_IN_FORM')).toBeInTheDocument()
@@ -159,7 +192,7 @@ describe('asking to sign in again', () => {
 
   it('resumes the action once the server confirms a fresh sign-in by the same person', async () => {
     hoisted.options.mockResolvedValue(opts())
-    const onSignedIn = renderPage()
+    const onSignedIn = await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
     await screen.findByText('SIGN_IN_FORM')
 
@@ -177,7 +210,7 @@ describe('asking to sign in again', () => {
 
   it('resumes nothing when a different account signed in', async () => {
     hoisted.options.mockResolvedValue(opts())
-    const onSignedIn = renderPage()
+    const onSignedIn = await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
     await screen.findByText('SIGN_IN_FORM')
 
@@ -197,7 +230,7 @@ describe('resuming exactly once', () => {
     hoisted.options.mockResolvedValue(
       opts({ emailMethods: { password: false, magicLink: true, twoFactorRequired: false } })
     )
-    const onSignedIn = renderPage()
+    const onSignedIn = await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
     await screen.findByText('SIGN_IN_FORM')
     // The form moves to the emailed-code step after sending the email.
@@ -255,6 +288,53 @@ describe('resuming exactly once', () => {
   })
 })
 
+describe('knowing who asked', () => {
+  const DIFFERENT = 'You signed in with a different account, so nothing was changed.'
+
+  it('shows an error with a retry when the sign-in options fail to load', async () => {
+    hoisted.options.mockRejectedValue(new Error('Authentication required'))
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument()
+    hoisted.options.mockResolvedValue(opts())
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('SIGN_IN_FORM')).toBeInTheDocument()
+  })
+
+  it('resumes nothing for another account signed in while the options failed', async () => {
+    hoisted.options.mockRejectedValue(new Error('Authentication required'))
+    const onSignedIn = await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await screen.findByRole('button', { name: 'Try again' })
+
+    // Someone else signs in, in another tab.
+    hoisted.options.mockResolvedValue(opts({ userId: 'user_other', fresh: true }))
+    act(() => signalEverything())
+    await settle()
+    act(() => signalEverything())
+    await settle()
+
+    expect(onSignedIn).not.toHaveBeenCalled()
+    expect(await screen.findByText(DIFFERENT)).toBeInTheDocument()
+  })
+
+  it('never resumes when the page does not know who is signed in', async () => {
+    hoisted.options.mockResolvedValue(opts())
+    const onSignedIn = await renderPage(vi.fn(), null)
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await screen.findByText('SIGN_IN_FORM')
+
+    hoisted.options.mockResolvedValue(opts({ fresh: true }))
+    act(() => signalEverything())
+    await settle()
+    act(() => signalEverything())
+    await settle()
+
+    expect(onSignedIn).not.toHaveBeenCalled()
+  })
+})
+
 describe('coming back from an identity provider', () => {
   function landBack(search: string, stashedFor: string | null) {
     if (stashedFor) {
@@ -269,7 +349,7 @@ describe('coming back from an identity provider', () => {
   it('resumes the action for the same person, fresh, and clears the marker', async () => {
     landBack('signedInAgain=approve%3Aact_1', 'user_me')
     hoisted.options.mockResolvedValue(opts({ fresh: true }))
-    const onSignedIn = renderPage()
+    const onSignedIn = await renderPage()
 
     await waitFor(() => expect(onSignedIn).toHaveBeenCalledWith('approve:act_1'))
     expect(window.location.pathname + window.location.search).toBe(PAGE)
@@ -282,7 +362,7 @@ describe('coming back from an identity provider', () => {
   it('resumes nothing when the provider signed in a different account', async () => {
     landBack('signedInAgain=approve%3Aact_1', 'user_me')
     hoisted.options.mockResolvedValue(opts({ userId: 'user_other', fresh: true }))
-    const onSignedIn = renderPage()
+    const onSignedIn = await renderPage()
 
     expect(
       await screen.findByText('You signed in with a different account, so nothing was changed.')
@@ -293,7 +373,7 @@ describe('coming back from an identity provider', () => {
   it('offers the sign-in again when the provider refused', async () => {
     landBack('signedInAgain=approve%3Aact_1&error=access_denied', 'user_me')
     hoisted.options.mockResolvedValue(opts({ providers: [okta], emailMethods: null }))
-    const onSignedIn = renderPage()
+    const onSignedIn = await renderPage()
 
     expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Sign in with Okta' })).toBeInTheDocument()
@@ -304,7 +384,7 @@ describe('coming back from an identity provider', () => {
   it('does nothing in a tab that did not ask, such as one opened from the emailed link', async () => {
     landBack('signedInAgain=approve%3Aact_1', null)
     hoisted.options.mockResolvedValue(opts({ fresh: true }))
-    const onSignedIn = renderPage()
+    const onSignedIn = await renderPage()
 
     await waitFor(() => expect(window.location.search).toBe('?status=open'))
     expect(onSignedIn).not.toHaveBeenCalled()

@@ -14,7 +14,9 @@
  *   still be loading then, so `onSignedIn` should be able to wait for what the
  *   action needs.
  *
- * A sign-in as anyone else resumes nothing: the dialog says so, and closing it
+ * The person who asked is the one the page was rendered for (the session in
+ * the root route context). Nothing resumes without knowing who that is, and a
+ * sign-in as anyone else resumes nothing: the dialog says so, and closing it
  * reloads the page as the account now signed in. Use one per page; the action
  * names what to resume.
  */
@@ -22,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getSignInAgainOptionsFn } from '@/lib/server/functions/sign-in-again'
 import { startOidcSignIn } from '@/lib/client/start-oidc-sign-in'
+import { useSessionContext } from '@/lib/client/hooks/use-root-context'
 import {
   readSignInAgainMarker,
   signInAgainProviderRequest,
@@ -39,6 +42,9 @@ export interface SignInAgainDialogProps {
   open: boolean
   /** How the person signs in; undefined while it loads. */
   options: SignInAgainOptions | undefined
+  /** The options could not be read; `onRetry` reads them again. */
+  loadFailed: boolean
+  onRetry: () => void
   notice: SignInAgainNotice | null
   /** This page, marked with the action, for sign-ins that come back by link. */
   returnUrl: string
@@ -60,6 +66,7 @@ export function useSignInAgain(options: {
   onSignedIn: (action: string) => void
 }): UseSignInAgainResult {
   const queryClient = useQueryClient()
+  const sessionUserId = useSessionContext()?.user?.id ?? null
   const [action, setAction] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState<SignInAgainNotice | null>(null)
@@ -72,8 +79,9 @@ export function useSignInAgain(options: {
   const generationRef = useRef(0)
   const checkingRef = useRef(false)
   const recheckRef = useRef(false)
-  // The person who asked. Captured once per request, so a later read that
-  // shows someone else is recognised as someone else.
+  // The person who asked: the page's own session, taken when the request is
+  // made. Never read from the sign-in options, which show whoever is signed in
+  // by the time they load.
   const askedByRef = useRef<string | null>(null)
   const reloadOnCloseRef = useRef(false)
   const landedRef = useRef(false)
@@ -90,10 +98,6 @@ export function useSignInAgain(options: {
     gcTime: 0,
     retry: false,
   })
-
-  useEffect(() => {
-    if (open && query.data && askedByRef.current === null) askedByRef.current = query.data.userId
-  }, [open, query.data])
 
   const readOptions = useCallback(
     () =>
@@ -169,22 +173,26 @@ export function useSignInAgain(options: {
     [readOptions, reopen]
   )
 
-  const request = useCallback((next: string) => {
-    generationRef.current += 1
-    pendingRef.current = next
-    askedByRef.current = null
-    reloadOnCloseRef.current = false
-    setAction(next)
-    setNotice(null)
-    setOpen(true)
-  }, [])
+  const request = useCallback(
+    (next: string) => {
+      generationRef.current += 1
+      pendingRef.current = next
+      askedByRef.current = sessionUserId
+      reloadOnCloseRef.current = false
+      setAction(next)
+      setNotice(null)
+      setOpen(true)
+    },
+    [sessionUserId]
+  )
 
   const onProvider = useCallback(
     async (provider: SignInAgainProvider) => {
       const person = query.data
-      if (!action || !person) return false
+      const askedBy = askedByRef.current
+      if (!action || !person || !askedBy) return false
       const returnUrl = signInAgainReturnUrl(window.location.href, action)
-      stashSignInAgain({ action, userId: person.userId })
+      stashSignInAgain({ action, userId: askedBy })
       try {
         const result = await startOidcSignIn(
           signInAgainProviderRequest(provider, person.email, returnUrl)
@@ -246,6 +254,8 @@ export function useSignInAgain(options: {
     dialog: {
       open,
       options: query.data,
+      loadFailed: query.isError && !query.isFetching,
+      onRetry: () => void query.refetch(),
       notice,
       returnUrl: action && open ? signInAgainReturnUrl(window.location.href, action) : '',
       onOpenChange,

@@ -43,11 +43,14 @@ const messages = defineMessages({
     id: 'portal.auth.error.generic',
     defaultMessage: 'Something went wrong. Please try again.',
   },
+  retry: { id: 'portal.auth.tryAgain', defaultMessage: 'Try again' },
 })
 
 export function SignInAgainDialog({
   open,
   options,
+  loadFailed,
+  onRetry,
   notice,
   returnUrl,
   onOpenChange,
@@ -122,7 +125,14 @@ export function SignInAgainDialog({
             />
           </DialogDescription>
         </DialogHeader>
-        {differentAccount ? null : !options ? (
+        {differentAccount ? null : !options && loadFailed ? (
+          <div className="space-y-4">
+            <FormError message={intl.formatMessage(messages.failed)} />
+            <Button type="button" variant="outline" className="w-full" onClick={onRetry}>
+              <FormattedMessage {...messages.retry} />
+            </Button>
+          </div>
+        ) : !options ? (
           <div className="flex justify-center py-10">
             <Spinner />
           </div>
