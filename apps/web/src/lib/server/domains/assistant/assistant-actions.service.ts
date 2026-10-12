@@ -137,7 +137,11 @@ export async function decideAssistantAction(
 
   // Legacy inline and integration decisions obey the same sensitive-request
   // rules as the approvals queue. The boundary supplies verified sign-in state.
-  if (decision === 'rejected' && ['high', 'critical'].includes(approvalRiskOf(pending))) {
+  if (
+    decision === 'rejected' &&
+    !isHomeThreadKey(pending.workspaceThreadKey) &&
+    ['high', 'critical'].includes(approvalRiskOf(pending))
+  ) {
     await assertMayDecide(
       pending,
       actor,

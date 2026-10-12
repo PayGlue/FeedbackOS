@@ -695,7 +695,7 @@ describe('ApprovalsPage', () => {
 
 describe('approval confirmation from a link', () => {
   it('only reads on opening; approval is an explicit click bound to the emailed content', async () => {
-    state.search = { id: 'assistant_action_01', d: 'digest-1' }
+    state.search = { id: 'assistant_action_01', d: 'digest-1', source: 'email' }
     state.getApproval.mockResolvedValue(view())
     state.emailApprove.mockResolvedValue({ ok: true, approval: view({ status: 'executed' }) })
     renderPage(<ApprovalConfirmPage />)
