@@ -683,6 +683,64 @@ describe('status lifecycle (Postgres)', () => {
     })
   })
 
+  describe('maintenance transition events', () => {
+    const sent = (type: string) =>
+      mockProcessEvent.mock.calls.filter(([event]) => (event as { type: string }).type === type)
+
+    it('a manual start sends the started event once, and the scheduler adds none', async () => {
+      const window = await scheduleWindow(new Date(Date.now() - HOUR), new Date(Date.now() + HOUR))
+      await postIncidentUpdate(
+        window.id,
+        { status: 'in_progress', body: 'Starting.' },
+        { principalId: author }
+      )
+      await handleMaintenanceStart(window.id)
+      expect(sent('status.maintenance_started')).toHaveLength(1)
+      expect(sent('status.maintenance_completed')).toHaveLength(0)
+    })
+
+    it('a manual completion sends the completed event once, and the scheduler adds none', async () => {
+      const window = await scheduleWindow(
+        new Date(Date.now() - 2 * HOUR),
+        new Date(Date.now() - HOUR)
+      )
+      await postIncidentUpdate(
+        window.id,
+        { status: 'completed', body: 'Done.' },
+        { principalId: author }
+      )
+      await handleMaintenanceComplete(window.id)
+      expect(sent('status.maintenance_completed')).toHaveLength(1)
+      expect(sent('status.maintenance_started')).toHaveLength(0)
+    })
+
+    it('the scheduler completing first leaves a later manual completion silent', async () => {
+      const window = await scheduleWindow(
+        new Date(Date.now() - 2 * HOUR),
+        new Date(Date.now() - HOUR)
+      )
+      await handleMaintenanceComplete(window.id)
+      await postIncidentUpdate(
+        window.id,
+        { status: 'completed', body: 'Done.' },
+        { principalId: author }
+      )
+      expect(sent('status.maintenance_completed')).toHaveLength(1)
+    })
+
+    it('an incident resolved by an update sends no maintenance event', async () => {
+      const api = await service('API')
+      const incident = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
+      await postIncidentUpdate(
+        incident.id,
+        { status: 'resolved', body: 'Fixed.' },
+        { principalId: author }
+      )
+      expect(sent('status.maintenance_completed')).toHaveLength(0)
+      expect(sent('status.maintenance_started')).toHaveLength(0)
+    })
+  })
+
   describe('logging a past incident', () => {
     it('rejects one resolved before it started', async () => {
       const api = await service('API')

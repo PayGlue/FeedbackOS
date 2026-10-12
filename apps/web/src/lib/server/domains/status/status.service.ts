@@ -550,8 +550,8 @@ export async function postIncidentUpdate(
   // The timeline row, the status change and the component statuses it moves
   // commit together, so a failure part-way can't leave an incident marked
   // resolved while some of its services were never restored.
-  const { existing, startsMaintenance, rearmsMaintenance, updateData } = await db.transaction(
-    async (tx) => {
+  const { existing, startsMaintenance, completesMaintenance, rearmsMaintenance, updateData } =
+    await db.transaction(async (tx) => {
       const existing = await lockIncident(id, tx)
 
       const wasTerminal = existing.status === TERMINAL_STATUS[existing.kind]
@@ -661,11 +661,13 @@ export async function postIncidentUpdate(
       return {
         existing,
         startsMaintenance,
+        // Decided from the locked row, like the scheduler's own claim, so a
+        // transition is announced by whichever path actually made it.
+        completesMaintenance: existing.kind === 'maintenance' && becomesTerminal && !wasTerminal,
         rearmsMaintenance: existing.kind === 'maintenance' && (reopens || unschedulesMaintenance),
         updateData,
       }
-    }
-  )
+    })
 
   if (startsMaintenance) {
     await cancelMaintenanceJobs(existing).catch((err) =>
@@ -696,6 +698,26 @@ export async function postIncidentUpdate(
   }).catch((err) =>
     log.error({ err, incident_id: id }, 'failed to dispatch status.incident_updated')
   )
+
+  // The window's own transition events, which the scheduler sends when it
+  // makes the same move. Each path claims the move from the row's status
+  // under the same lock, so a transition is announced once whoever made it.
+  const transition = startsMaintenance
+    ? 'status.maintenance_started'
+    : completesMaintenance
+      ? 'status.maintenance_completed'
+      : null
+  if (transition) {
+    const links = await db.query.statusIncidentComponents.findMany({
+      where: eq(statusIncidentComponents.incidentId, id),
+      columns: { componentId: true },
+    })
+    await dispatchStatusEvent(transition, actor, {
+      incidentId: id,
+      title: existing.title,
+      componentIds: links.map((l) => l.componentId),
+    }).catch((err) => log.error({ err, incident_id: id }, `failed to dispatch ${transition}`))
+  }
 
   return getStatusIncidentById(id)
 }
