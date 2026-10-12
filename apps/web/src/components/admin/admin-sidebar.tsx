@@ -26,6 +26,7 @@ import {
   HomeIcon,
   SignalIcon,
   FlagIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/solid'
 import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
@@ -64,8 +65,11 @@ import {
   useBillingEnabled,
   useCloudEnabled,
   useSessionContext,
+  useUserRole,
   useWorkspaceSettings,
 } from '@/lib/client/hooks/use-root-context'
+import { isAdmin } from '@/lib/shared/roles'
+import { useWaitingApprovals } from '@/components/admin/approvals/use-waiting-approvals'
 
 /** Availability toggle for the account menu (conversation routing). The label shows the
  *  state you'll switch to; the avatar dot shows the current one. */
@@ -173,10 +177,27 @@ const RAIL_ITEMS: RailItem[] = [
   { label: 'Users', labelId: 'admin.nav.users', href: '/admin/users', icon: UsersIcon },
 ]
 
-/** The rail items a viewer sees: the products that are on. */
-export function buildRailItems(flags: Partial<FeatureFlags> | undefined): RailItem[] {
-  return RAIL_ITEMS.filter((item) => !item.product || isProductEnabled(flags, item.product))
+const APPROVALS_ITEM: RailItem = {
+  label: 'Approvals',
+  labelId: 'admin.nav.approvals',
+  href: '/admin/approvals',
+  icon: CheckCircleIcon,
 }
+
+/**
+ * The rail items a viewer sees: the products that are on, and Approvals
+ * below Home for a viewer who can decide requests.
+ */
+export function buildRailItems(
+  flags: Partial<FeatureFlags> | undefined,
+  options: { approvals?: boolean } = {}
+): RailItem[] {
+  const items = RAIL_ITEMS.filter((item) => !item.product || isProductEnabled(flags, item.product))
+  return options.approvals ? [items[0]!, APPROVALS_ITEM, ...items.slice(1)] : items
+}
+
+/** The most the rail's badge spells out. */
+const MAX_BADGE = 99
 
 /**
  * A rail item is active on its page and every page under it, whatever the
@@ -260,7 +281,7 @@ function MobileNavLink({
   label: string
   onClick: () => void
   exact?: boolean
-  badge?: number | null
+  badge?: string | number | null
   badgeLabel?: string
 }) {
   return (
@@ -312,7 +333,16 @@ export function AdminSidebar({ initialUserData, latestVersion, planNotice }: Adm
   const orgLogo = branding?.logoUrl ?? branding?.headerLogoUrl ?? '/logo.png'
   const orgName = branding?.name ?? 'Quackback'
 
-  const railItems = buildRailItems(flags)
+  // Requests waiting on the viewer. Admins can decide every kind, so they
+  // always have Approvals; a member has it while a request waits on them.
+  const userRole = useUserRole()
+  const waitingApprovals = useWaitingApprovals()?.count ?? 0
+  const onApprovalsPage = useRouterState({
+    select: (s) => s.location.pathname.startsWith('/admin/approvals'),
+  })
+  const railItems = buildRailItems(flags, {
+    approvals: isAdmin(userRole) || waitingApprovals > 0 || onApprovalsPage,
+  })
   // Posts and comments waiting for review. Shown on Feedback when there are any.
   const feedbackEnabled = isProductEnabled(flags, 'feedback')
   const canReviewPosts = usePermission(PERMISSIONS.POST_APPROVE)
@@ -323,9 +353,25 @@ export function AdminSidebar({ initialUserData, latestVersion, planNotice }: Adm
   })
   const pendingModeration = reviewEnabled ? (moderation?.pendingCount ?? 0) : 0
   const itemBadge = (item: RailItem) =>
-    item.href === '/admin/feedback' && pendingModeration > 0 ? pendingModeration : null
+    item.href === '/admin/feedback' && pendingModeration > 0
+      ? pendingModeration
+      : item.href === APPROVALS_ITEM.href && waitingApprovals > 0
+        ? waitingApprovals > MAX_BADGE
+          ? `${MAX_BADGE}+`
+          : waitingApprovals
+        : null
   const itemBadgeLabel = (item: RailItem) =>
-    itemBadge(item) ? `${pendingModeration} waiting for review` : undefined
+    !itemBadge(item)
+      ? undefined
+      : item.href === APPROVALS_ITEM.href
+        ? intl.formatMessage(
+            {
+              id: 'admin.nav.approvalsWaiting',
+              defaultMessage: '{count, plural, one {# waiting} other {# waiting}}',
+            },
+            { count: waitingApprovals }
+          )
+        : `${pendingModeration} waiting for review`
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const user = session?.user

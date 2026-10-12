@@ -9,6 +9,7 @@ import { fetchUserAvatar } from '@/lib/server/functions/portal'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { isProductEnabled } from '@/lib/shared/types/settings'
 import { unreadCountQuery } from '@/lib/client/hooks/use-notifications-queries'
+import { approvalQueries } from '@/lib/client/queries/approvals'
 import { getLatestVersion, isNewerVersion } from '@/lib/server/functions/version'
 import { AdminProductTourProvider } from '@/components/onboarding/admin-product-tour'
 import { AdminSidebar } from '@/components/admin/admin-sidebar'
@@ -141,6 +142,9 @@ export const Route = createFileRoute('/admin')({
       warmModeration
         ? context.queryClient.ensureQueryData(adminQueries.moderationStatus()).catch(() => null)
         : null,
+      // And for the requests waiting on the viewer: the Approvals badge and
+      // Home's list read this one answer.
+      context.queryClient.ensureQueryData(approvalQueries.waiting()).catch(() => null),
     ])
 
     const latestVersion =
