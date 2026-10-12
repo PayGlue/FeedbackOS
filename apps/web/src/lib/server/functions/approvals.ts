@@ -5,12 +5,14 @@
  * The base gate is a signed-in session; who may see or decide each request is
  * per row (the item's visibility and every permission the operation needs),
  * enforced by the approvals services. A decision that arrives here comes from
- * a person's session, never from the credential that filed the request.
+ * a person's session, never from the credential that filed the request. A
+ * refusal the page can act on is returned as `{ ok: false, code, message }`.
  */
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
 import type { AssistantPendingActionId } from '@quackback/ids'
 import { requireAuth, policyActorFromAuth } from './auth-helpers'
+import { approvalRefusal } from '@/lib/shared/approval-refusal'
 
 const ApprovalInput = z.object({ approvalId: z.string() })
 
@@ -44,10 +46,22 @@ export const rejectApprovalFn = createServerFn({ method: 'POST' })
     const auth = await requireAuth()
     const actor = await policyActorFromAuth(auth)
     const { rejectApproval } = await import('@/lib/server/domains/assistant/approvals.service')
-    const row = await rejectApproval(actor, data.approvalId as AssistantPendingActionId, {
-      contentHash: data.contentHash,
-      reason: data.reason,
-      via: 'app',
-    })
-    return { id: row.id, status: row.status, decisionReason: row.decisionReason }
+    try {
+      const row = await rejectApproval(actor, data.approvalId as AssistantPendingActionId, {
+        contentHash: data.contentHash,
+        reason: data.reason,
+        via: 'app',
+      })
+      return {
+        ok: true as const,
+        id: row.id,
+        status: row.status,
+        decisionReason: row.decisionReason,
+      }
+    } catch (error) {
+      // A refusal the page branches on travels as a value; see approvalRefusal.
+      const refused = approvalRefusal(error)
+      if (refused) return refused
+      throw error
+    }
   })
