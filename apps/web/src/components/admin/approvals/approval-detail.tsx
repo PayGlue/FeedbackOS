@@ -6,6 +6,7 @@ import { ArrowLeftIcon, CheckIcon } from '@heroicons/react/24/outline'
 import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
 import {
   approveApprovalFn,
+  approveApprovalFromEmailFn,
   rejectApprovalFn,
   type ApprovalDecisionResult,
 } from '@/lib/server/functions/approvals'
@@ -71,11 +72,18 @@ export interface ApprovalDetailProps {
   decidedHere: boolean
   /** The request as it now stands, after a decision or a refresh. */
   onChange: (approval: ApprovalView, decided: boolean) => void
+  source?: 'app' | 'email'
   onBack?: () => void
 }
 
 /** One request: who asked and for whom, what changes, and Approve or Reject. */
-export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: ApprovalDetailProps) {
+export function ApprovalDetail({
+  approval,
+  decidedHere,
+  onChange,
+  onBack,
+  source = 'app',
+}: ApprovalDetailProps) {
   const intl = useIntl()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -173,7 +181,9 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
 
   const approve = () =>
     decide(() =>
-      approveApprovalFn({ data: { approvalId: approval.id, contentHash: approval.contentHash } })
+      (source === 'email' ? approveApprovalFromEmailFn : approveApprovalFn)({
+        data: { approvalId: approval.id, contentHash: approval.contentHash },
+      })
     )
 
   approveRef.current = approve

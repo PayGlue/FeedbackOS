@@ -8,11 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
 
 const state = vi.hoisted(() => ({
-  search: {} as { view?: 'decided'; id?: string },
+  search: {} as { view?: 'decided'; id?: string; d?: string },
   navigate: vi.fn(),
   waiting: [] as unknown[],
   decided: [] as unknown[],
   approve: vi.fn(),
+  emailApprove: vi.fn(),
   reject: vi.fn(),
   getApproval: vi.fn(),
   undo: vi.fn(),
@@ -33,12 +34,14 @@ function navigateTo({ search }: { search: object | ((previous: object) => object
 }
 
 vi.mock('@tanstack/react-router', async () => {
-  const { useSyncExternalStore } = await import('react')
+  const { useSyncExternalStore, createElement } = await import('react')
   const subscribe = (listener: () => void) => {
     state.listeners.add(listener)
     return () => state.listeners.delete(listener)
   }
   return {
+    Link: ({ children, to }: { children: ReactNode; to: string }) =>
+      createElement('a', { href: to }, children),
     getRouteApi: () => ({
       useNavigate: () => state.navigate,
       useSearch: () => useSyncExternalStore(subscribe, () => state.search),
@@ -66,6 +69,7 @@ vi.mock('@/lib/server/functions/approvals', () => ({
   },
   getApprovalFn: (args: unknown) => state.getApproval(args),
   approveApprovalFn: (args: unknown) => state.approve(args),
+  approveApprovalFromEmailFn: (args: unknown) => state.emailApprove(args),
   rejectApprovalFn: (args: unknown) => state.reject(args),
   markApprovalBellReadFn: () => state.bellRead(),
 }))
@@ -88,6 +92,7 @@ vi.mock('@/components/admin/ask/ask-messages', () => ({
 }))
 
 const { ApprovalsPage } = await import('../approvals-page')
+const { ApprovalConfirmPage } = await import('../approval-confirm-page')
 
 function view(overrides: Partial<ApprovalView> = {}): ApprovalView {
   const now = Date.now()
@@ -132,13 +137,13 @@ function view(overrides: Partial<ApprovalView> = {}): ApprovalView {
   }
 }
 
-function renderPage() {
+function renderPage(content: ReactNode = <ApprovalsPage />) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client = queryClient
   return render(
     <QueryClientProvider client={queryClient}>
       <IntlProvider locale="en" defaultLocale="en" messages={{}}>
-        <ApprovalsPage />
+        {content}
       </IntlProvider>
     </QueryClientProvider>
   )
@@ -156,6 +161,8 @@ beforeEach(() => {
   state.bellRead.mockResolvedValue({ marked: 0 })
   state.navigate.mockReset()
   state.navigate.mockImplementation(navigateTo)
+  state.emailApprove.mockReset()
+  state.signInRequest.mockReset()
   state.approve.mockReset()
   state.reject.mockReset()
   state.getApproval.mockReset()
@@ -683,5 +690,33 @@ describe('ApprovalsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'This action can no longer be approved.'
     )
+  })
+})
+
+describe('approval confirmation from a link', () => {
+  it('only reads on opening; approval is an explicit click bound to the emailed content', async () => {
+    state.search = { id: 'assistant_action_01', d: 'digest-1' }
+    state.getApproval.mockResolvedValue(view())
+    state.emailApprove.mockResolvedValue({ ok: true, approval: view({ status: 'executed' }) })
+    renderPage(<ApprovalConfirmPage />)
+    const approve = await screen.findByRole('button', { name: 'Approve' })
+    expect(state.approve).not.toHaveBeenCalled()
+    expect(state.emailApprove).not.toHaveBeenCalled()
+    fireEvent.click(approve)
+    await waitFor(() =>
+      expect(state.emailApprove).toHaveBeenCalledWith({
+        data: { approvalId: 'assistant_action_01', contentHash: 'digest-1' },
+      })
+    )
+    expect(await screen.findByText('Done. It can’t be undone.')).toBeInTheDocument()
+  })
+
+  it('requires another review when the link names old content', async () => {
+    state.search = { id: 'assistant_action_01', d: 'old-digest' }
+    state.getApproval.mockResolvedValue(view())
+    renderPage(<ApprovalConfirmPage />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('This request changed.')
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(state.emailApprove).not.toHaveBeenCalled()
   })
 })

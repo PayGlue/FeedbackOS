@@ -57,7 +57,12 @@ vi.mock('@/lib/server/domains/assistant/approvals.queue', () => ({
   pageApprovalsForViewer: hoisted.pageApprovalsForViewer,
 }))
 
-import { approveApprovalFn, listApprovalsFn, rejectApprovalFn } from '../approvals'
+import {
+  approveApprovalFn,
+  approveApprovalFromEmailFn,
+  listApprovalsFn,
+  rejectApprovalFn,
+} from '../approvals'
 import { getRailCountsFn } from '../approval-counts'
 
 const actor = { principalId: 'principal_ada', role: 'admin', principalType: 'user' }
@@ -215,5 +220,18 @@ describe('reads', () => {
       limit: undefined,
       cursor: 'assistant_action_2',
     })
+  })
+})
+
+it('email approval uses the same authority, digest and server-confirmed sign-in', async () => {
+  hoisted.hasRecentSignIn.mockResolvedValue(true)
+  hoisted.approveApproval.mockResolvedValue({ id: 'assistant_action_1', status: 'executed' })
+  await approveApprovalFromEmailFn({
+    data: { approvalId: 'assistant_action_1', contentHash: 'digest' },
+  })
+  expect(hoisted.approveApproval).toHaveBeenCalledWith(actor, 'assistant_action_1', {
+    contentHash: 'digest',
+    via: 'email',
+    freshSignIn: true,
   })
 })
