@@ -30,6 +30,12 @@ function row(overrides: Partial<AuditEventRow> = {}): AuditEventRow {
     requestId: null,
     actorType: null,
     authMethod: null,
+    channel: null,
+    credentialKind: null,
+    credentialId: null,
+    clientName: null,
+    onBehalfOfPrincipalId: null,
+    onBehalfOfName: null,
     ...overrides,
   }
 }
@@ -56,5 +62,31 @@ describe('rowsToCsv — audit-log observability columns', () => {
     // Should not contain the literal string "null" — empty CSV cell instead.
     expect(csv).not.toMatch(/,null,/)
     expect(csv).not.toMatch(/,null$/)
+  })
+})
+
+describe('rowsToCsv: attribution columns', () => {
+  it('exports how each change arrived, which credential made it and for whom', () => {
+    const csv = rowsToCsv([
+      row({
+        eventType: 'mcp.tool_call',
+        channel: 'mcp',
+        credentialKind: 'oauth_client',
+        credentialId: 'client_desktop',
+        clientName: 'Claude Desktop',
+        onBehalfOfPrincipalId: 'principal_01h455vb4pex5vsknk084sn02r',
+        onBehalfOfName: 'James Morton',
+      }),
+    ])
+    const [header, dataRow] = csv.split('\n')
+    const columns = header.split(',')
+    const cells = dataRow.split(',')
+    const cell = (name: string) => cells[columns.indexOf(name)]
+    expect(cell('channel')).toBe('mcp')
+    expect(cell('credential_kind')).toBe('oauth_client')
+    expect(cell('credential_id')).toBe('client_desktop')
+    expect(cell('client_name')).toBe('Claude Desktop')
+    expect(cell('on_behalf_of_principal_id')).toBe('principal_01h455vb4pex5vsknk084sn02r')
+    expect(cell('on_behalf_of')).toBe('James Morton')
   })
 })

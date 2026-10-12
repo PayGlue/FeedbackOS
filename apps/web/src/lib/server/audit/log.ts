@@ -18,10 +18,13 @@ import {
   ilike,
   inArray,
   notInArray,
+  principal,
+  user,
   type Transaction,
 } from '@/lib/server/db'
 import type { SQL } from 'drizzle-orm'
-import type { UserId } from '@quackback/ids'
+import type { PrincipalId, UserId } from '@quackback/ids'
+import type { AuditChannel, AuditCredentialKind } from '@/lib/shared/audit-attribution'
 import { getClientIp } from '@/lib/server/domains/api/rate-limit'
 import type { AuthContext } from '@/lib/server/functions/auth-helpers'
 import { logger } from '@/lib/server/logger'
@@ -304,6 +307,15 @@ export interface AuditEventRow {
   requestId: string | null
   actorType: string | null
   authMethod: string | null
+  // Attribution columns from migration 0301: how the change arrived, which
+  // credential made it, and the person it was made for (by id, and by name
+  // as that person is called now).
+  channel: AuditChannel | null
+  credentialKind: AuditCredentialKind | null
+  credentialId: string | null
+  clientName: string | null
+  onBehalfOfPrincipalId: string | null
+  onBehalfOfName: string | null
 }
 
 export interface QueryAuditEventsFilters {
@@ -363,6 +375,8 @@ export async function queryAuditEvents(filters: QueryAuditEventsFilters): Promis
     .orderBy(desc(auditLog.occurredAt))
     .limit(filters.limit)
 
+  const names = await principalNames(rows.map((row) => row.onBehalfOfPrincipalId))
+
   return rows.map((row) => ({
     id: row.id,
     occurredAt: row.occurredAt.toISOString(),
@@ -381,7 +395,38 @@ export async function queryAuditEvents(filters: QueryAuditEventsFilters): Promis
     requestId: row.requestId,
     actorType: row.actorType,
     authMethod: row.authMethod,
+    channel: (row.channel as AuditChannel | null | undefined) ?? null,
+    credentialKind: (row.credentialKind as AuditCredentialKind | null | undefined) ?? null,
+    credentialId: row.credentialId ?? null,
+    clientName: row.clientName ?? null,
+    onBehalfOfPrincipalId: row.onBehalfOfPrincipalId ?? null,
+    onBehalfOfName: row.onBehalfOfPrincipalId
+      ? (names.get(row.onBehalfOfPrincipalId) ?? null)
+      : null,
   }))
+}
+
+/**
+ * Display names for the people credentials acted for, in one read over the
+ * distinct ids on the page. Someone since removed has no name, and the row
+ * keeps their id.
+ */
+async function principalNames(
+  ids: ReadonlyArray<PrincipalId | null | undefined>
+): Promise<Map<string, string>> {
+  const distinct = [...new Set(ids.filter((id): id is PrincipalId => !!id))]
+  if (distinct.length === 0) return new Map()
+  const rows = await db
+    .select({ id: principal.id, displayName: principal.displayName, userName: user.name })
+    .from(principal)
+    .leftJoin(user, eq(user.id, principal.userId))
+    .where(inArray(principal.id, distinct))
+  const names = new Map<string, string>()
+  for (const row of rows) {
+    const name = row.displayName ?? row.userName
+    if (name) names.set(row.id, name)
+  }
+  return names
 }
 
 /** Cap on the `metadata.reason` extracted from thrown errors. */

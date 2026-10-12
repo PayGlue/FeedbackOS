@@ -5,6 +5,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useSuspenseQuery } from '@tanstack/react-query'
+import { defineMessages, useIntl, type IntlShape, type MessageDescriptor } from 'react-intl'
 import { useDebouncedValue } from '@/lib/client/hooks/use-debounced-value'
 import { ArrowDownTrayIcon } from '@heroicons/react/24/solid'
 import {
@@ -31,6 +32,7 @@ import {
 import { adminQueries } from '@/lib/client/queries/admin'
 import { ASSISTANT_CONFIG_EVENT_LABELS } from '@/lib/shared/assistant/config-audit-events'
 import type { AuditEventRow } from '@/lib/server/functions/audit-log'
+import type { AuditChannel } from '@/lib/shared/audit-attribution'
 
 /**
  * Event-type catalog for the filter dropdown. Mirrors the
@@ -192,6 +194,12 @@ export function rowsToCsv(rows: AuditEventRow[]): string {
     'target_id',
     'request_id',
     'metadata',
+    'channel',
+    'credential_kind',
+    'credential_id',
+    'client_name',
+    'on_behalf_of_principal_id',
+    'on_behalf_of',
   ]
   const escape = (v: unknown): string => {
     if (v === null || v === undefined) return ''
@@ -214,12 +222,58 @@ export function rowsToCsv(rows: AuditEventRow[]): string {
         r.targetId,
         r.requestId,
         r.metadata,
+        r.channel,
+        r.credentialKind,
+        r.credentialId,
+        r.clientName,
+        r.onBehalfOfPrincipalId,
+        r.onBehalfOfName,
       ]
         .map(escape)
         .join(',')
     ),
   ]
   return lines.join('\n')
+}
+
+const VIA_CHANNEL: Partial<Record<AuditChannel, MessageDescriptor>> = defineMessages({
+  api: { id: 'admin.auditLog.via.api', defaultMessage: 'via API' },
+  mcp: { id: 'admin.auditLog.via.mcp', defaultMessage: 'via MCP' },
+  assistant: { id: 'admin.auditLog.via.assistant', defaultMessage: 'via assistant' },
+  workflow: { id: 'admin.auditLog.via.workflow', defaultMessage: 'via workflow' },
+  system: { id: 'admin.auditLog.via.system', defaultMessage: 'via system' },
+})
+
+const VIA_ON_BEHALF_OF = defineMessages({
+  onBehalfOf: { id: 'admin.auditLog.via.onBehalfOf', defaultMessage: 'for {name}' },
+}).onBehalfOf
+
+/**
+ * How a change that did not come from someone using the app arrived, and for
+ * whom: "via MCP · Claude Desktop for James Morton". Null for a change made in
+ * the app, and for a row with no attribution, so the normal row stays quiet.
+ */
+export function attributionLine(
+  row: { channel: AuditChannel | null; clientName: string | null; onBehalfOfName: string | null },
+  intl: Pick<IntlShape, 'formatMessage'>
+): string | null {
+  // `ui` has no line, and neither does a channel this build does not know.
+  const channel = row.channel ? VIA_CHANNEL[row.channel] : undefined
+  if (!channel) return null
+  const via = [intl.formatMessage(channel), row.clientName].filter(Boolean).join(' · ')
+  if (!row.onBehalfOfName) return via
+  return `${via} ${intl.formatMessage(VIA_ON_BEHALF_OF, { name: row.onBehalfOfName })}`
+}
+
+function ViaLine({ row }: { row: AuditEventRow }) {
+  const intl = useIntl()
+  const line = attributionLine(row, intl)
+  if (!line) return null
+  return (
+    <span className="truncate text-xs text-muted-foreground" title={line}>
+      {line}
+    </span>
+  )
 }
 
 function ActorCell({ row }: { row: AuditEventRow }) {
@@ -235,6 +289,7 @@ function ActorCell({ row }: { row: AuditEventRow }) {
     <div className="flex flex-col">
       <span className="truncate">{primary}</span>
       {subtitle ? <span className="text-xs text-muted-foreground">{subtitle}</span> : null}
+      <ViaLine row={row} />
     </div>
   )
 }
@@ -284,6 +339,7 @@ function downloadCsv(rows: AuditEventRow[]): void {
 }
 
 export function AuditLogPage() {
+  const intl = useIntl()
   const [eventType, setEventType] = useState<string>('all')
   const [timeRange, setTimeRange] = useState<TimeRange>('30d')
   const [actorEmailInput, setActorEmailInput] = useState<string>('')
@@ -463,12 +519,17 @@ export function AuditLogPage() {
                     <span className="w-12 shrink-0 font-medium text-foreground/60">When</span>
                     <InlineTimestamp iso={row.occurredAt} />
                   </div>
-                  {row.actorEmail && (
+                  {row.actorEmail || attributionLine(row, intl) ? (
                     <div className="flex gap-2">
                       <span className="w-12 shrink-0 font-medium text-foreground/60">Actor</span>
-                      <span className="truncate">{row.actorEmail}</span>
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate">
+                          {row.actorEmail ?? (row.actorType ? `(${row.actorType})` : null)}
+                        </span>
+                        <ViaLine row={row} />
+                      </div>
                     </div>
-                  )}
+                  ) : null}
                   {row.targetType && (
                     <div className="flex gap-2">
                       <span className="w-12 shrink-0 font-medium text-foreground/60">Target</span>
