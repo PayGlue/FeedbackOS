@@ -142,7 +142,7 @@ describe('propose_settings_change', () => {
     const tools = await keySession(owner)
     const filed = await propose(tools, 'Acme team')
     expect(filed.approvalId).toMatch(/^assistant_action_/)
-    expect(filed.url).toBe(`https://acme.example.com/admin/approvals/${filed.approvalId}`)
+    expect(filed.url).toBe(`https://acme.example.com/admin/approvals?id=${filed.approvalId}`)
     expect(filed.status).toBe('pending')
     expect(String(filed.next)).toContain('get_approval')
   })

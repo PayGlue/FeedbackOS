@@ -22,28 +22,33 @@ export const APPROVAL_STATUSES = [
 
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number]
 
-const APPROVALS_PATH = '/admin/approvals/'
+/** The Approvals page, which opens on the request its `id` names. */
+const APPROVALS_PAGE = '/admin/approvals'
 
 /** The in-app page a person opens to decide an approval. */
 export function approvalPath(approvalId: string): string {
-  return `${APPROVALS_PATH}${approvalId}`
+  return `${APPROVALS_PAGE}?id=${encodeURIComponent(approvalId)}`
 }
 
 /**
  * The approval id in a reference to one: the id itself, or the url (or path)
- * of its page. Null for anything else.
+ * of its page, `/admin/approvals?id=<id>`. The older `/admin/approvals/<id>`
+ * form is read too. Null for anything else.
  */
 export function approvalIdFromReference(reference: string): string | null {
   let candidate = reference.trim()
   if (/^https?:\/\//i.test(candidate) || candidate.startsWith('/')) {
-    let path: string
+    let url: URL
     try {
-      path = new URL(candidate, 'http://localhost').pathname
+      url = new URL(candidate, 'http://localhost')
     } catch {
       return null
     }
-    if (!path.startsWith(APPROVALS_PATH)) return null
-    candidate = path.slice(APPROVALS_PATH.length).replace(/\/$/, '')
+    const path = url.pathname.replace(/\/$/, '')
+    if (path === APPROVALS_PAGE) candidate = url.searchParams.get('id') ?? ''
+    else if (path.startsWith(`${APPROVALS_PAGE}/`))
+      candidate = path.slice(APPROVALS_PAGE.length + 1)
+    else return null
   }
   return isValidTypeId(candidate, 'assistant_action') ? candidate : null
 }

@@ -52,6 +52,8 @@ describe('approvals OpenAPI contract', () => {
       expect(response, field).toContain(`"${field}"`)
     }
     for (const status of APPROVAL_STATUSES) expect(response).toContain(`"${status}"`)
+    // The example url is the form the Approvals page opens on.
+    expect(response).toContain('/admin/approvals?id=assistant_action_')
     expect(JSON.stringify(one?.get?.responses?.['404' as never])).toBeTruthy()
   })
 

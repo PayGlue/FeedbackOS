@@ -267,7 +267,7 @@ describe('one approval', () => {
       decidedAt: null,
       decidedVia: null,
       reason: null,
-      url: `https://acme.example.com/admin/approvals/${filed.id}`,
+      url: `https://acme.example.com/admin/approvals?id=${filed.id}`,
     })
     expect(new Date(approval.expiresAt).getTime()).toBeGreaterThan(Date.now())
 

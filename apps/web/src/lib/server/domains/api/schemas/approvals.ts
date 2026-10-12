@@ -120,7 +120,7 @@ export const ApprovalSchema = z
     url: z.string().meta({
       description: 'The page in the app where a person reviews and decides this request',
       example:
-        'https://feedback.example.com/admin/approvals/assistant_action_01h455vb4pex5vsknk084sn02q',
+        'https://feedback.example.com/admin/approvals?id=assistant_action_01h455vb4pex5vsknk084sn02q',
     }),
   })
   .meta({ description: 'A request for a person to approve a change' })

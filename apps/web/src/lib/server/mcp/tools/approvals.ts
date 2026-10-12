@@ -49,7 +49,7 @@ export function registerApprovalTools(server: McpServer, auth: McpAuthContext) {
     description: `Check where an approval request stands: pending, approved, rejected, expired, superseded, applied or failed. Pass the approvalId or the url that propose_settings_change returned. Returns the risk, a title and summary written by the server, each change (field, from, to), who asked, who decided and why, and the url where a person decides it. You cannot approve or reject anything with this tool; only a person can, in the app.
 Examples:
 {"approval":"assistant_action_01h455vb4pex5vsknk084sn02q"}
-{"approval":"https://feedback.example.com/admin/approvals/assistant_action_01h455vb4pex5vsknk084sn02q"}`,
+{"approval":"https://feedback.example.com/admin/approvals?id=assistant_action_01h455vb4pex5vsknk084sn02q"}`,
     schema: {
       approval: z
         .string()
