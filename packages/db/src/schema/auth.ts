@@ -1259,9 +1259,7 @@ export const deviceCode = pgTable(
     id: text('id').primaryKey(),
     deviceCode: text('device_code').notNull(),
     userCode: text('user_code').notNull(),
-    userId: typeIdColumnNullable('user')('user_id').references(() => user.id, {
-      onDelete: 'cascade',
-    }),
+    userId: typeIdColumnNullable('user')('user_id'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     status: text('status').notNull(),
     lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
@@ -1272,6 +1270,11 @@ export const deviceCode = pgTable(
     oauthClientId: text('oauth_client_id'),
   },
   (table) => [
+    foreignKey({
+      name: 'device_code_user_id_fkey',
+      columns: [table.userId],
+      foreignColumns: [user.id],
+    }).onDelete('cascade'),
     uniqueIndex('device_code_device_code_idx').on(table.deviceCode),
     uniqueIndex('device_code_user_code_idx').on(table.userCode),
     index('device_code_user_id_idx').on(table.userId),

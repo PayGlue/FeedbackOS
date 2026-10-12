@@ -4,25 +4,10 @@ import {
   toggleDomainLevel,
   type AccessDomainId,
   type DomainAccessChip,
-  type DomainAccessLevel,
   type DomainAccessLevels,
 } from '@/lib/shared/api-key-scopes'
+import { isChipWithinRequest } from '@/lib/shared/domain-access'
 import { cn } from '@/lib/shared/utils'
-
-const LEVEL_RANK: Record<DomainAccessLevel, number> = { off: 0, read: 1, read_write: 2, write: 2 }
-
-/**
- * Whether choosing `chip` in `domain` stays within `allowed`, the most each
- * domain may be given (a device sign-in's request). Kept with the picker, not
- * in the shared scope module every admin page loads.
- */
-export function isChipWithinRequest(
-  allowed: DomainAccessLevels,
-  domain: AccessDomainId,
-  chip: DomainAccessChip
-): boolean {
-  return LEVEL_RANK[chip] <= LEVEL_RANK[allowed[domain]]
-}
 
 function AccessChip({
   name,

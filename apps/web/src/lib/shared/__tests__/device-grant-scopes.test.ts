@@ -6,7 +6,7 @@ import {
   deviceRequestedCapabilities,
   deviceRequestedOfflineAccess,
 } from '../device-grant-scopes'
-import { isChipWithinRequest } from '@/components/domain-access-picker'
+import { isChipWithinRequest } from '../domain-access'
 
 describe('device grant scopes', () => {
   it('reads the capabilities and refresh access a request names', () => {
