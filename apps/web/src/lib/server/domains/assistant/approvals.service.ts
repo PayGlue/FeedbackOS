@@ -112,33 +112,38 @@ export function approvalRiskOf(row: Pick<PendingActionRow, 'risk' | 'toolName' |
 }
 
 /**
- * The digest a decision on this request must name, as shown to a person.
+ * The digest a decision on this request must name, as shown to a person: the
+ * digest of the content being shown.
  *
- * Every request filed now carries one. A request filed before digests were
- * kept gets one the first time it is shown, computed from the content being
- * shown and stored only while none is stored, so the person decides what
- * they saw and an edit after that is refused.
+ * Every request filed now stores one that matches its content. Two kinds of
+ * row do not: one filed before digests were kept (none stored), and one an
+ * older instance edited in place while merging same-turn requests (a stored
+ * digest its content no longer matches, which every decision would refuse
+ * until it expired). Either is bound to the content shown now, with a
+ * compare-and-set on the value that was read, so the person decides what they
+ * see and a decision naming anything else is refused.
  */
 export async function digestForDisplay(
   row: PendingActionRow,
   exec: Executor = db
 ): Promise<string> {
-  if (row.argsDigest) return row.argsDigest
   const digest = approvalContentDigest(row.args)
-  if (row.status !== 'proposed') return digest
-  const [stored] = await exec
+  if (row.argsDigest === digest || row.status !== 'proposed') return digest
+  await exec
     .update(assistantPendingActions)
     .set({ argsDigest: digest })
-    .where(and(eq(assistantPendingActions.id, row.id), isNull(assistantPendingActions.argsDigest)))
-    .returning({ argsDigest: assistantPendingActions.argsDigest })
-  if (stored?.argsDigest) return stored.argsDigest
-  // Another reader stored one first; that is the one a decision names.
-  const [current] = await exec
-    .select({ argsDigest: assistantPendingActions.argsDigest })
-    .from(assistantPendingActions)
-    .where(eq(assistantPendingActions.id, row.id))
-    .limit(1)
-  return current?.argsDigest ?? digest
+    .where(
+      and(
+        eq(assistantPendingActions.id, row.id),
+        row.argsDigest === null
+          ? isNull(assistantPendingActions.argsDigest)
+          : eq(assistantPendingActions.argsDigest, row.argsDigest)
+      )
+    )
+  // If another reader moved the digest first, the one returned here still
+  // names exactly what this reader shows; a decision on it lands only if the
+  // stored digest and the content agree with it.
+  return digest
 }
 
 /** The approval fields a card shows beside a request: the digest to decide on, and the risk. */

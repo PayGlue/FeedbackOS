@@ -47,6 +47,7 @@ import {
   rejectApproval,
 } from '../approvals.service'
 import { decideAssistantAction } from '../assistant-actions.service'
+import { digestOf } from '@/lib/server/utils/canonical-json'
 import { getApprovalForViewer, listApprovalsForViewer } from '../approvals.queue'
 
 const fixture = await createDbTestFixture()
@@ -312,6 +313,41 @@ describe('what a decision binds to', () => {
       rejectApproval(otherAdmin, pending.id, { contentHash: shown.argsDigest })
     ).rejects.toMatchObject({ code: 'APPROVAL_CONTENT_CHANGED' })
     expect((await rowOf(pending.id)).status).toBe('proposed')
+  })
+
+  it('re-binds a request an older instance edited in place to the content shown now', async () => {
+    const pending = await homeProposal()
+    // A version that merged same-turn requests by editing the row left its
+    // digest behind, so it no longer matches the content.
+    const edited = {
+      ...pending.args,
+      changes: (pending.args.changes as Record<string, unknown>[]).map((change) => ({
+        ...change,
+        after: 'Acme crew',
+      })),
+    }
+    await testDb
+      .update(assistantPendingActions)
+      .set({ args: edited })
+      .where(eq(assistantPendingActions.id, pending.id))
+    await expect(
+      applyWorkspaceSettingsProposal(otherAdmin, pending.id, ['portal.displayName'], {
+        contentHash: pending.argsDigest!,
+      })
+    ).rejects.toMatchObject({ code: 'APPROVAL_CONTENT_CHANGED' })
+
+    // Showing it again binds the digest to what is shown now, so it can be decided.
+    const shown = await approvalFieldsForDisplay(await rowOf(pending.id))
+    expect(shown.argsDigest).toBe(digestOf(edited))
+    expect((await rowOf(pending.id)).argsDigest).toBe(shown.argsDigest)
+    const applied = await applyWorkspaceSettingsProposal(
+      otherAdmin,
+      pending.id,
+      ['portal.displayName'],
+      { contentHash: shown.argsDigest }
+    )
+    expect(applied.status).toBe('executed')
+    expect(await workspaceName()).toBe('Acme crew')
   })
 
   it('needs the digest the person was shown on the inbox path too', async () => {
