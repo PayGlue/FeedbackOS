@@ -358,4 +358,84 @@ describe('ApprovalsPage', () => {
     await screen.findByText('Rejected.')
     await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
   })
+
+  it('names the area of each change when a request spans more than one', async () => {
+    state.waiting = [
+      view({
+        diff: {
+          kind: 'settings',
+          changes: [
+            {
+              id: 'messenger.enabled',
+              area: 'messenger',
+              path: ['enabled'],
+              before: false,
+              after: true,
+            },
+            {
+              id: 'portal.displayName',
+              area: 'portal',
+              path: ['displayName'],
+              before: 'Acme',
+              after: 'Acme team',
+            },
+          ],
+        },
+      }),
+    ]
+    renderPage()
+    expect(await screen.findByText('Messenger: Enabled')).toBeInTheDocument()
+    expect(screen.getByText('Portal: Workspace name')).toBeInTheDocument()
+  })
+
+  it('keeps the field alone when every change is in one area', async () => {
+    state.waiting = [view()]
+    renderPage()
+    expect(await screen.findByText('Workspace name')).toBeInTheDocument()
+  })
+
+  it('shows a brand colour as a swatch and a hex value, never raw oklch', async () => {
+    state.waiting = [
+      view({
+        diff: {
+          kind: 'settings',
+          changes: [
+            {
+              id: 'branding.light.primary',
+              area: 'branding',
+              path: ['light', 'primary'],
+              before: 'oklch(0.886 0.176 86)',
+              after: '#0f766e',
+            },
+          ],
+        },
+      }),
+    ]
+    renderPage()
+    await screen.findByText('#0F766E')
+    expect(screen.queryByText(/oklch/)).toBeNull()
+    expect(screen.getByText(/^#[0-9A-F]{6}$/, { selector: '.line-through *' })).toBeInTheDocument()
+  })
+
+  it('says None for an action field it clears', async () => {
+    state.waiting = [
+      view({
+        toolName: 'set_conversation_attribute',
+        parent: { kind: 'conversation', id: 'conversation_1' },
+        diff: { kind: 'action', args: { attribute: 'plan', value: null } },
+      }),
+    ]
+    renderPage()
+    const row = (await screen.findByText('Value')).closest('div')!
+    expect(within(row).getByText('None')).toBeInTheDocument()
+    expect(screen.getByText('plan')).toBeInTheDocument()
+  })
+
+  it('reads each change as from and to for a screen reader', async () => {
+    state.waiting = [view()]
+    renderPage()
+    const row = (await screen.findByText('Workspace name')).closest('div')!
+    expect(within(row).getByText('From', { selector: '.sr-only' })).toBeInTheDocument()
+    expect(within(row).getByText('To', { selector: '.sr-only' })).toBeInTheDocument()
+  })
 })

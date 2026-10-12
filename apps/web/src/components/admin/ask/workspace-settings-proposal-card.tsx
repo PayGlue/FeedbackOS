@@ -17,6 +17,7 @@ import {
   undoWorkspaceSettingsProposalFn,
 } from '@/lib/server/functions/workspace-copilot'
 import { sanitizeImageUrl } from '@/lib/shared/utils/sanitize'
+import { isValidOklch, oklchToHex } from '@/lib/shared/theme/colors'
 import { refreshSettingsProposalQueries } from './settings-proposal-cache'
 import type { ApprovalRefusal } from '@/lib/shared/approval-refusal'
 
@@ -143,6 +144,12 @@ function readableValue(value: unknown, locale: string): string {
     .join(', ')
 }
 
+/** A color as a person reads it: a hex value, whichever notation it is stored in. */
+function readableColor(color: string): string {
+  if (color.startsWith('#')) return color.toUpperCase()
+  return isValidOklch(color) ? oklchToHex(color).toUpperCase() : color
+}
+
 /** A settings value as it reads: On, a color swatch, a logo, a weekly schedule. */
 export function SettingsValue({ value, preview }: { value: unknown; preview?: string | null }) {
   const intl = useIntl()
@@ -188,7 +195,9 @@ export function SettingsValue({ value, preview }: { value: unknown; preview?: st
       <span className="min-w-0 truncate">
         {imageUrl
           ? intl.formatMessage({ id: 'ask.settings.field.logoKey', defaultMessage: 'Logo' })
-          : text}
+          : color
+            ? readableColor(color)
+            : text}
       </span>
     </span>
   )

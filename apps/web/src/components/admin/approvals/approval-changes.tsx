@@ -4,10 +4,11 @@ import { InformationCircleIcon } from '@heroicons/react/24/outline'
 import type { ApprovalDiff } from '@/lib/server/domains/assistant/approvals.queue'
 import {
   SettingsValue,
+  settingsAreaLabel,
   settingsEffectMessage,
   settingsFieldLabel,
 } from '@/components/admin/ask/workspace-settings-proposal-card'
-import type { MessengerEffect } from '@/lib/shared/assistant/settings-proposals'
+import type { MessengerEffect, SettingsArea } from '@/lib/shared/assistant/settings-proposals'
 import { approvalMessages } from './approval-messages'
 
 interface ChangeRow {
@@ -27,8 +28,9 @@ function readableField(key: string): string {
   return words ? words[0]!.toUpperCase() + words.slice(1) : key
 }
 
-function readableValue(value: unknown): string {
-  if (value == null) return ''
+/** An action's value as it reads; null when the action clears the field. */
+function readableValue(value: unknown): string | null {
+  if (value == null || value === '') return null
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
     return String(value)
   return JSON.stringify(value)
@@ -36,23 +38,33 @@ function readableValue(value: unknown): string {
 
 function useChangeRows(diff: ApprovalDiff): ChangeRow[] {
   const intl = useIntl()
-  if (diff.kind === 'settings')
-    return diff.changes.map((change) => ({
-      key: change.id,
-      field: settingsFieldLabel(intl, change.path),
-      from: <SettingsValue value={change.before} preview={change.beforePreview} />,
-      to: <SettingsValue value={change.after} preview={change.afterPreview} />,
-    }))
+  if (diff.kind === 'settings') {
+    // A request across areas names each change's area: "Messenger: Enabled".
+    const acrossAreas = new Set(diff.changes.map((change) => change.area)).size > 1
+    return diff.changes.map((change) => {
+      const field = settingsFieldLabel(intl, change.path)
+      return {
+        key: change.id,
+        field: acrossAreas
+          ? `${settingsAreaLabel(intl, change.area as SettingsArea)}: ${field}`
+          : field,
+        from: <SettingsValue value={change.before} preview={change.beforePreview} />,
+        to: <SettingsValue value={change.after} preview={change.afterPreview} />,
+      }
+    })
+  }
   const args = diff.args
   if (!args || typeof args !== 'object' || Array.isArray(args)) return []
-  return Object.entries(args)
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([key, value]) => ({
-      key,
-      field: readableField(key),
-      from: null,
-      to: <span className="break-words">{readableValue(value)}</span>,
-    }))
+  return Object.entries(args).map(([key, value]) => ({
+    key,
+    field: readableField(key),
+    from: null,
+    to: (
+      <span className="break-words">
+        {readableValue(value) ?? intl.formatMessage(approvalMessages.none)}
+      </span>
+    ),
+  }))
 }
 
 /** What a settings request turns on or off besides its own fields. */
@@ -91,10 +103,12 @@ export function ApprovalChanges({ diff }: { diff: ApprovalDiff }) {
                 <dd className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                   {row.from !== null && (
                     <>
+                      <span className="sr-only">{intl.formatMessage(approvalMessages.from)}</span>
                       <span className="min-w-0 text-muted-foreground line-through">{row.from}</span>
                       <span aria-hidden="true" className="text-muted-foreground">
                         →
                       </span>
+                      <span className="sr-only">{intl.formatMessage(approvalMessages.to)}</span>
                     </>
                   )}
                   <span className="min-w-0 font-medium text-foreground">{row.to}</span>
