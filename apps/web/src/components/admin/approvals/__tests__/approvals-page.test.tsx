@@ -47,6 +47,12 @@ vi.mock('@tanstack/react-router', async () => {
 vi.mock('@/lib/client/hooks/use-media-query', () => ({
   useMediaQuery: () => state.wide,
 }))
+vi.mock('@/lib/server/functions/approval-counts', () => ({
+  getRailCountsFn: async () => ({
+    unread: 0,
+    waiting: { count: state.waitingCount ?? state.waiting.length, latest: [] },
+  }),
+}))
 vi.mock('@/lib/server/functions/approvals', () => ({
   listApprovalsFn: async ({ data }: { data: { view?: string; cursor?: string } }) => {
     if (state.listFails) throw new Error('Service unavailable')
@@ -57,10 +63,6 @@ vi.mock('@/lib/server/functions/approvals', () => ({
     return { items, nextCursor: more ? items[items.length - 1]!.id : null }
   },
   getApprovalFn: (args: unknown) => state.getApproval(args),
-  getWaitingApprovalsFn: async () => ({
-    count: state.waitingCount ?? state.waiting.length,
-    latest: [],
-  }),
   approveApprovalFn: (args: unknown) => state.approve(args),
   rejectApprovalFn: (args: unknown) => state.reject(args),
   markApprovalBellReadFn: () => state.bellRead(),

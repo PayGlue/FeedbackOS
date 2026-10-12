@@ -10,8 +10,8 @@ import { fetchUserAvatar } from '@/lib/server/functions/portal'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { isProductEnabled } from '@/lib/shared/types/settings'
 import { unreadCountQuery } from '@/lib/client/hooks/use-notifications-queries'
-import { approvalQueries } from '@/lib/client/queries/approvals'
-import { getRailCountsFn } from '@/lib/server/functions/approvals'
+import { approvalWaitingQuery } from '@/lib/client/queries/approval-waiting'
+import { getRailCountsFn } from '@/lib/server/functions/approval-counts'
 import { getLatestVersion, isNewerVersion } from '@/lib/server/functions/version'
 import { AdminProductTourProvider } from '@/components/onboarding/admin-product-tour'
 import { AdminSidebar } from '@/components/admin/admin-sidebar'
@@ -56,7 +56,7 @@ async function getRailCounts(queryClient: QueryClient) {
   try {
     const { unread, waiting } = await getRailCountsFn()
     queryClient.setQueryData(unreadCountQuery().queryKey, unread)
-    queryClient.setQueryData(approvalQueries.waiting().queryKey, waiting)
+    queryClient.setQueryData(approvalWaitingQuery().queryKey, waiting)
   } catch {
     return null
   }

@@ -30,7 +30,7 @@ const hoisted = vi.hoisted(() => ({
   rejectApproval: vi.fn(),
   getApprovalForViewer: vi.fn(),
   approvalViewOf: vi.fn(),
-  waitingApprovalsSummary: vi.fn(),
+  railCountsFor: vi.fn(),
   listApprovalsForViewer: vi.fn(),
   listDecidedApprovalsForViewer: vi.fn(),
   pageApprovalsForViewer: vi.fn(),
@@ -47,18 +47,14 @@ vi.mock('@/lib/server/domains/assistant/approvals.service', () => ({
 vi.mock('@/lib/server/domains/assistant/approvals.queue', () => ({
   getApprovalForViewer: hoisted.getApprovalForViewer,
   approvalViewOf: hoisted.approvalViewOf,
-  waitingApprovalsSummary: hoisted.waitingApprovalsSummary,
+  railCountsFor: hoisted.railCountsFor,
   listApprovalsForViewer: hoisted.listApprovalsForViewer,
   listDecidedApprovalsForViewer: hoisted.listDecidedApprovalsForViewer,
   pageApprovalsForViewer: hoisted.pageApprovalsForViewer,
 }))
 
-import {
-  approveApprovalFn,
-  getWaitingApprovalsFn,
-  listApprovalsFn,
-  rejectApprovalFn,
-} from '../approvals'
+import { approveApprovalFn, listApprovalsFn, rejectApprovalFn } from '../approvals'
+import { getRailCountsFn } from '../approval-counts'
 
 const actor = { principalId: 'principal_ada', role: 'admin', principalType: 'user' }
 
@@ -182,10 +178,11 @@ describe('rejectApprovalFn', () => {
 })
 
 describe('reads', () => {
-  it('summarizes what waits on the signed-in person', async () => {
-    hoisted.waitingApprovalsSummary.mockResolvedValue({ count: 2, latest: [] })
-    expect(await getWaitingApprovalsFn()).toEqual({ count: 2, latest: [] })
-    expect(hoisted.waitingApprovalsSummary).toHaveBeenCalledWith(actor)
+  it('reads the unread count and what waits on the signed-in person together', async () => {
+    hoisted.requireAuth.mockResolvedValue({ principal: { id: 'principal_ada' } })
+    hoisted.railCountsFor.mockResolvedValue({ unread: 3, waiting: { count: 2, latest: [] } })
+    expect(await getRailCountsFn()).toEqual({ unread: 3, waiting: { count: 2, latest: [] } })
+    expect(hoisted.railCountsFor).toHaveBeenCalledWith('principal_ada', expect.any(Function))
   })
 
   it('pages through the waiting or the decided requests', async () => {

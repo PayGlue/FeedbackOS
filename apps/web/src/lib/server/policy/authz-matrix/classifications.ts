@@ -312,11 +312,7 @@ export const BARE_GATE_CLASSIFICATIONS: Record<string, Classification> = {
     APPROVAL_PERMISSIONS,
     'lists only requests the caller may decide: the item is visible and every permission the operation needs is held'
   ),
-  'lib/server/functions/approvals.ts::getWaitingApprovalsFn': DYNAMIC_PERMISSION(
-    APPROVAL_PERMISSIONS,
-    'counts only requests the caller may decide: the item is visible and every permission the operation needs is held'
-  ),
-  'lib/server/functions/approvals.ts::getRailCountsFn': DYNAMIC_PERMISSION(
+  'lib/server/functions/approval-counts.ts::getRailCountsFn': DYNAMIC_PERMISSION(
     APPROVAL_PERMISSIONS,
     'the caller own unread count, and a count of only the requests the caller may decide: the item is visible and every permission the operation needs is held'
   ),

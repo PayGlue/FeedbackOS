@@ -23,10 +23,12 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
 }))
-vi.mock('@/lib/server/functions/approvals', () => ({
-  getWaitingApprovalsFn: async () => {
+vi.mock('@/lib/server/functions/approval-counts', () => ({
+  getRailCountsFn: async () => {
     throw new Error('Home reads the answer the layout warmed')
   },
+}))
+vi.mock('@/lib/server/functions/approvals', () => ({
   getApprovalFn: vi.fn(),
   listApprovalsFn: vi.fn(),
 }))

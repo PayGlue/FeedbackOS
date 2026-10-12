@@ -1,29 +1,34 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { approvalKeys, approvalQueries } from '@/lib/client/queries/approvals'
+import { approvalWaitingKey, approvalWaitingQuery } from '@/lib/client/queries/approval-waiting'
 import { unreadCountQuery } from '@/lib/client/hooks/use-notifications-queries'
 
-/**
- * What waits on the viewer: the rail's count and Home's list, from the read
- * the admin layout warms with the document. A new request rings the bell of
- * everyone who may decide it, so a rise in the unread count is when this is
- * read again; it never polls on its own. The unread count is only observed
- * here, so this adds no request to the bell's.
- */
+/** What waits on the viewer, for Home's list: the answer the admin layout warmed. */
 export function useWaitingApprovals() {
+  return useQuery(approvalWaitingQuery()).data
+}
+
+/** How many requests wait on the viewer, for the rail. It renders again only when that moves. */
+export function useWaitingApprovalCount() {
+  return useQuery({ ...approvalWaitingQuery(), select: (waiting) => waiting.count }).data
+}
+
+/**
+ * Reads what waits again when a new approval rings the bell: a rise in the
+ * unread count. It never polls on its own, and it only watches the cache, so
+ * it adds no request to the bell's and renders nothing. Mounted once, with the rail.
+ */
+export function useRefreshWaitingOnNewApproval() {
   const queryClient = useQueryClient()
-  const waiting = useQuery(approvalQueries.waiting())
-  const { data: unread } = useQuery({
-    ...unreadCountQuery(),
-    refetchInterval: false,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-  })
-  const seen = useRef(unread)
   useEffect(() => {
-    if (unread !== undefined && seen.current !== undefined && unread > seen.current)
-      void queryClient.invalidateQueries({ queryKey: approvalKeys.waiting() })
-    seen.current = unread
-  }, [unread, queryClient])
-  return waiting.data
+    const unreadKey = unreadCountQuery().queryKey
+    let seen = queryClient.getQueryData<number>(unreadKey)
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type !== 'updated' || event.query.queryHash !== JSON.stringify(unreadKey)) return
+      const unread = event.query.state.data as number | undefined
+      if (unread !== undefined && seen !== undefined && unread > seen)
+        void queryClient.invalidateQueries({ queryKey: approvalWaitingKey() })
+      if (unread !== undefined) seen = unread
+    })
+  }, [queryClient])
 }

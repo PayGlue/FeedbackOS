@@ -100,7 +100,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 2. Surfaces and their enforced authorization
 
-### Server functions (`requireAuth`) — 753 surfaces
+### Server functions (`requireAuth`) — 752 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -207,9 +207,8 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/api-keys.ts`::updateApiKeyFn | api_key.manage |
 | `lib/server/functions/api-keys.ts`::rotateApiKeyFn | api_key.manage |
 | `lib/server/functions/api-keys.ts`::revokeApiKeyFn | api_key.manage |
+| `lib/server/functions/approval-counts.ts`::getRailCountsFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | assistant.manage) |
 | `lib/server/functions/approvals.ts`::listApprovalsFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | assistant.manage) |
-| `lib/server/functions/approvals.ts`::getWaitingApprovalsFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | assistant.manage) |
-| `lib/server/functions/approvals.ts`::getRailCountsFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | assistant.manage) |
 | `lib/server/functions/approvals.ts`::getApprovalFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | assistant.manage) |
 | `lib/server/functions/approvals.ts`::approveApprovalFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | assistant.manage) |
 | `lib/server/functions/approvals.ts`::rejectApprovalFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | assistant.manage) |
@@ -1075,7 +1074,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-227 of 1094 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+227 of 1093 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 

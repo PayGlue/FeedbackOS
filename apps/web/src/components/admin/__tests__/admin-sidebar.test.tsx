@@ -46,7 +46,15 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@tanstack/react-query', () => ({
   useMutation: () => ({ mutate: vi.fn() }),
-  useQuery: ({ queryKey, enabled }: { queryKey?: unknown[]; enabled?: boolean }) => {
+  useQuery: ({
+    queryKey,
+    enabled,
+    select,
+  }: {
+    queryKey?: unknown[]
+    enabled?: boolean
+    select?: (data: never) => unknown
+  }) => {
     if (Array.isArray(queryKey) && queryKey.includes('owner-workspaces')) {
       return { data: mockBillingEnabled.current ? mockSiblings.current : undefined }
     }
@@ -56,7 +64,8 @@ vi.mock('@tanstack/react-query', () => ({
       return { data: mockLaunchStatus.current }
     }
     if (Array.isArray(queryKey) && queryKey[0] === 'approvals' && queryKey[1] === 'waiting') {
-      return { data: mockApprovals.current }
+      const waiting = mockApprovals.current
+      return { data: select && waiting ? select(waiting as never) : waiting }
     }
     if (Array.isArray(queryKey) && queryKey.includes('moderationStatus')) {
       moderationQueryEnabled.current = enabled !== false
@@ -65,7 +74,10 @@ vi.mock('@tanstack/react-query', () => ({
     }
     return { data: undefined }
   },
-  useQueryClient: () => ({ getQueryData: () => undefined }),
+  useQueryClient: () => ({
+    getQueryData: () => undefined,
+    getQueryCache: () => ({ subscribe: () => () => {} }),
+  }),
   queryOptions: (opts: unknown) => opts,
 }))
 
