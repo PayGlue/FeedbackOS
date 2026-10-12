@@ -36,6 +36,7 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import type { ActivityType } from '@/lib/shared/types/activity'
 
 type JsonObject = Record<string, unknown>
 
@@ -93,28 +94,81 @@ const notSentByTeammate = (message: JsonObject) => message.senderType !== 'agent
 /** Comments record whether their author was on the team. */
 const notWrittenByTeam = (comment: JsonObject) => comment.isTeamMember !== true
 
-/** Post activity only a teammate can perform. Any other type may name a portal user as its actor. */
-const TEAM_ONLY_ACTIVITY = new Set([
-  'status.changed',
-  'owner.assigned',
-  'owner.unassigned',
-  'tags.added',
-  'tags.removed',
-  'post.board_changed',
-  'post.merged_in',
-  'post.merged_away',
-  'post.unmerged',
-  'post.restored',
-  'comment.removed',
-  'comment.restored',
-  'comment.pinned',
-  'comment.unpinned',
-  'comments.locked',
-  'comments.unlocked',
-  'vote.proxy',
-  'vote.removed',
-])
-const actorMayBeOutside = (activity: JsonObject) => !TEAM_ONLY_ACTIVITY.has(String(activity.type))
+interface ActivityDeclaration {
+  /** Only a teammate, or an integration's service principal (named by this app), performs it. */
+  teamActor: boolean
+  /** Metadata keys holding outside text. */
+  metadata: readonly string[]
+}
+
+/**
+ * How each post activity row can carry outside text. Without teamActor the
+ * actor may be a portal user. Metadata lists post titles, author and voter
+ * names, and what an external tracker's webhook sent: its status name, issue
+ * key and link. Status, board, tag and owner names are team-authored; ids,
+ * counts, colors, slugs, `transition` (checked to closed or reopened) and
+ * `deliveryKey` (a hash) are system values. The retired roadmap types stay
+ * because stored rows keep them. Keyed by every ActivityType, so a new type
+ * fails typecheck until it is declared here, and a stored row of a type this
+ * table lacks has its actor and whole metadata marked.
+ */
+const POST_ACTIVITY = {
+  'post.created': { teamActor: false, metadata: [] },
+  'post.deleted': { teamActor: false, metadata: [] },
+  'post.restored': { teamActor: true, metadata: [] },
+  'status.changed': { teamActor: true, metadata: [] },
+  'post.board_changed': { teamActor: true, metadata: [] },
+  'post.merged_in': { teamActor: true, metadata: ['duplicatePostTitle', 'duplicateAuthorName'] },
+  'post.merged_away': { teamActor: true, metadata: ['canonicalPostTitle'] },
+  'post.unmerged': { teamActor: true, metadata: ['otherPostTitle'] },
+  'vote.proxy': { teamActor: true, metadata: ['voterName'] },
+  'vote.removed': { teamActor: true, metadata: ['voterName'] },
+  'owner.assigned': { teamActor: true, metadata: [] },
+  'owner.unassigned': { teamActor: true, metadata: [] },
+  'tags.added': { teamActor: true, metadata: [] },
+  'tags.removed': { teamActor: true, metadata: [] },
+  'comments.locked': { teamActor: true, metadata: [] },
+  'comments.unlocked': { teamActor: true, metadata: [] },
+  'comment.pinned': { teamActor: true, metadata: [] },
+  'comment.unpinned': { teamActor: true, metadata: [] },
+  'comment.deleted': { teamActor: false, metadata: [] },
+  'comment.removed': { teamActor: true, metadata: [] },
+  'comment.restored': { teamActor: true, metadata: [] },
+  'external.status_changed': {
+    teamActor: true,
+    metadata: ['externalStatus', 'externalDisplayId', 'externalUrl'],
+  },
+  'roadmap.added': { teamActor: true, metadata: [] },
+  'roadmap.removed': { teamActor: true, metadata: [] },
+} satisfies Record<ActivityType | 'roadmap.added' | 'roadmap.removed', ActivityDeclaration>
+
+function activityDeclaration(activity: JsonObject): ActivityDeclaration | undefined {
+  const type = activity.type
+  return typeof type === 'string' && Object.hasOwn(POST_ACTIVITY, type)
+    ? POST_ACTIVITY[type as keyof typeof POST_ACTIVITY]
+    : undefined
+}
+
+/** get_post_activity rows, each marked by its own type. */
+const POST_ACTIVITY_RULES: UntrustedSpec = [
+  {
+    each: 'activities',
+    where: (activity: JsonObject) => activityDeclaration(activity)?.teamActor !== true,
+    fields: ['actorName'],
+  },
+  ...Object.entries(POST_ACTIVITY)
+    .filter(([, declaration]) => declaration.metadata.length > 0)
+    .map(([type, declaration]) => ({
+      each: 'activities',
+      where: (activity: JsonObject) => activity.type === type,
+      fields: declaration.metadata.map((key) => `metadata.${key}`),
+    })),
+  {
+    each: 'activities',
+    where: (activity: JsonObject) => activityDeclaration(activity) === undefined,
+    fields: ['metadata'],
+  },
+]
 
 /** Matches a get_details result by its TypeID prefix (the text before the last underscore). */
 const entity = (prefix: string) => (result: JsonObject) =>
@@ -176,14 +230,7 @@ export const UNTRUSTED_TOOL_FIELDS = {
   unmerge_post: NONE,
   delete_post: NONE,
   restore_post: ['title'],
-  get_post_activity: [
-    { each: 'activities', where: actorMayBeOutside, fields: ['actorName'] },
-    'activities[].metadata.duplicatePostTitle',
-    'activities[].metadata.duplicateAuthorName',
-    'activities[].metadata.canonicalPostTitle',
-    'activities[].metadata.otherPostTitle',
-    'activities[].metadata.voterName',
-  ],
+  get_post_activity: POST_ACTIVITY_RULES,
 
   add_comment: NONE,
   update_comment: NONE,
