@@ -34,9 +34,14 @@ export class RecentSignInRequiredError extends ForbiddenError {
   }
 }
 
-/** The refusal value for a stale sign-in, or null for any other error. */
+/**
+ * The refusal value for a stale sign-in, or null for any other error. Matched
+ * on the code rather than the class, so an error from another copy of this
+ * module (or any domain error carrying the code) is still recognised.
+ */
 export function toRecentSignInRefusal(error: unknown): RecentSignInRefusal | null {
-  if (!(error instanceof RecentSignInRequiredError)) return null
+  if (!(error instanceof Error)) return null
+  if ((error as { code?: unknown }).code !== RECENT_SIGN_IN_REQUIRED) return null
   return { ok: false, code: RECENT_SIGN_IN_REQUIRED, message: error.message }
 }
 

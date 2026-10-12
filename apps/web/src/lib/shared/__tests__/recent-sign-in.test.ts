@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ForbiddenError } from '@/lib/shared/errors'
 import {
   RECENT_SIGN_IN_REQUIRED,
@@ -26,6 +26,23 @@ describe('recent sign-in refusal', () => {
       code: RECENT_SIGN_IN_REQUIRED,
       message: expect.any(String),
     })
+  })
+
+  it('recognises the gate error from a second copy of this module', async () => {
+    vi.resetModules()
+    const second = await import('../recent-sign-in')
+    expect(second.RecentSignInRequiredError).not.toBe(RecentSignInRequiredError)
+    expect(toRecentSignInRefusal(new second.RecentSignInRequiredError())).toEqual({
+      ok: false,
+      code: RECENT_SIGN_IN_REQUIRED,
+      message: expect.any(String),
+    })
+  })
+
+  it('recognises any domain error carrying the code', () => {
+    expect(
+      toRecentSignInRefusal(new ForbiddenError(RECENT_SIGN_IN_REQUIRED, 'Sign in again.'))
+    ).toEqual({ ok: false, code: RECENT_SIGN_IN_REQUIRED, message: 'Sign in again.' })
   })
 
   it('leaves every other error alone', () => {
