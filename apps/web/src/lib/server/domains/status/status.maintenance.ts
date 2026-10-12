@@ -394,7 +394,8 @@ export async function startMaintenanceNow(incidentId: StatusIncidentId): Promise
 
   // Only once the start has committed: a failed start leaves the window
   // scheduled with its job still queued.
-  await cancelScheduledDispatch(startJobId(incident.id, scheduleHash(incident))).catch((err) =>
+  // Cancelled by the schedule of the row as claimed, not as first read.
+  await cancelScheduledDispatch(startJobId(started.id, scheduleHash(started))).catch((err) =>
     log.error({ err, incident_id: incidentId }, 'failed to cancel start job after start-now')
   )
 

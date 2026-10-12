@@ -347,8 +347,8 @@ export async function createIncident(
     return created
   })
 
-  // Jobs and the publish notification reach outside this database, so they
-  // run only once the rows above are committed.
+  // Jobs reach outside this database, so they run only once the rows above
+  // (the publish event included) are committed.
   if (incident.kind === 'maintenance') {
     await enqueueMaintenanceJobs(incident).catch((err) =>
       log.error({ err, incident_id: incident.id }, 'failed to enqueue maintenance jobs')
@@ -1009,12 +1009,12 @@ function statusPublishEvent(
 }
 
 /**
- * Announce a published incident/maintenance exactly once. Atomically claims
- * via `notified_at`, gated on `backfilled = false` so a backfilled row can
- * never be claimed (Status Product Spec §2), and on `notify_subscribers` so a
- * row published with "Email subscribers" unchecked is never claimed either.
- * Such a row is already stamped at create (see createIncident); the gate
- * keeps it unsendable whatever its notified_at says.
+ * Announce a published incident/maintenance exactly once, for rows an older
+ * version left unclaimed: createIncident now stamps `notified_at` and writes
+ * the event itself. Atomically claims via `notified_at` in the same
+ * transaction as the event, gated on `backfilled = false` so a backfilled row
+ * can never be claimed (Status Product Spec §2), and on `notify_subscribers`
+ * so a row published with "Email subscribers" unchecked is never claimed.
  */
 export async function notifyStatusIncidentPublished(
   id: StatusIncidentId,
@@ -1061,13 +1061,12 @@ export async function notifyStatusIncidentPublished(
   }
 }
 
-/** How old an unclaimed row must be before the sweep announces it. Every
- *  publish path claims (or, publishing without the email, stamps) a row
- *  within milliseconds of inserting it, so the sweep only needs rows whose
- *  own claim was lost. Leaving the newest alone also keeps it from racing a
- *  publish in flight: an older version publishing without the email inserts
- *  the row (notify_subscribers then defaults to true) and stamps notified_at
- *  a moment later. */
+/** How old an unclaimed row must be before the sweep announces it. This
+ *  version stamps a row in the transaction that inserts it, so the sweep only
+ *  finds rows an older version left unclaimed. Leaving the newest alone also
+ *  keeps it from racing a publish in flight: an older version publishing
+ *  without the email inserts the row (notify_subscribers then defaults to
+ *  true) and stamps notified_at a moment later. */
 const NOTIFY_SWEEP_MIN_AGE_MS = 2 * 60 * 1000
 
 /**

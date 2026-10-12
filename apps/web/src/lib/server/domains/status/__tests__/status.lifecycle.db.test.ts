@@ -916,6 +916,23 @@ describe('status lifecycle (Postgres)', () => {
       expect(await statusOfRow(window.id)).toBe('in_progress')
     })
 
+    it('the completion event carries the title of the row it claimed', async () => {
+      const window = await scheduleWindow(
+        new Date(Date.now() - 2 * HOUR),
+        new Date(Date.now() - HOUR)
+      )
+      await handleMaintenanceStart(window.id)
+      await raceOnStaleRead(
+        () => handleMaintenanceComplete(window.id),
+        async () => void (await updateIncident(window.id, { title: 'Renamed' }))
+      )
+      const [completed] = await testDb
+        .select({ payload: events.payload })
+        .from(events)
+        .where(and(eq(events.type, 'status.maintenance_completed'), eq(events.entityId, window.id)))
+      expect(completed.payload).toMatchObject({ title: 'Renamed' })
+    })
+
     it('scheduler events carry the title of the row they claimed', async () => {
       const window = await scheduleWindow(new Date(Date.now() - HOUR), new Date(Date.now() + HOUR))
       await raceOnStaleRead(
@@ -988,6 +1005,13 @@ describe('status lifecycle (Postgres)', () => {
         'status.maintenance_scheduled',
         'status.maintenance_started',
       ])
+      const [scheduled] = await testDb
+        .select({ payload: events.payload })
+        .from(events)
+        .where(and(eq(events.type, 'status.maintenance_scheduled'), eq(events.entityId, window.id)))
+      expect(scheduled.payload).toMatchObject({
+        incident: { id: window.id, notifySubscribers: true },
+      })
     })
 
     it('a window created already completed writes scheduled and completed, and the scheduler adds nothing', async () => {

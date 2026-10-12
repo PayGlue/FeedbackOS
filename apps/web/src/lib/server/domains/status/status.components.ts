@@ -276,8 +276,7 @@ export async function setComponentStatus(
   source: StatusComponentEventSource,
   incidentId?: StatusIncidentId | null
 ): Promise<void> {
-  await getComponentOrThrow(componentId)
-  // The row is locked and read again inside the transaction, so the previous
+  // The row is locked and read inside the transaction, so the previous
   // status in the event is the one this write replaced, and the change, its
   // history row and its event commit together or not at all.
   await db.transaction(async (tx) => {
@@ -285,7 +284,7 @@ export async function setComponentStatus(
       .select()
       .from(statusComponents)
       .where(and(eq(statusComponents.id, componentId), isNull(statusComponents.deletedAt)))
-      .for('update')
+      .for('no key update')
     if (!locked) {
       throw new NotFoundError(
         'STATUS_COMPONENT_NOT_FOUND',
