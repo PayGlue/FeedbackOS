@@ -35,12 +35,95 @@ function isIdSegment(segment: string): boolean {
   return segment !== '' && (isValidTypeId(segment) || isUuid(segment))
 }
 
-/** The path with each id segment replaced by `:id`, so one route reads as one route. */
+/**
+ * Every word the REST routes use in their paths. A test keeps this in step
+ * with the route files, so a real route always keeps its own name.
+ */
+export const API_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
+  'accept',
+  'activity',
+  'admin',
+  'api',
+  'approve',
+  'apps',
+  'articles',
+  'assign',
+  'boards',
+  'card',
+  'categories',
+  'changelog',
+  'columns',
+  'comments',
+  'companies',
+  'components',
+  'conversations',
+  'dismiss',
+  'docs',
+  'feedback',
+  'files',
+  'help-center',
+  'identify',
+  'incidents',
+  'json',
+  'link',
+  'linked',
+  'members',
+  'mentions',
+  'merge',
+  'messages',
+  'moderation',
+  'note',
+  'openapi',
+  'pending',
+  'posts',
+  'principals',
+  'priority',
+  'proxy',
+  'read',
+  'reject',
+  'reply',
+  'restore',
+  'roadmaps',
+  'rotate',
+  'search',
+  'segments',
+  'services',
+  'status',
+  'statuses',
+  'suggest',
+  'suggestions',
+  'summary',
+  'tags',
+  'ticket-statuses',
+  'tickets',
+  'unlink',
+  'updates',
+  'usage',
+  'users',
+  'v1',
+  'vote',
+  'voters',
+  'webhooks',
+])
+
+/** The longest route pattern a row keeps. */
+export const API_ROUTE_MAX_LEN = 300
+
+/**
+ * The path as a route: its own words kept, each id replaced by `:id`, and
+ * anything else (a slug, or a segment the caller made up) by `:param`, so one
+ * route reads as one route and a row never carries what a caller typed.
+ * Capped at {@link API_ROUTE_MAX_LEN}.
+ */
 export function apiRoutePattern(pathname: string): string {
-  return pathname
+  const pattern = pathname
     .split('/')
-    .map((segment) => (isIdSegment(segment) ? ':id' : segment))
+    .map((segment) => {
+      if (segment === '' || API_ROUTE_SEGMENTS.has(segment)) return segment
+      return isIdSegment(segment) ? ':id' : ':param'
+    })
     .join('/')
+  return pattern.length > API_ROUTE_MAX_LEN ? pattern.slice(0, API_ROUTE_MAX_LEN) : pattern
 }
 
 /** The most specific resource a path names: its last TypeID segment. */
