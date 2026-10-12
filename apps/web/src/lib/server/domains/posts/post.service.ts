@@ -538,18 +538,17 @@ export async function updatePost(
             ...(oldOwner ? { previousOwnerName: prevOwnerRow?.displayName ?? null } : {}),
           },
         })
-        // Never notify a teammate who assigned the post to themselves.
-        if (newOwner !== actor.principalId) {
-          dispatchPostOwnerAssigned(buildEventActor(actor), {
-            postId: updatedPost.id,
-            postTitle: updatedPost.title,
-            boardSlug: board.slug,
-            postUrl: buildPostUrl(getBaseUrl(), board.slug, updatedPost.id),
-            boardId: updatedPost.boardId,
-            ownerPrincipalId: newOwner,
-            previousOwnerPrincipalId: oldOwner ?? null,
-          })
-        }
+        // Every assignment is an event (webhooks see self-assignment too); the
+        // notification target skips a teammate who assigned the post to themselves.
+        dispatchPostOwnerAssigned(buildEventActor(actor), {
+          postId: updatedPost.id,
+          postTitle: updatedPost.title,
+          boardSlug: board.slug,
+          postUrl: buildPostUrl(getBaseUrl(), board.slug, updatedPost.id),
+          boardId: updatedPost.boardId,
+          ownerPrincipalId: newOwner,
+          previousOwnerPrincipalId: oldOwner ?? null,
+        })
       } else {
         const prevOwnerRow = oldOwner ? await resolveName(oldOwner) : null
         createActivity({
