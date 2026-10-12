@@ -7,7 +7,8 @@
  *
  *  - Validate proposed targets server-side (drop anonymous/service/deleted).
  *  - Insert rows for newly-mentioned eligible principals.
- *  - Dispatch post.mentioned for each (skipping self-mentions).
+ *  - Dispatch post.mentioned for each, self-mentions included; the notification
+ *    target is what skips telling someone about their own mention.
  *  - Delete rows for principals no longer mentioned in the document.
  *  - Skip dispatch for principals already-notified (idempotent re-edit).
  *  - After dispatch, mark notifiedAt = now() so future edits don't re-fire.
@@ -87,14 +88,6 @@ export async function syncPostMentions(input: SyncPostMentionsInput): Promise<vo
   }
 
   for (const { principalId } of inserted) {
-    if (actorPrincipalId !== undefined && principalId === actorPrincipalId) {
-      // Self-mention: mark notified, skip dispatch.
-      await db
-        .update(postMentions)
-        .set({ notifiedAt: new Date() })
-        .where(and(eq(postMentions.postId, postId), eq(postMentions.principalId, principalId)))
-      continue
-    }
     await dispatchPostMentioned(actor, {
       postId,
       postTitle,
