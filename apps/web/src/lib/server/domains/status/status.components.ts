@@ -1,6 +1,6 @@
 /**
  * Status component + group CRUD, manual/API status writes, and the shared
- * event-dispatch bridge used by every status.* module (kept here — the
+ * event-writing helpers used by every status.* module (kept here — the
  * dependency-free leaf of the domain — so status.service.ts and
  * status.maintenance.ts can both import it without a cycle).
  */
@@ -279,8 +279,41 @@ export async function setComponentStatus(
   source: StatusComponentEventSource,
   incidentId?: StatusIncidentId | null
 ): Promise<void> {
-  const existing = await getComponentOrThrow(componentId)
-  await writeComponentStatus(existing, status, source, incidentId, db)
+  await getComponentOrThrow(componentId)
+  // The row is locked and read again inside the transaction, so the previous
+  // status in the event is the one this write replaced, and the change, its
+  // history row and its event commit together or not at all.
+  await db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select()
+      .from(statusComponents)
+      .where(and(eq(statusComponents.id, componentId), isNull(statusComponents.deletedAt)))
+      .for('update')
+    if (!locked) {
+      throw new NotFoundError(
+        'STATUS_COMPONENT_NOT_FOUND',
+        `Status component ${componentId} not found`
+      )
+    }
+    if (locked.status === status) return
+    await writeComponentStatus(locked, status, source, incidentId, tx)
+
+    if (source === 'manual' || source === 'api') {
+      const actor: EventActor = { type: 'service', displayName: source }
+      await writeStatusEvent(
+        'status.component_changed',
+        actor,
+        {
+          componentId: locked.id,
+          componentName: locked.name,
+          previousStatus: locked.status,
+          status,
+          source,
+        },
+        tx
+      )
+    }
+  })
 }
 
 async function writeComponentStatus(
@@ -303,19 +336,6 @@ async function writeComponentStatus(
     source,
     incidentId: incidentId ?? null,
   })
-
-  if (source === 'manual' || source === 'api') {
-    const actor: EventActor = { type: 'service', displayName: source }
-    await dispatchStatusEvent('status.component_changed', actor, {
-      componentId: existing.id,
-      componentName: existing.name,
-      previousStatus: existing.status,
-      status,
-      source,
-    }).catch((err) =>
-      log.error({ err, component_id: existing.id }, 'failed to dispatch status.component_changed')
-    )
-  }
 }
 
 const STATUS_WEIGHT: Record<StatusComponentStatus, number> = {
@@ -414,13 +434,10 @@ export async function reconcileComponentStatuses(
 }
 
 // ============================================================================
-// Shared event-dispatch bridge (see module docblock)
+// Shared event-writing helpers (see module docblock)
 // ============================================================================
 
-/**
- * Status event types this domain emits. NOT yet registered in
- * `events/types.ts`'s `EventType` union — see the dispatch note below.
- */
+/** Status event types this domain emits. */
 export type StatusEventType =
   | 'status.incident_created'
   | 'status.incident_updated'
@@ -456,38 +473,4 @@ export async function writeStatusEvent(
 ): Promise<void> {
   const { writeEventToOutbox } = await import('@/lib/server/events/outbox-dispatch')
   await writeEventToOutbox(buildStatusEvent(type, actor, data), tx)
-}
-
-/**
- * Mirrors the private `dispatchEvent` helper in events/dispatch.ts (best-effort,
- * optional rethrow), but lives in the status domain: `status.*` isn't in the
- * events/ package's `EventType` union / `EventData` discriminated union yet
- * (owned by another workstream — see this domain's final build report for the
- * exact registry/targets/handlers wiring it needs). The cast below is the
- * deliberate bridge until that lands. Runtime behavior is safe either way:
- * `processEvent` resolves zero hook targets for an unregistered type today
- * (no webhook/workflow config can reference a type that doesn't exist yet),
- * and starts actually notifying the moment the registry is updated, with zero
- * further domain-layer changes.
- */
-export async function dispatchStatusEvent(
-  type: StatusEventType,
-  actor: EventActor,
-  data: Record<string, unknown>,
-  opts?: { rethrow?: boolean }
-): Promise<void> {
-  const event = {
-    id: globalThis.crypto.randomUUID(),
-    type,
-    timestamp: new Date().toISOString(),
-    actor,
-    data,
-  }
-  try {
-    const { processEvent } = await import('@/lib/server/events/process')
-    await processEvent(event as unknown as Parameters<typeof processEvent>[0])
-  } catch (err) {
-    log.error({ err, event_type: type }, 'failed to dispatch status event')
-    if (opts?.rethrow) throw err
-  }
 }

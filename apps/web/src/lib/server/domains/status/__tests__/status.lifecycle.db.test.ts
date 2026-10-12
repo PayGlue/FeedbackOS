@@ -853,6 +853,39 @@ describe('status lifecycle (Postgres)', () => {
       expect(await sent('status.maintenance_completed', window.id)).toBe(0)
     })
 
+    it('a manual component status change writes its event with the change, and none for a repeat', async () => {
+      const api = await service('API')
+      await setComponentStatus(api, 'major_outage', 'manual')
+      await setComponentStatus(api, 'major_outage', 'manual')
+      const rows = await testDb
+        .select({ payload: events.payload })
+        .from(events)
+        .where(and(eq(events.type, 'status.component_changed'), eq(events.entityId, api)))
+      expect(rows.map((r) => r.payload)).toMatchObject([
+        {
+          componentId: api,
+          previousStatus: 'operational',
+          status: 'major_outage',
+          source: 'manual',
+        },
+      ])
+      expect(mockProcessEvent).not.toHaveBeenCalled()
+    })
+
+    it('a component status change whose event cannot be written does not change the status', async () => {
+      const api = await service('API')
+      outbox.fail = true
+      await expect(setComponentStatus(api, 'major_outage', 'api')).rejects.toThrow(
+        'outbox unavailable'
+      )
+      expect(await statusOf(api)).toBe('operational')
+      const history = await testDb
+        .select({ id: statusComponentEvents.id })
+        .from(statusComponentEvents)
+        .where(eq(statusComponentEvents.componentId, api))
+      expect(history).toEqual([])
+    })
+
     it('a window created under way with subscriber email on writes scheduled before started', async () => {
       const db = await service('Database')
       const window = await createIncident(
