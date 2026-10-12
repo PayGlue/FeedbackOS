@@ -489,7 +489,7 @@ export async function removePortalUser(principalId: PrincipalId): Promise<void> 
       // A former teammate's API keys act for them; revoke them before the
       // delete below detaches the keys from their creator.
       const { revokeApiKeysCreatedBy } =
-        await import('@/lib/server/domains/api-keys/api-key.service')
+        await import('@/lib/server/domains/principals/principal.factory')
       await revokeApiKeysCreatedBy(tx, principalId)
       await reattributeAuthoredContent(tx, principalId)
       await tx

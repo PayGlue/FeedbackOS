@@ -5,7 +5,7 @@
  * for public API authentication.
  */
 
-import { db, apiKeys, principal, eq, and, isNull, type Transaction } from '@/lib/server/db'
+import { db, apiKeys, principal, eq, and, isNull } from '@/lib/server/db'
 import { emit } from '@/lib/server/events/emit'
 import { apiKeyCreated, apiKeyDeleted } from '@/lib/server/events/catalogue'
 import type { PrincipalId } from '@quackback/ids'
@@ -294,29 +294,6 @@ export async function revokeApiKey(id: ApiKeyId): Promise<void> {
     )
   } catch {
     /* best-effort emission; never blocks revocation */
-  }
-}
-
-/**
- * Revoke every live key a principal created, inside the caller's transaction.
- * Deleting a principal clears `created_by_id` on the keys they created, which
- * would leave those keys with no creator to answer for them, so a removal
- * revokes them first. Each key's service principal is downgraded the same way
- * revokeApiKey downgrades it.
- */
-export async function revokeApiKeysCreatedBy(
-  tx: Transaction,
-  creatorId: PrincipalId
-): Promise<void> {
-  const revoked = await tx
-    .update(apiKeys)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(apiKeys.createdById, creatorId), isNull(apiKeys.revokedAt)))
-    .returning({ principalId: apiKeys.principalId })
-  for (const key of revoked) {
-    // A legacy key backed by the creator's own principal goes with that principal.
-    if (key.principalId === creatorId) continue
-    await setPrincipalRole({ principalId: key.principalId }, 'user', { executor: tx })
   }
 }
 
