@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { isReactionEmoji } from '../reaction-emoji'
 
 describe('isReactionEmoji', () => {
-  it.each(['👍', '❤️', '🎉', '😄', '🤔', '👀', '🚀', '👍🏽', '👩‍💻', '🇳🇱', '1️⃣', '#️⃣', '©️'])(
+  it.each(['👍', '❤️', '🎉', '😄', '🤔', '👀', '🚀', '👍🏽', '👩‍💻', '🇳🇱', '1️⃣', '#️⃣', '©️', 'ℹ️'])(
     'accepts %s',
     (value) => {
       expect(isReactionEmoji(value)).toBe(true)

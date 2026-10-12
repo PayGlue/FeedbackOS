@@ -7,8 +7,7 @@
 const MAX_LENGTH = 32
 const PICTOGRAPHIC = /\p{Extended_Pictographic}/u
 const FLAG = /^\p{Regional_Indicator}{2}$/u
-const KEYCAP = /^[0-9#*]️?⃣$/u
-const LETTER = /\p{L}/u
+const KEYCAP = /^[0-9#*]\uFE0F?\u20E3$/u
 
 let segmenter: Intl.Segmenter | undefined
 
@@ -18,7 +17,7 @@ export function isReactionEmoji(value: string): boolean {
   segmenter ??= new Intl.Segmenter(undefined, { granularity: 'grapheme' })
   if (Array.from(segmenter.segment(value)).length !== 1) return false
   if (FLAG.test(value) || KEYCAP.test(value)) return true
-  return PICTOGRAPHIC.test(value) && !LETTER.test(value)
+  return PICTOGRAPHIC.test(value)
 }
 
 export const REACTION_EMOJI_MESSAGE = 'A reaction must be a single emoji'
