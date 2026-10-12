@@ -533,8 +533,10 @@ export async function sendVisitorMessage(
     void isPairedWithCustomerTicket(txResult.conversation.id)
       .then((paired) => {
         if (paired) return undefined
-        return import('@/lib/server/domains/assistant/assistant.orchestrator').then((m) =>
-          m.runAssistantTurnForConversation(txResult.conversation.id)
+        // The switchboard decides who answers: the built-in AI, the workspace's
+        // own AI agent, or the team.
+        return import('@/lib/server/domains/support-agents/switchboard').then((m) =>
+          m.answerCustomerMessage(txResult.conversation.id, txResult.message.id)
         )
       })
       .catch((err) => log.warn({ err }, 'assistant turn failed'))
@@ -788,6 +790,8 @@ export async function sendAgentMessage(
         waitingSince: null,
         // Keep resolvedAt consistent with the new status (reopening clears it).
         resolvedAt: resolvedAtForStatus(agentNextStatus, message.createdAt),
+        // A teammate's reply takes the conversation from any AI agent.
+        controllerAgentId: null,
         updatedAt: message.createdAt,
       })
       .where(eq(conversations.id, conversationId))
@@ -797,8 +801,16 @@ export async function sendAgentMessage(
       message,
       conversation: updated,
       previousAgentPrincipalId: existing.assignedAgentPrincipalId,
+      hadAgentController: existing.controllerAgentId !== null,
     }
   })
+
+  // The AI agent that was answering no longer controls it, so its open turn is moot.
+  if (txResult.hadAgentController) {
+    void import('@/lib/server/domains/support-agents/turns.service')
+      .then((m) => m.releaseAgentControl(conversationId))
+      .catch((err) => log.warn({ err, conversationId }, 'releasing agent control failed'))
+  }
 
   const authored = await resolveAuthorAudiences(agent)
   // Inbox sees the account name. The visitor channel keeps the public name,
