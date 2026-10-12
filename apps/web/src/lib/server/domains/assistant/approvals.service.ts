@@ -79,8 +79,8 @@ export interface ApprovalDecisionInput {
   /** Why, for a rejection. */
   reason?: string | null
   /**
-   * The person signed in again just before deciding. Required for high risk.
-   * Only server code that verified the sign-in may set it.
+   * The person signed in again just before deciding. Required to approve a
+   * high-risk request. Only server code that verified the sign-in may set it.
    */
   freshSignIn?: boolean
   /** The credential the decision arrived through, when it did not come from a session. */
@@ -219,12 +219,17 @@ export const GONE_TOOL_PERMISSIONS: ReadonlySet<PermissionKey> = new Set([
  * Throw unless this person may make this decision on this request. Reads the
  * decider's role and permissions again, so a stale session cannot decide with
  * authority it has lost; `actor.permissions` stays a ceiling on top.
+ *
+ * High risk is decided by admins either way. Only approving it needs a fresh
+ * sign-in: that guards against a stolen session making a harmful change, and
+ * turning a request down changes nothing.
  */
 export async function assertMayDecide(
   row: PendingActionRow,
   actor: Actor,
   input: ApprovalDecisionInput,
   required: ReadonlySet<PermissionKey>,
+  decision: 'approved' | 'rejected',
   exec: Executor = db
 ): Promise<void> {
   // The credential or agent that asked never decides its own request.
@@ -252,10 +257,13 @@ export async function assertMayDecide(
   if (risk === 'critical')
     throw new ForbiddenError('APPROVAL_NOT_AVAILABLE', 'This change can only be made in the app.')
   if (risk === 'high') {
-    if (!input.freshSignIn)
-      throw new ForbiddenError('APPROVAL_SIGN_IN_REQUIRED', 'Sign in again to decide this request.')
     if (person.role !== 'admin')
       throw new ForbiddenError('APPROVAL_ADMIN_REQUIRED', 'An admin must decide this request.')
+    if (decision === 'approved' && !input.freshSignIn)
+      throw new ForbiddenError(
+        'APPROVAL_SIGN_IN_REQUIRED',
+        'Sign in again to approve this request.'
+      )
   }
 
   const held = await permissionsForPrincipal(actor.principalId, person.role, exec)
@@ -401,7 +409,7 @@ export async function rejectApproval(
     if (!(await parentVisibleTo(row, actor))) throw approvalNotFound()
     assertStillPending(row)
     const required = (await requiredApprovalPermissions(row)) ?? GONE_TOOL_PERMISSIONS
-    await assertMayDecide(row, actor, input, required, tx)
+    await assertMayDecide(row, actor, input, required, 'rejected', tx)
     const rejected = await decidePendingAction(id, 'rejected', actor.principalId!, tx, {
       via: input.via ?? 'app',
       reason: input.reason,

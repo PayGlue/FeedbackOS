@@ -222,6 +222,36 @@ describe('who may decide', () => {
     ).rejects.toMatchObject({ code: 'APPROVAL_SELF_DECISION' })
   })
 
+  it('lets an admin turn down a high-risk request without signing in again', async () => {
+    // Changelog settings: something a member also holds the permission for.
+    const pending = await enqueueWorkspaceSettingsProposal(
+      owner,
+      [{ area: 'changelog', patch: { autoSubscribe: false } }],
+      undefined,
+      undefined,
+      { via: 'mcp', onBehalfOfPrincipalId: owner.principalId! }
+    )
+    await testDb
+      .update(assistantPendingActions)
+      .set({ risk: 'high' })
+      .where(eq(assistantPendingActions.id, pending.id))
+    // High risk is still decided by admins, whichever way.
+    await expect(
+      rejectApproval(member, pending.id, { contentHash: pending.argsDigest! })
+    ).rejects.toMatchObject({ code: 'APPROVAL_ADMIN_REQUIRED' })
+    // Approving still needs a fresh sign-in; turning it down changes nothing.
+    await expect(
+      applyWorkspaceSettingsProposal(otherAdmin, pending.id, ['changelog.autoSubscribe'], {
+        contentHash: pending.argsDigest!,
+      })
+    ).rejects.toMatchObject({ code: 'APPROVAL_SIGN_IN_REQUIRED' })
+    const rejected = await rejectApproval(otherAdmin, pending.id, {
+      contentHash: pending.argsDigest!,
+      reason: 'Not this one',
+    })
+    expect(rejected).toMatchObject({ status: 'rejected', decisionReason: 'Not this one' })
+  })
+
   it('needs an admin who signed in again for a high-risk request, and refuses critical', async () => {
     const pending = await homeProposal()
     await testDb

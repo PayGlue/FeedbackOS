@@ -74,7 +74,7 @@ export interface ApprovalView {
   expiresAt: string
   /** The digest a decision on this request must name. */
   contentHash: string
-  /** Deciding needs an admin who signed in again. */
+  /** Approving needs an admin who signed in again; turning it down needs only an admin. */
   needsFreshSignIn: boolean
   /** The viewer may decide it now. */
   canDecide: boolean

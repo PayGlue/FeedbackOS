@@ -240,6 +240,7 @@ export async function applyWorkspaceSettingsProposal(
       actor,
       decision,
       settingsProposalPermissions(proposal.changes),
+      'approved',
       tx
     )
     const decided = await decidePendingAction(id, 'approved', actor.principalId!, tx, {
