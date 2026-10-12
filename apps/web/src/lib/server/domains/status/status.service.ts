@@ -228,15 +228,19 @@ export async function createIncident(
     input.backfill?.startedAt ??
     (plannedStart && (!resolvedAt || plannedStart <= resolvedAt) ? plannedStart : now)
 
-  // Published with "Email subscribers" off: the email is never sent, and
-  // notified_at is stamped all the same. An older version's sweep doesn't
+  // A publication is claimed at create: notified_at is stamped and the
+  // publish event written on the create transaction, so the event always
+  // precedes the window's own transition events. The event is what drives the
+  // subscriber fan-out; with "Email subscribers" off it carries that flag and
+  // no email follows. An older version's sweep doesn't
   // read notify_subscribers and announces every live row with no
   // notified_at, so the stamp is what keeps one rolled back to (or an old
-  // worker mid-deploy) from sending it. Readers tell this apart from a real
-  // send by notify_subscribers. A backfill is never announced by any version
-  // and keeps notified_at null.
+  // worker mid-deploy) from sending it. Readers tell a quiet row apart by
+  // notify_subscribers. A backfill is never announced by any version and
+  // keeps notified_at null. The sweep still announces rows an older version
+  // left unclaimed.
   const notifySubscribers = !backfilled && (input.notifySubscribers ?? true)
-  const notifiedAt = !backfilled && !notifySubscribers ? now : null
+  const notifiedAt = !backfilled ? now : null
 
   // One transaction: the row, its links, the first update and the component
   // statuses it applies land together or not at all, so a failure part-way
@@ -308,9 +312,9 @@ export async function createIncident(
       )
     }
 
-    // A quiet publication is stamped notified at create, so no sweep retries
-    // its publish event; it commits with the row instead, or not at all.
-    if (!backfilled && !notifySubscribers) {
+    // The publish event commits with the row, or not at all; the row is
+    // already stamped notified, so no sweep sends it a second time.
+    if (!backfilled) {
       const { writeEventToOutbox } = await import('@/lib/server/events/outbox-dispatch')
       await writeEventToOutbox(
         statusPublishEvent(
@@ -348,19 +352,6 @@ export async function createIncident(
   if (incident.kind === 'maintenance') {
     await enqueueMaintenanceJobs(incident).catch((err) =>
       log.error({ err, incident_id: incident.id }, 'failed to enqueue maintenance jobs')
-    )
-  }
-
-  // The publish event fires for every publication (webhooks and workflows
-  // hear about it either way); only the subscriber email depends on
-  // notify_subscribers. An emailing row is claimed through notified_at so the
-  // event fires once however many sweeps see it; a quiet row's event was
-  // written in the transaction above. A backfill is a log of the past, not a
-  // publication, and sends nothing.
-  if (!incident.backfilled && incident.notifySubscribers) {
-    const actor = buildEventActor({ principalId: author.principalId })
-    notifyStatusIncidentPublished(incident.id, actor).catch((err) =>
-      log.error({ err, incident_id: incident.id }, 'failed to dispatch status publish event')
     )
   }
 

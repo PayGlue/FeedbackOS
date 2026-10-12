@@ -853,6 +853,38 @@ describe('status lifecycle (Postgres)', () => {
       expect(await sent('status.maintenance_completed', window.id)).toBe(0)
     })
 
+    it('a window created under way with subscriber email on writes scheduled before started', async () => {
+      const db = await service('Database')
+      const window = await createIncident(
+        {
+          kind: 'maintenance',
+          title: 'Emailed and under way',
+          status: 'in_progress',
+          body: 'Already running.',
+          affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+          scheduledStartAt: new Date(Date.now() - HOUR),
+          scheduledEndAt: new Date(Date.now() + HOUR),
+          notifySubscribers: true,
+        },
+        { principalId: author }
+      )
+      // Claimed at create, so the after-commit send and the sweep find
+      // nothing left to announce.
+      expect((await getStatusIncidentById(window.id)).notifiedAt).not.toBeNull()
+      expect(
+        await notifyStatusIncidentPublished(window.id, { type: 'service', displayName: 't' })
+      ).toBe(false)
+      const rows = await testDb
+        .select({ id: events.id, type: events.type })
+        .from(events)
+        .where(eq(events.entityId, window.id))
+        .orderBy(events.id)
+      expect(rows.map((r) => r.type)).toEqual([
+        'status.maintenance_scheduled',
+        'status.maintenance_started',
+      ])
+    })
+
     it('a window created already completed writes scheduled and completed, and the scheduler adds nothing', async () => {
       const db = await service('Database')
       const window = await createIncident(
