@@ -326,4 +326,36 @@ describe('ApprovalsPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Approved.')
     expect(screen.queryByText(/Applied/)).toBeNull()
   })
+
+  it('moves focus to Undo after approving, and to the result after undoing', async () => {
+    state.waiting = [view()]
+    state.approve.mockResolvedValue({
+      ok: true,
+      approval: view({ status: 'executed', canDecide: false, undoable: true }),
+    })
+    state.undo.mockResolvedValue({ ok: true, id: 'assistant_action_01', status: 'executed' })
+    state.getApproval.mockResolvedValue(
+      view({ status: 'executed', canDecide: false, undoable: false, undone: true })
+    )
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    const undo = await screen.findByRole('button', { name: 'Undo' })
+    await waitFor(() => expect(undo).toHaveFocus())
+    fireEvent.click(undo)
+    await screen.findByText('Undone. The previous values are back.')
+    await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
+  })
+
+  it('moves focus to the result after a decision with nothing to undo', async () => {
+    state.waiting = [view()]
+    state.reject.mockResolvedValue({
+      ok: true,
+      approval: view({ status: 'rejected', canDecide: false }),
+    })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    await screen.findByText('Rejected.')
+    await waitFor(() => expect(screen.getByRole('status')).toHaveFocus())
+  })
 })

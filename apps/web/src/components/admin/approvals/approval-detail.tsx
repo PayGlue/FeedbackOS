@@ -1,4 +1,4 @@
-import { Suspense, useId, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useIntl } from 'react-intl'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
@@ -82,11 +82,24 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The pressed button goes away with a decision or an undo, so focus moves
+  // to what replaced it: Undo when the change can be undone, else the result.
+  const [focusOutcome, setFocusOutcome] = useState(false)
+  const resultRef = useRef<HTMLDivElement>(null)
+  const undoRef = useRef<HTMLButtonElement>(null)
   const area = useAreaLabel(approval)
   const stage = stageOf(approval, decidedHere, rejecting)
   const requester = requesterOf(approval, intl)
   const person = personOf(approval)
   const told = toldOf(approval, intl)
+
+  useEffect(() => {
+    if (!focusOutcome || busy) return
+    const target = undoRef.current ?? resultRef.current
+    if (!target) return
+    target.focus()
+    setFocusOutcome(false)
+  }, [focusOutcome, busy, stage, approval])
 
   const refresh = async () => {
     const fresh = await queryClient.fetchQuery({
@@ -138,6 +151,7 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
       if (result.ok) {
         setRejecting(false)
         setReason('')
+        setFocusOutcome(true)
         await settle(result.approval)
       } else await refused(result.code)
     } catch {
@@ -175,6 +189,7 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
         ...approvalQueries.detail(approval.id),
         staleTime: 0,
       })
+      setFocusOutcome(true)
       await settle(fresh)
     } catch {
       setError(intl.formatMessage(approvalMessages.errorFailed))
@@ -303,9 +318,11 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
         stage === 'rejected' ||
         stage === 'undone') && (
         <div
+          ref={resultRef}
           role="status"
+          tabIndex={-1}
           className={cn(
-            'mt-6 flex items-center gap-3 rounded-xl border px-4 py-3.5 text-sm duration-150 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1',
+            'mt-6 flex items-center gap-3 rounded-xl border px-4 py-3.5 text-sm outline-none duration-150 focus-visible:ring-2 focus-visible:ring-ring motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1',
             stage === 'applied'
               ? 'border-success/30 bg-success/10 text-foreground'
               : 'border-border bg-muted/40 text-foreground'
@@ -329,6 +346,7 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
           </span>
           {stage === 'applied' && approval.undoable && (
             <button
+              ref={undoRef}
               type="button"
               disabled={busy}
               onClick={() => void undo()}
