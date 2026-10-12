@@ -1788,6 +1788,8 @@
   "admin.approvals.back": "返回审批",
   "admin.approvals.loading": "正在加载",
   "admin.approvals.notFound": "未找到此请求。",
+  "admin.approvals.loadFailed": "无法加载审批。",
+  "admin.approvals.retry": "重试",
   "admin.approvals.risk.low": "低",
   "admin.approvals.risk.medium": "中",
   "admin.approvals.risk.high": "高",

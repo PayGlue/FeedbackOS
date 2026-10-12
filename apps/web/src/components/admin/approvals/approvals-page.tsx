@@ -148,7 +148,9 @@ export function ApprovalsPage() {
   )
   const items = view === 'waiting' ? waiting : decided
   const waitingCount = waiting.filter((item) => item.status === 'proposed').length
-  const loading = view === 'waiting' ? waitingQuery.isPending : decidedQuery.isPending
+  const listQuery = view === 'waiting' ? waitingQuery : decidedQuery
+  // A failed read says so; it never reads as an empty list.
+  const loading = listQuery.isPending && !listQuery.isError
   const listed = search.id ? items.find((item) => item.id === search.id) : undefined
   // A request opened by link that this tab does not list, such as one just decided elsewhere.
   const linked = useQuery({
@@ -211,7 +213,22 @@ export function ApprovalsPage() {
         >
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-2.5">
-              {loading ? (
+              {listQuery.isError ? (
+                <div role="alert" className="space-y-3 px-3.5 py-10 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {intl.formatMessage(approvalMessages.loadFailed)}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={listQuery.isFetching}
+                    onClick={() => void listQuery.refetch()}
+                  >
+                    {intl.formatMessage(approvalMessages.retry)}
+                  </Button>
+                </div>
+              ) : loading ? (
                 <div className="flex justify-center py-12">
                   <Spinner size="lg" />
                 </div>

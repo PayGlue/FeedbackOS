@@ -1788,6 +1788,8 @@
   "admin.approvals.back": "Volver a aprobaciones",
   "admin.approvals.loading": "Cargando",
   "admin.approvals.notFound": "No se encontró esta solicitud.",
+  "admin.approvals.loadFailed": "No se pudieron cargar las aprobaciones.",
+  "admin.approvals.retry": "Reintentar",
   "admin.approvals.risk.low": "Bajo",
   "admin.approvals.risk.medium": "Medio",
   "admin.approvals.risk.high": "Alto",

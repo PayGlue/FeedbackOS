@@ -2021,6 +2021,8 @@
   "admin.approvals.back": "กลับไปที่การอนุมัติ",
   "admin.approvals.loading": "กำลังโหลด",
   "admin.approvals.notFound": "ไม่พบคำขอนี้",
+  "admin.approvals.loadFailed": "โหลดการอนุมัติไม่ได้",
+  "admin.approvals.retry": "ลองอีกครั้ง",
   "admin.approvals.risk.low": "ต่ำ",
   "admin.approvals.risk.medium": "ปานกลาง",
   "admin.approvals.risk.high": "สูง",

@@ -12,6 +12,11 @@ export const approvalMessages = defineMessages({
   back: { id: 'admin.approvals.back', defaultMessage: 'Back to approvals' },
   loading: { id: 'admin.approvals.loading', defaultMessage: 'Loading' },
   notFound: { id: 'admin.approvals.notFound', defaultMessage: 'This request was not found.' },
+  loadFailed: {
+    id: 'admin.approvals.loadFailed',
+    defaultMessage: 'Approvals could not be loaded.',
+  },
+  retry: { id: 'admin.approvals.retry', defaultMessage: 'Try again' },
   riskLow: { id: 'admin.approvals.risk.low', defaultMessage: 'Low' },
   riskMedium: { id: 'admin.approvals.risk.medium', defaultMessage: 'Medium' },
   riskHigh: { id: 'admin.approvals.risk.high', defaultMessage: 'High' },

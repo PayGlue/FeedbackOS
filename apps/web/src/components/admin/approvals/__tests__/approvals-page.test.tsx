@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
   undo: vi.fn(),
   wide: true,
   listeners: new Set<() => void>(),
+  listFails: false,
 }))
 
 // The URL as a small store: navigating changes the search the page reads.
@@ -44,8 +45,10 @@ vi.mock('@/lib/client/hooks/use-media-query', () => ({
   useMediaQuery: () => state.wide,
 }))
 vi.mock('@/lib/server/functions/approvals', () => ({
-  listApprovalsFn: async ({ data }: { data: { view?: string } }) =>
-    data.view === 'decided' ? state.decided : state.waiting,
+  listApprovalsFn: async ({ data }: { data: { view?: string } }) => {
+    if (state.listFails) throw new Error('Service unavailable')
+    return data.view === 'decided' ? state.decided : state.waiting
+  },
   getApprovalFn: (args: unknown) => state.getApproval(args),
   getWaitingApprovalsFn: async () => ({ count: 0, latest: [] }),
   approveApprovalFn: (args: unknown) => state.approve(args),
@@ -121,6 +124,7 @@ let client: QueryClient
 beforeEach(() => {
   state.search = {}
   state.wide = true
+  state.listFails = false
   state.navigate.mockReset()
   state.navigate.mockImplementation(navigateTo)
   state.approve.mockReset()
@@ -530,5 +534,26 @@ describe('ApprovalsPage', () => {
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
     expect(screen.queryByRole('heading', { level: 2 })).toBeNull()
     expect(state.search).toEqual({ id: 'assistant_action_09' })
+  })
+
+  it('says the list could not be loaded instead of showing it empty, and retries', async () => {
+    state.listFails = true
+    state.waiting = [view()]
+    renderPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Approvals could not be loaded.')
+    expect(screen.queryByText('Nothing waiting.')).toBeNull()
+    state.listFails = false
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(
+      await within(await screen.findByRole('list')).findByText('Change the workspace name')
+    ).toBeInTheDocument()
+  })
+
+  it('says the decided list could not be loaded instead of showing it empty', async () => {
+    state.search = { view: 'decided' }
+    state.listFails = true
+    renderPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Approvals could not be loaded.')
+    expect(screen.queryByText('Nothing decided yet.')).toBeNull()
   })
 })

@@ -1788,6 +1788,8 @@
   "admin.approvals.back": "Wróć do zatwierdzeń",
   "admin.approvals.loading": "Wczytywanie",
   "admin.approvals.notFound": "Nie znaleziono tej prośby.",
+  "admin.approvals.loadFailed": "Nie udało się wczytać zatwierdzeń.",
+  "admin.approvals.retry": "Spróbuj ponownie",
   "admin.approvals.risk.low": "Niskie",
   "admin.approvals.risk.medium": "Średnie",
   "admin.approvals.risk.high": "Wysokie",

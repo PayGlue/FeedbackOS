@@ -1788,6 +1788,8 @@
   "admin.approvals.back": "Back to approvals",
   "admin.approvals.loading": "Loading",
   "admin.approvals.notFound": "This request was not found.",
+  "admin.approvals.loadFailed": "Approvals could not be loaded.",
+  "admin.approvals.retry": "Try again",
   "admin.approvals.risk.low": "Low",
   "admin.approvals.risk.medium": "Medium",
   "admin.approvals.risk.high": "High",
