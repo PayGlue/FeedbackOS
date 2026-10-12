@@ -295,4 +295,35 @@ describe('ApprovalsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Sign in again to approve')
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
   })
+
+  it('says how a decided request ended when it is opened from Decided', async () => {
+    state.search = { view: 'decided' }
+    state.decided = [
+      view({
+        status: 'executed',
+        canDecide: false,
+        undone: true,
+        decidedById: 'principal_ada',
+        decidedByName: 'Ada Admin',
+        decidedAt: new Date().toISOString(),
+      }),
+    ]
+    renderPage()
+    const heading = await screen.findByRole('heading', { level: 2 })
+    const section = heading.closest('section')!
+    expect(within(section).getByText('Approved by Ada Admin')).toBeInTheDocument()
+    expect(within(section).getByText('Undone')).toBeInTheDocument()
+  })
+
+  it('says only that a request was approved while another call carries it out', async () => {
+    state.waiting = [view()]
+    state.approve.mockResolvedValue({
+      ok: true,
+      approval: view({ status: 'approved', canDecide: false }),
+    })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Approved.')
+    expect(screen.queryByText(/Applied/)).toBeNull()
+  })
 })

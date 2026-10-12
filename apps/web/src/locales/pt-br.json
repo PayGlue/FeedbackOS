@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "Desfeita",
   "admin.approvals.status.failed": "Falhou",
   "admin.approvals.result.applied": "Aplicado agora mesmo.",
+  "admin.approvals.result.approved": "Aprovado.",
   "admin.approvals.result.appliedFinal": "Pronto. Isso não pode ser desfeito.",
   "admin.approvals.result.rejected": "Rejeitado.",
   "admin.approvals.result.undone": "Desfeito. Os valores anteriores voltaram.",

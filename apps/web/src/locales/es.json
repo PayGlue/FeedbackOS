@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "Deshecha",
   "admin.approvals.status.failed": "Fallida",
   "admin.approvals.result.applied": "Aplicado ahora mismo.",
+  "admin.approvals.result.approved": "Aprobado.",
   "admin.approvals.result.appliedFinal": "Hecho. No se puede deshacer.",
   "admin.approvals.result.rejected": "Rechazado.",
   "admin.approvals.result.undone": "Deshecho. Se restauraron los valores anteriores.",

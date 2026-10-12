@@ -1,4 +1,5 @@
 import { defineMessages } from 'react-intl'
+import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
 import { RECENT_SIGN_IN_REQUIRED } from '@/lib/shared/approval-refusal'
 
 /** The Approvals page's strings, and the ones the rail and Home share with it. */
@@ -40,6 +41,7 @@ export const approvalMessages = defineMessages({
     id: 'admin.approvals.result.applied',
     defaultMessage: 'Applied just now.',
   },
+  approvedOnly: { id: 'admin.approvals.result.approved', defaultMessage: 'Approved.' },
   appliedFinal: {
     id: 'admin.approvals.result.appliedFinal',
     defaultMessage: 'Done. It can’t be undone.',
@@ -90,6 +92,22 @@ export const approvalMessages = defineMessages({
     defaultMessage: 'That did not go through. Try again.',
   },
 })
+
+/** How a decided request ended: Applied, Undone, Failed, Rejected; null while it waits. */
+export function outcomeMessage(approval: Pick<ApprovalView, 'status' | 'undone'>) {
+  switch (approval.status) {
+    case 'rejected':
+      return approvalMessages.statusRejected
+    case 'failed':
+      return approvalMessages.statusFailed
+    case 'executed':
+      return approval.undone ? approvalMessages.statusUndone : approvalMessages.statusApplied
+    case 'approved':
+      return approvalMessages.statusApproved
+    default:
+      return null
+  }
+}
 
 /** The words for a refusal the server sent back as a code. */
 export function refusalMessage(code: string) {

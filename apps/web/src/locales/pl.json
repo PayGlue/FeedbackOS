@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "Cofnięto",
   "admin.approvals.status.failed": "Niepowodzenie",
   "admin.approvals.result.applied": "Zastosowano przed chwilą.",
+  "admin.approvals.result.approved": "Zatwierdzono.",
   "admin.approvals.result.appliedFinal": "Gotowe. Tego nie można cofnąć.",
   "admin.approvals.result.rejected": "Odrzucono.",
   "admin.approvals.result.undone": "Cofnięto. Poprzednie wartości zostały przywrócone.",

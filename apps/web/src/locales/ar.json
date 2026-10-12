@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "تم التراجع",
   "admin.approvals.status.failed": "فشل",
   "admin.approvals.result.applied": "طُبّق للتو.",
+  "admin.approvals.result.approved": "تمت الموافقة.",
   "admin.approvals.result.appliedFinal": "تم. لا يمكن التراجع عن ذلك.",
   "admin.approvals.result.rejected": "مرفوض.",
   "admin.approvals.result.undone": "تم التراجع. عادت القيم السابقة.",

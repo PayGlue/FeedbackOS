@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getTimeAgo } from '@/components/ui/time-ago'
 import { cn } from '@/lib/shared/utils'
-import { approvalMessages } from './approval-messages'
+import { approvalMessages, outcomeMessage } from './approval-messages'
 import { requesterOf } from './approval-people'
 import { ApprovalRiskChip } from './approval-risk-chip'
 import { ApprovalDetail } from './approval-detail'
@@ -20,21 +20,6 @@ const route = getRouteApi('/admin/approvals')
 /** Newest first; ids are time-ordered, so they settle a tie. */
 function newestFirst(a: ApprovalView, b: ApprovalView): number {
   return b.proposedAt.localeCompare(a.proposedAt) || b.id.localeCompare(a.id)
-}
-
-function useStatusLabel() {
-  const intl = useIntl()
-  return (approval: ApprovalView): string | null => {
-    if (approval.status === 'proposed') return null
-    if (approval.status === 'rejected') return intl.formatMessage(approvalMessages.statusRejected)
-    if (approval.status === 'failed') return intl.formatMessage(approvalMessages.statusFailed)
-    if (approval.status === 'executed')
-      return intl.formatMessage(
-        approval.undone ? approvalMessages.statusUndone : approvalMessages.statusApplied
-      )
-    if (approval.status === 'approved') return intl.formatMessage(approvalMessages.statusApproved)
-    return null
-  }
 }
 
 export interface ApprovalsListProps {
@@ -47,7 +32,6 @@ export interface ApprovalsListProps {
 /** The requests in a tab: title, risk, who asked and when. */
 export function ApprovalsList({ items, selectedId, view, onSelect }: ApprovalsListProps) {
   const intl = useIntl()
-  const statusOf = useStatusLabel()
   if (items.length === 0)
     return (
       <p className="px-3.5 py-10 text-center text-sm text-muted-foreground">
@@ -59,7 +43,8 @@ export function ApprovalsList({ items, selectedId, view, onSelect }: ApprovalsLi
   return (
     <ul className="space-y-0.5">
       {items.map((item) => {
-        const status = statusOf(item)
+        const outcome = outcomeMessage(item)
+        const status = outcome ? intl.formatMessage(outcome) : null
         const on = item.id === selectedId
         return (
           <li key={item.id}>

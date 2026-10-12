@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "Rückgängig gemacht",
   "admin.approvals.status.failed": "Fehlgeschlagen",
   "admin.approvals.result.applied": "Gerade angewendet.",
+  "admin.approvals.result.approved": "Freigegeben.",
   "admin.approvals.result.appliedFinal": "Erledigt. Das lässt sich nicht rückgängig machen.",
   "admin.approvals.result.rejected": "Abgelehnt.",
   "admin.approvals.result.undone": "Rückgängig gemacht. Die vorherigen Werte sind wieder da.",

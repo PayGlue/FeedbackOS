@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "Annulée",
   "admin.approvals.status.failed": "Échouée",
   "admin.approvals.result.applied": "Appliqué à l’instant.",
+  "admin.approvals.result.approved": "Approuvé.",
   "admin.approvals.result.appliedFinal": "C’est fait. Impossible de revenir en arrière.",
   "admin.approvals.result.rejected": "Rejeté.",
   "admin.approvals.result.undone": "Annulé. Les valeurs précédentes sont rétablies.",

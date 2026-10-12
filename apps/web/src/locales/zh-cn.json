@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "已撤销",
   "admin.approvals.status.failed": "失败",
   "admin.approvals.result.applied": "刚刚已应用。",
+  "admin.approvals.result.approved": "已批准。",
   "admin.approvals.result.appliedFinal": "已完成。此操作无法撤销。",
   "admin.approvals.result.rejected": "已拒绝。",
   "admin.approvals.result.undone": "已撤销。之前的值已恢复。",

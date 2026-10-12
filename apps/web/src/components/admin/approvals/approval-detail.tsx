@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { SettingsArea } from '@/lib/shared/assistant/settings-proposals'
 import { cn } from '@/lib/shared/utils'
 import { RECENT_SIGN_IN_REQUIRED } from '@/lib/shared/approval-refusal'
-import { approvalMessages, refusalMessage } from './approval-messages'
+import { approvalMessages, outcomeMessage, refusalMessage } from './approval-messages'
 import { personOf, requesterOf, toldOf } from './approval-people'
 import { ApprovalRiskChip } from './approval-risk-chip'
 import { ApprovalChanges } from './approval-changes'
@@ -29,13 +29,16 @@ import { ApprovalChanges } from './approval-changes'
 const bold = (chunks: ReactNode[]) => <b className="font-medium text-foreground">{chunks}</b>
 
 /** Where a request stands for the person looking at it. */
-type Stage = 'deciding' | 'rejecting' | 'applied' | 'failed' | 'rejected' | 'undone' | 'history'
+type Stage =
+  'deciding' | 'rejecting' | 'approved' | 'applied' | 'failed' | 'rejected' | 'undone' | 'history'
 
 function stageOf(approval: ApprovalView, decidedHere: boolean, rejecting: boolean): Stage {
   if (approval.status === 'proposed') return rejecting ? 'rejecting' : 'deciding'
   if (!decidedHere) return 'history'
   if (approval.status === 'rejected') return 'rejected'
   if (approval.status === 'failed') return 'failed'
+  // Approved but not yet carried out: another call for the same request runs it.
+  if (approval.status === 'approved') return 'approved'
   return approval.undone ? 'undone' : 'applied'
 }
 
@@ -190,6 +193,9 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
             name: approval.decidedByName ?? intl.formatMessage(approvalMessages.someone),
           })
         : null
+  // A request decided before this visit says how it ended beside who decided it.
+  const outcome =
+    stage === 'history' && approval.status !== 'rejected' ? outcomeMessage(approval) : null
 
   return (
     <section aria-labelledby={`${reasonId}-title`} className="px-5 pt-6 pb-10 sm:px-9 sm:pt-7">
@@ -226,6 +232,7 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
         ) : (
           decision && <span>{decision}</span>
         )}
+        {outcome && <span>{intl.formatMessage(outcome)}</span>}
         {approval.status === 'rejected' && approval.decisionReason && (
           <span>
             {intl.formatMessage(approvalMessages.reasonGiven, { reason: approval.decisionReason })}
@@ -291,6 +298,7 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
       )}
 
       {(stage === 'applied' ||
+        stage === 'approved' ||
         stage === 'failed' ||
         stage === 'rejected' ||
         stage === 'undone') && (
@@ -311,11 +319,13 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
               ? approval.undoable
                 ? intl.formatMessage(approvalMessages.applied)
                 : intl.formatMessage(approvalMessages.appliedFinal)
-              : stage === 'rejected'
-                ? intl.formatMessage(approvalMessages.rejected)
-                : stage === 'undone'
-                  ? intl.formatMessage(approvalMessages.undone)
-                  : intl.formatMessage(approvalMessages.failed)}
+              : stage === 'approved'
+                ? intl.formatMessage(approvalMessages.approvedOnly)
+                : stage === 'rejected'
+                  ? intl.formatMessage(approvalMessages.rejected)
+                  : stage === 'undone'
+                    ? intl.formatMessage(approvalMessages.undone)
+                    : intl.formatMessage(approvalMessages.failed)}
           </span>
           {stage === 'applied' && approval.undoable && (
             <button

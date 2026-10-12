@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "Ongedaan gemaakt",
   "admin.approvals.status.failed": "Mislukt",
   "admin.approvals.result.applied": "Zojuist toegepast.",
+  "admin.approvals.result.approved": "Goedgekeurd.",
   "admin.approvals.result.appliedFinal": "Klaar. Dit kan niet ongedaan worden gemaakt.",
   "admin.approvals.result.rejected": "Afgewezen.",
   "admin.approvals.result.undone": "Ongedaan gemaakt. De vorige waarden zijn terug.",

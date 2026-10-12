@@ -2047,6 +2047,7 @@
   "admin.approvals.status.undone": "เลิกทำแล้ว",
   "admin.approvals.status.failed": "ไม่สำเร็จ",
   "admin.approvals.result.applied": "นำไปใช้เมื่อสักครู่",
+  "admin.approvals.result.approved": "อนุมัติแล้ว",
   "admin.approvals.result.appliedFinal": "เรียบร้อย ไม่สามารถเลิกทำได้",
   "admin.approvals.result.rejected": "ปฏิเสธแล้ว",
   "admin.approvals.result.undone": "เลิกทำแล้ว ค่าก่อนหน้ากลับมาแล้ว",

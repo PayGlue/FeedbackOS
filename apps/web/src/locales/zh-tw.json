@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "已復原",
   "admin.approvals.status.failed": "失敗",
   "admin.approvals.result.applied": "剛剛已套用。",
+  "admin.approvals.result.approved": "已核准。",
   "admin.approvals.result.appliedFinal": "已完成。此操作無法復原。",
   "admin.approvals.result.rejected": "已拒絕。",
   "admin.approvals.result.undone": "已復原。先前的值已恢復。",

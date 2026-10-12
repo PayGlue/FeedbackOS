@@ -1814,6 +1814,7 @@
   "admin.approvals.status.undone": "Undone",
   "admin.approvals.status.failed": "Failed",
   "admin.approvals.result.applied": "Applied just now.",
+  "admin.approvals.result.approved": "Approved.",
   "admin.approvals.result.appliedFinal": "Done. It can’t be undone.",
   "admin.approvals.result.rejected": "Rejected.",
   "admin.approvals.result.undone": "Undone. The previous values are back.",
