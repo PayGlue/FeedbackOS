@@ -90,3 +90,34 @@ describe('rowsToCsv: attribution columns', () => {
     expect(cell('on_behalf_of')).toBe('James Morton')
   })
 })
+
+describe('rowsToCsv: spreadsheet formula injection', () => {
+  it('neutralises any cell a spreadsheet would read as a formula, in every column', () => {
+    const csv = rowsToCsv([
+      row({
+        actorEmail: '@SUM(1+1)',
+        targetType: '+cmd',
+        targetId: '-2+3',
+        clientName: '=HYPERLINK("https://evil.example","Claude")',
+        credentialId: '\tclient',
+        requestId: '\rreq',
+      }),
+    ])
+    const [header, dataRow] = csv.split('\n')
+    const columns = header.split(',')
+    const cells = dataRow.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+    const cell = (name: string) => cells[columns.indexOf(name)]
+    expect(cell('actor_email')).toBe("'@SUM(1+1)")
+    expect(cell('target_type')).toBe("'+cmd")
+    expect(cell('target_id')).toBe("'-2+3")
+    expect(cell('client_name')).toBe('"\'=HYPERLINK(""https://evil.example"",""Claude"")"')
+    expect(cell('credential_id')).toBe("'\tclient")
+    expect(cell('request_id')).toBe('"\'\rreq"')
+  })
+
+  it('leaves ordinary values alone', () => {
+    const csv = rowsToCsv([row({ clientName: 'Claude Desktop', targetId: 'post_01h455' })])
+    expect(csv).toContain(',Claude Desktop,')
+    expect(csv).toContain(',post_01h455,')
+  })
+})

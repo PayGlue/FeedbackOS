@@ -67,13 +67,38 @@ const storage: AsyncLocalStorage<AttributionSlot> = ((globalThis as Record<symbo
 
 /**
  * A client name is display text, and an OAuth client registers its own name
- * without signing in, so it is capped before it reaches a row.
+ * without signing in, so it is cleaned before it reaches a row: line breaks
+ * become spaces, control characters and the bidirectional marks, overrides
+ * and isolates are dropped (a reversed or multi-line name could otherwise
+ * pass for another client), and the result is capped.
  */
 const CLIENT_NAME_MAX_LEN = 200
 
-function capName(name: string | null | undefined): string | null {
+const LINE_BREAKS = new Set([0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x85, 0x2028, 0x2029])
+
+function isInvisible(code: number): boolean {
+  return (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    code === 0x061c ||
+    code === 0x200e ||
+    code === 0x200f ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  )
+}
+
+function cleanName(name: string | null | undefined): string | null {
   if (!name) return null
-  return name.length > CLIENT_NAME_MAX_LEN ? name.slice(0, CLIENT_NAME_MAX_LEN) : name
+  let cleaned = ''
+  for (const char of name) {
+    const code = char.codePointAt(0) ?? 0
+    if (LINE_BREAKS.has(code)) cleaned += ' '
+    else if (!isInvisible(code)) cleaned += char
+  }
+  cleaned = cleaned.replace(/ {2,}/g, ' ').trim()
+  if (!cleaned) return null
+  return cleaned.length > CLIENT_NAME_MAX_LEN ? cleaned.slice(0, CLIENT_NAME_MAX_LEN) : cleaned
 }
 
 /** Run `fn` with `attribution` as the boundary for its whole async subtree. */
@@ -120,7 +145,7 @@ export function auditAttributionColumns(
     channel: attribution?.channel ?? null,
     credentialKind: attribution?.credentialKind ?? null,
     credentialId: attribution?.credentialId ?? null,
-    clientName: capName(attribution?.clientName),
+    clientName: cleanName(attribution?.clientName),
     onBehalfOfPrincipalId: attribution?.onBehalfOfPrincipalId ?? null,
   }
 }
@@ -137,7 +162,7 @@ export function apiKeyAttribution(
     channel,
     credentialKind: 'api_key',
     credentialId: apiKey.id,
-    clientName: capName(apiKey.name),
+    clientName: cleanName(apiKey.name),
     onBehalfOfPrincipalId: apiKey.createdById,
   }
 }
@@ -152,14 +177,14 @@ export function oauthClientAttribution(input: {
     channel: 'mcp',
     credentialKind: 'oauth_client',
     credentialId: input.clientId,
-    clientName: capName(input.clientName),
+    clientName: cleanName(input.clientName),
     onBehalfOfPrincipalId: input.principalId,
   }
 }
 
 /** A workflow run acts as the workflow, named as it was when it ran. */
 export function workflowAttribution(workflow: { name: string }): AuditAttribution {
-  return { channel: 'workflow', clientName: capName(workflow.name) }
+  return { channel: 'workflow', clientName: cleanName(workflow.name) }
 }
 
 /**
@@ -173,7 +198,7 @@ export function assistantAttribution(input: {
 }): AuditAttribution {
   return {
     channel: 'assistant',
-    clientName: capName(input.assistantName),
+    clientName: cleanName(input.assistantName),
     onBehalfOfPrincipalId: input.actor.principalType === 'user' ? input.actor.principalId : null,
   }
 }

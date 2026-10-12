@@ -126,6 +126,28 @@ describe('attribution builders', () => {
     })
   })
 
+  it('strips control, newline and direction-override characters from a client name', () => {
+    // An OAuth client names itself without signing in: a reversed or
+    // multi-line name must not be able to pass for another client.
+    const attribution = oauthClientAttribution({
+      clientId: 'abc123',
+      clientName: 'Claude\u202E pot\u202C Desktop\r\nInjected\u0007\u2066x\u2069\u200E\u200F\u061C',
+      principalId: CREATOR,
+    })
+    expect(attribution.clientName).toBe('Claude pot Desktop Injectedx')
+    expect(
+      oauthClientAttribution({
+        clientId: 'abc',
+        clientName: '\u202E\n\u0000 ',
+        principalId: CREATOR,
+      }).clientName
+    ).toBeNull()
+    expect(
+      apiKeyAttribution({ id: KEY_ID, name: 'CI\tkey\u202D', createdById: CREATOR }, 'api')
+        .clientName
+    ).toBe('CI key')
+  })
+
   it('caps a self-registered client name before it reaches a row', () => {
     const attribution = oauthClientAttribution({
       clientId: 'abc123',

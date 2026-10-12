@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { createIntl } from 'react-intl'
-import { attributionLine } from '../audit-log-page'
+import { attributionLine, attributionTooltip } from '../audit-log-page'
 
 const intl = createIntl({ locale: 'en', messages: {}, onError: () => {} })
 
@@ -58,5 +58,31 @@ describe('attributionLine', () => {
     expect(
       attributionLine({ channel: 'api', clientName: 'Zapier', onBehalfOfName: 'Jana' }, de)
     ).toBe('über API · Zapier für Jana')
+  })
+})
+
+describe('attributionTooltip', () => {
+  it('adds the client id, so two clients with look-alike names can be told apart', () => {
+    expect(
+      attributionTooltip(
+        {
+          channel: 'mcp',
+          clientName: 'Claude Desktop',
+          onBehalfOfName: 'James Morton',
+          credentialId: 'client_desktop',
+        },
+        intl
+      )
+    ).toBe('via MCP · Claude Desktop for James Morton (client_desktop)')
+  })
+
+  it('is the line alone when no credential made the change', () => {
+    expect(
+      attributionTooltip(
+        { channel: 'workflow', clientName: 'Auto-close', onBehalfOfName: null, credentialId: null },
+        intl
+      )
+    ).toBe('via workflow · Auto-close')
+    expect(attributionTooltip({ ...base, credentialId: null }, intl)).toBeNull()
   })
 })

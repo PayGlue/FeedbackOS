@@ -207,7 +207,11 @@ export function rowsToCsv(rows: AuditEventRow[]): string {
   ]
   const escape = (v: unknown): string => {
     if (v === null || v === undefined) return ''
-    const s = typeof v === 'string' ? v : JSON.stringify(v)
+    let s = typeof v === 'string' ? v : JSON.stringify(v)
+    // A spreadsheet runs a cell that starts like a formula. Several columns
+    // carry text the actor chose (client names, emails), so a leading quote
+    // keeps every such cell text.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const lines = [
@@ -269,12 +273,33 @@ export function attributionLine(
   return `${via} ${intl.formatMessage(VIA_ON_BEHALF_OF, { name: row.onBehalfOfName })}`
 }
 
+/**
+ * The via line with the credential id after it, for the tooltip: a client
+ * names itself, so two with look-alike names are told apart by their ids.
+ */
+export function attributionTooltip(
+  row: {
+    channel: AuditChannel | null
+    clientName: string | null
+    onBehalfOfName: string | null
+    credentialId: string | null
+  },
+  intl: Pick<IntlShape, 'formatMessage'>
+): string | null {
+  const line = attributionLine(row, intl)
+  if (!line) return null
+  return row.credentialId ? `${line} (${row.credentialId})` : line
+}
+
 function ViaLine({ row }: { row: AuditEventRow }) {
   const intl = useIntl()
   const line = attributionLine(row, intl)
   if (!line) return null
   return (
-    <span className="truncate text-xs text-muted-foreground" title={line}>
+    <span
+      className="truncate text-xs text-muted-foreground"
+      title={attributionTooltip(row, intl) ?? undefined}
+    >
       {line}
     </span>
   )
