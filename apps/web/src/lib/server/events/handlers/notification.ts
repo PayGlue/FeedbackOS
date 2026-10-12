@@ -10,7 +10,7 @@ import type { HookHandler, HookResult } from '../hook-types'
 import type { EventData, EventPostMentionedData } from '../types'
 import {
   createNotificationsBatch,
-  createOrBatchNotifications,
+  ringApprovalBells,
 } from '@/lib/server/domains/notifications/notification.service'
 import type { CreateNotificationInput, NotificationType } from '@/lib/server/domains/notifications'
 import type { PrincipalId, PostId, PostCommentId, ConversationMessageId } from '@quackback/ids'
@@ -81,11 +81,6 @@ export interface NotificationConfig {
   clientName?: string | null
 }
 
-/** The bell line for several approval requests waiting on one person. */
-export function approvalBatchTitle(count: number): string {
-  return `${count} requests need your approval`
-}
-
 export const notificationHook: HookHandler = {
   async run(event: EventData, target: unknown, config: unknown): Promise<HookResult> {
     const { principalIds } = target as NotificationTarget
@@ -135,7 +130,7 @@ export const notificationHook: HookHandler = {
       // Approval requests are batched per person rather than one row each.
       const ids =
         event.type === 'approval.requested'
-          ? await createOrBatchNotifications(filtered, approvalBatchTitle)
+          ? await ringApprovalBells(filtered)
           : await createNotificationsBatch(filtered)
 
       // The notifiedAt watermark for an internal-note @-mention lives on the

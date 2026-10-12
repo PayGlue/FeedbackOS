@@ -65,3 +65,8 @@ DO $$ BEGIN
     ALTER TABLE assistant_pending_actions ADD CONSTRAINT assistant_pending_actions_parent_check CHECK (num_nonnulls(conversation_id, ticket_id, workspace_thread_key) <= 1);
   END IF;
 END $$;
+--> statement-breakpoint
+-- One unread approval bell per person: concurrent requests then count up the
+-- same row through an upsert instead of adding a second one. The type is new
+-- with this migration, so no existing rows can collide.
+CREATE UNIQUE INDEX IF NOT EXISTS "in_app_notifications_unread_approval_idx" ON "in_app_notifications" ("principal_id") WHERE "type" = 'approval_requested' AND "read_at" IS NULL AND "archived_at" IS NULL;

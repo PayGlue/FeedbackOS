@@ -15,7 +15,6 @@ import {
   desc,
   isNull,
   isNotNull,
-  inArray,
   sql,
   inAppNotifications,
   posts,
@@ -75,65 +74,50 @@ export async function createNotificationsBatch(
   return rows.map((r) => r.id)
 }
 
+/** The bell line once several approval requests wait on one person. */
+const APPROVAL_BATCH_TITLE = ' requests need your approval'
+
 /**
- * Create notifications batched per person: someone who already has an unread
- * one of the same type gets that row updated to count the new arrival, and
- * moved to the top, instead of a second row. A burst of requests is then one
- * line in the bell. Every input must share one type.
+ * Ring the approval bell, batched per person: one unread row counts the
+ * requests waiting on them, and moves to the top with each new one.
+ *
+ * One statement. A partial unique index allows one unread approval bell per
+ * person, so an insert for someone who already has one becomes an increment
+ * of that row. Postgres locks the row it conflicts with, so requests that
+ * arrive together can neither add a second row nor lose a count.
  */
-export async function createOrBatchNotifications(
+export async function ringApprovalBells(
   inputs: CreateNotificationInput[],
-  batchedTitle: (count: number) => string,
   tx?: Transaction
 ): Promise<NotificationId[]> {
-  if (inputs.length === 0) return []
-  const executor = tx ?? db
-  const type = inputs[0]!.type
-  if (inputs.some((input) => input.type !== type))
-    throw new Error('createOrBatchNotifications: every input must share one type')
-  const unread = await executor
-    .select({
-      id: inAppNotifications.id,
-      principalId: inAppNotifications.principalId,
-      metadata: inAppNotifications.metadata,
-    })
-    .from(inAppNotifications)
-    .where(
-      and(
-        inArray(
-          inAppNotifications.principalId,
-          inputs.map((input) => input.principalId)
-        ),
-        eq(inAppNotifications.type, type),
-        isNull(inAppNotifications.readAt),
-        isNull(inAppNotifications.archivedAt)
-      )
+  // One row per person: a statement may update a conflicting row only once.
+  const byPerson = new Map(inputs.map((input) => [input.principalId, input]))
+  if (byPerson.size === 0) return []
+  const count = sql`coalesce((${inAppNotifications.metadata}->>'count')::int, 1) + 1`
+  const rows = await (tx ?? db)
+    .insert(inAppNotifications)
+    .values(
+      [...byPerson.values()].map((input) => ({
+        id: createId('notification'),
+        principalId: input.principalId,
+        type: 'approval_requested',
+        title: input.title,
+        body: input.body ?? null,
+        metadata: { ...input.metadata, count: 1 },
+      }))
     )
-    .orderBy(desc(inAppNotifications.createdAt))
-  const latest = new Map<string, (typeof unread)[number]>()
-  for (const row of unread) if (!latest.has(row.principalId)) latest.set(row.principalId, row)
-
-  const ids: NotificationId[] = []
-  const fresh: CreateNotificationInput[] = []
-  for (const input of inputs) {
-    const previous = latest.get(input.principalId)
-    if (!previous) {
-      fresh.push(input)
-      continue
-    }
-    const count = (typeof previous.metadata?.count === 'number' ? previous.metadata.count : 1) + 1
-    await executor
-      .update(inAppNotifications)
-      .set({
-        title: batchedTitle(count),
+    .onConflictDoUpdate({
+      target: inAppNotifications.principalId,
+      targetWhere: sql`type = 'approval_requested' AND read_at IS NULL AND archived_at IS NULL`,
+      set: {
+        title: sql`(${count})::text || ${APPROVAL_BATCH_TITLE}`,
         body: null,
-        metadata: { ...input.metadata, count },
-        createdAt: new Date(),
-      })
-      .where(eq(inAppNotifications.id, previous.id))
-    ids.push(previous.id)
-  }
-  return [...ids, ...(await createNotificationsBatch(fresh, tx))]
+        metadata: sql`excluded.metadata || jsonb_build_object('count', ${count})`,
+        createdAt: sql`now()`,
+      },
+    })
+    .returning({ id: inAppNotifications.id })
+  return rows.map((row) => row.id)
 }
 
 /**
