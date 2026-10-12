@@ -150,7 +150,7 @@ async function untilQuiet(page: Page, action: () => Promise<void>, quietMs = 300
 const SETTINGS_TOUR = [
   ['/admin/settings/members', 'Members & Teams'],
   ['/admin/settings/security/authentication', 'Access & Security'],
-  ['/admin/settings/developers', 'Developers'],
+  ['/admin/settings/agents/assistants', 'Agents & API'],
   ['/admin/settings/integrations', 'Integrations'],
   ['/admin/settings/people', 'Users'],
   ['/admin/settings/companies', 'Companies'],
