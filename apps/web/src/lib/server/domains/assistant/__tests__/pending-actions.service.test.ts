@@ -104,6 +104,44 @@ describe.skipIf(!fixture.available)('pending-actions.service (real DB, rolled ba
     expect(executed?.executedAt).not.toBeNull()
   })
 
+  it('lands a decision only on a row whose stored digest is the one it names', async () => {
+    const conversationId = await seedConversation()
+    const agentId = await seedPrincipal()
+    const proposed = await proposePendingAction({
+      conversationId,
+      toolName: 'close_conversation',
+      args: { reason: 'resolved' },
+      summary: 'Close this conversation as resolved.',
+    })
+    const stored = async () =>
+      (
+        await testDb
+          .select()
+          .from(assistantPendingActions)
+          .where(eq(assistantPendingActions.id, proposed.id))
+      )[0]!
+
+    // A digest that is not the stored one decides nothing.
+    expect(
+      await decidePendingAction(proposed.id, 'approved', agentId, testDb, {
+        contentHash: 'not-the-stored-digest',
+      })
+    ).toBeNull()
+    expect((await stored()).status).toBe('proposed')
+
+    // Nor does any digest while none is stored, even the content's own.
+    await testDb
+      .update(assistantPendingActions)
+      .set({ argsDigest: null })
+      .where(eq(assistantPendingActions.id, proposed.id))
+    expect(
+      await decidePendingAction(proposed.id, 'rejected', agentId, testDb, {
+        contentHash: proposed.argsDigest!,
+      })
+    ).toBeNull()
+    expect((await stored()).status).toBe('proposed')
+  })
+
   it('persists a Slack proposal without creating conversation notes', async () => {
     const workspaceThreadKey = JSON.stringify(['T', 'C', '123.4'])
     const proposed = await proposePendingAction({
