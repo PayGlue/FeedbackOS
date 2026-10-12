@@ -3,7 +3,6 @@ import {
   MCP_FIRST_CONNECT_SCOPES,
   expandWriteGrants,
   type ApiKeyScope,
-  type DomainAccessLevel,
   type DomainAccessLevels,
   ACCESS_DOMAINS,
   domainAccessLevels,
@@ -34,20 +33,9 @@ export function deviceRequestedOfflineAccess(scope: string | null | undefined): 
   return parseScopeList(scope ?? '').includes('offline_access')
 }
 
-const RANK: Record<DomainAccessLevel, number> = { off: 0, read: 1, read_write: 2, write: 2 }
-
 /** The most a request allows in each domain, in picker terms. */
 export function deviceAllowedLevels(scope: string | null | undefined): DomainAccessLevels {
   return domainAccessLevels(deviceRequestedCapabilities(scope))
-}
-
-/** Whether choosing `chip` in `domain` would stay within what was asked. */
-export function isChipWithinRequest(
-  allowed: DomainAccessLevels,
-  domain: keyof DomainAccessLevels,
-  chip: Exclude<DomainAccessLevel, 'off'>
-): boolean {
-  return RANK[chip] <= RANK[allowed[domain]]
 }
 
 /**

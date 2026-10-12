@@ -1,17 +1,8 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { z } from 'zod'
 import { AreaMessages } from '@/components/shared/area-messages'
 import { PortalIntlProvider } from '@/components/portal-intl-provider'
 import { DeviceApproval } from '@/components/device/device-approval'
 import { buildSigninRedirect } from '@/lib/shared/auth-prompt'
-import {
-  DEFAULT_LOCALE,
-  loadPortalMessages,
-  loadMessages,
-  seedAreaMessages,
-} from '@/lib/shared/i18n'
-
-const searchSchema = z.object({ user_code: z.string().max(32).optional() })
 
 /**
  * The verification page for the OAuth device authorization grant (RFC 8628):
@@ -20,7 +11,9 @@ const searchSchema = z.object({ user_code: z.string().max(32).optional() })
  * lands on the approval with nothing to type.
  */
 export const Route = createFileRoute('/device')({
-  validateSearch: searchSchema,
+  validateSearch: (search: Record<string, unknown>): { user_code?: string } => ({
+    user_code: typeof search.user_code === 'string' ? search.user_code.slice(0, 32) : undefined,
+  }),
   beforeLoad: ({ context, search }) => {
     const user = context.session?.user as { isAnonymous?: boolean } | undefined
     if (!user || user.isAnonymous) {
@@ -30,21 +23,12 @@ export const Route = createFileRoute('/device')({
       throw redirect(buildSigninRedirect(back))
     }
   },
+  // The loader's work lives in a lazy module: this route's options ride in the
+  // entry bundle every page loads, and only the device page needs the rest.
   loader: async ({ context }) => {
-    const locale = context.acceptLanguageLocale ?? DEFAULT_LOCALE
-    const messages = await seedAreaMessages(locale, 'deviceSignIn')
-    // The capability picker is shared with API keys, and its labels live there.
-    // The sign-in-again dialog renders the portal sign-in form, so it needs the
-    // portal catalog too.
-    const shared: Record<string, string> = { ...(await loadPortalMessages(locale)) }
-    if (locale !== DEFAULT_LOCALE) {
-      for (const [key, value] of Object.entries(await loadMessages(locale))) {
-        if (key.startsWith('apiKeys.scopes.')) shared[key] = value
-      }
-    }
-    return { locale, messages, shared }
+    const { loadDeviceMessages } = await import('@/components/device/device-messages')
+    return loadDeviceMessages(context.acceptLanguageLocale)
   },
-  head: () => ({ meta: [{ name: 'robots', content: 'noindex' }] }),
   component: DeviceRoute,
 })
 
@@ -54,6 +38,7 @@ function DeviceRoute() {
   const navigate = useNavigate()
   return (
     <PortalIntlProvider locale={locale} messages={shared}>
+      <meta name="robots" content="noindex" />
       <AreaMessages area="deviceSignIn" messages={messages}>
         <DeviceApproval
           userCode={user_code}
