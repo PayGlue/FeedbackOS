@@ -63,6 +63,15 @@ export function useSignInAgain(options: {
   const [action, setAction] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState<SignInAgainNotice | null>(null)
+  // The action waiting on a sign-in. A check claims it (clears this) before it
+  // awaits anything, so the several signals one sign-in sends (the tab coming
+  // back, its focus, the sign-in broadcast) resume it once at most.
+  const pendingRef = useRef<string | null>(null)
+  // Bumped by each request and each close, so a check that outlives either
+  // neither resumes nor restores what it claimed.
+  const generationRef = useRef(0)
+  const checkingRef = useRef(false)
+  const recheckRef = useRef(false)
   // The person who asked. Captured once per request, so a later read that
   // shows someone else is recognised as someone else.
   const askedByRef = useRef<string | null>(null)
@@ -102,35 +111,73 @@ export function useSignInAgain(options: {
     setOpen(true)
   }, [])
 
+  /**
+   * Confirms the sign-in with the server and resumes the pending action at
+   * most once. A signal that arrives while a check is out asks for one more
+   * check rather than running its own. Until the server sees a fresh sign-in
+   * the action stays pending; after an identity provider there is nothing
+   * more to wait for, so the dialog opens again instead.
+   */
+  const confirm = useCallback(
+    async (afterProvider = false): Promise<void> => {
+      if (checkingRef.current) {
+        recheckRef.current = true
+        return
+      }
+      const pending = pendingRef.current
+      if (!pending) return
+      pendingRef.current = null
+      const generation = generationRef.current
+      checkingRef.current = true
+      let outcome: 'resume' | 'differentAccount' | 'wait' = 'wait'
+      try {
+        const current = await readOptions()
+        const askedBy = askedByRef.current
+        if (askedBy && current.userId !== askedBy) outcome = 'differentAccount'
+        else if (askedBy && current.fresh) outcome = 'resume'
+      } catch {
+        // Unconfirmed: keep waiting.
+      } finally {
+        checkingRef.current = false
+      }
+      if (generation !== generationRef.current) return
+
+      if (outcome === 'resume') {
+        recheckRef.current = false
+        setOpen(false)
+        setAction(null)
+        setNotice(null)
+        onSignedInRef.current(pending)
+        return
+      }
+      if (outcome === 'differentAccount') {
+        recheckRef.current = false
+        reloadOnCloseRef.current = !afterProvider
+        reopen(pending, 'differentAccount')
+        return
+      }
+      pendingRef.current = pending
+      if (afterProvider) {
+        reopen(pending, 'failed')
+        return
+      }
+      if (recheckRef.current) {
+        recheckRef.current = false
+        void confirm()
+      }
+    },
+    [readOptions, reopen]
+  )
+
   const request = useCallback((next: string) => {
+    generationRef.current += 1
+    pendingRef.current = next
     askedByRef.current = null
     reloadOnCloseRef.current = false
     setAction(next)
     setNotice(null)
     setOpen(true)
   }, [])
-
-  const onSignInFinished = useCallback(async () => {
-    const pending = action
-    if (!pending) return
-    let current: SignInAgainOptions
-    try {
-      current = await readOptions()
-    } catch {
-      return
-    }
-    const askedBy = askedByRef.current
-    if (askedBy && current.userId !== askedBy) {
-      reloadOnCloseRef.current = true
-      setNotice('differentAccount')
-      return
-    }
-    if (!current.fresh) return
-    setOpen(false)
-    setAction(null)
-    setNotice(null)
-    onSignedInRef.current(pending)
-  }, [action, readOptions])
 
   const onProvider = useCallback(
     async (provider: SignInAgainProvider) => {
@@ -157,6 +204,8 @@ export function useSignInAgain(options: {
       setOpen(true)
       return
     }
+    generationRef.current += 1
+    pendingRef.current = null
     setOpen(false)
     setAction(null)
     setNotice(null)
@@ -166,7 +215,7 @@ export function useSignInAgain(options: {
     }
   }, [])
 
-  const signInFinished = useCallback(() => void onSignInFinished(), [onSignInFinished])
+  const signInFinished = useCallback(() => void confirm(), [confirm])
 
   // Landing back on the page after an identity provider.
   useEffect(() => {
@@ -181,20 +230,16 @@ export function useSignInAgain(options: {
     )
     const stash = takeSignInAgain(marker.action)
     if (!stash) return
+    generationRef.current += 1
     askedByRef.current = stash.userId
     if (marker.error) {
+      pendingRef.current = stash.action
       reopen(stash.action, 'failed')
       return
     }
-    readOptions().then(
-      (current) => {
-        if (current.userId !== stash.userId) reopen(stash.action, 'differentAccount')
-        else if (current.fresh) onSignedInRef.current(stash.action)
-        else reopen(stash.action, 'failed')
-      },
-      () => reopen(stash.action, 'failed')
-    )
-  }, [readOptions, reopen])
+    pendingRef.current = stash.action
+    void confirm(true)
+  }, [confirm, reopen])
 
   return {
     request,

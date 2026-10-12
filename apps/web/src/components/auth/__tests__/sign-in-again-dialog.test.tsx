@@ -60,6 +60,22 @@ function opts(overrides: Partial<SignInAgainOptions> = {}): SignInAgainOptions {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => (resolve = r))
+  return { promise, resolve }
+}
+
+/** Lets pending promises and the renders they cause finish. */
+const settle = () => act(async () => new Promise((r) => setTimeout(r, 0)))
+
+/** Every signal a finished sign-in can send, as close together as a browser sends them. */
+function signalEverything() {
+  document.dispatchEvent(new Event('visibilitychange'))
+  window.dispatchEvent(new Event('focus'))
+  hoisted.broadcast.onSuccess?.()
+}
+
 function Page({ onSignedIn }: { onSignedIn: (action: string) => void }) {
   const signInAgain = useSignInAgain({ onSignedIn })
   return (
@@ -155,6 +171,8 @@ describe('asking to sign in again', () => {
     await act(async () => hoisted.broadcast.onSuccess?.())
     await waitFor(() => expect(onSignedIn).toHaveBeenCalledWith('approve:act_1'))
     await waitFor(() => expect(screen.queryByText('Sign in again')).not.toBeInTheDocument())
+    await settle()
+    expect(onSignedIn).toHaveBeenCalledTimes(1)
   })
 
   it('resumes nothing when a different account signed in', async () => {
@@ -169,6 +187,70 @@ describe('asking to sign in again', () => {
     expect(
       await screen.findByText('You signed in with a different account, so nothing was changed.')
     ).toBeInTheDocument()
+    await settle()
+    expect(onSignedIn).not.toHaveBeenCalled()
+  })
+})
+
+describe('resuming exactly once', () => {
+  async function openOnTheCodeStep() {
+    hoisted.options.mockResolvedValue(
+      opts({ emailMethods: { password: false, magicLink: true, twoFactorRequired: false } })
+    )
+    const onSignedIn = renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await screen.findByText('SIGN_IN_FORM')
+    // The form moves to the emailed-code step after sending the email.
+    act(() => {
+      ;(hoisted.formProps!.onContextChange as (ctx: { step: string; email: string }) => void)({
+        step: 'code',
+        email: 'me@acme.com',
+      })
+    })
+    return onSignedIn
+  }
+
+  it('resumes once when focus, visibility and a broadcast arrive together', async () => {
+    const onSignedIn = await openOnTheCodeStep()
+    const answer = deferred<SignInAgainOptions>()
+    hoisted.options.mockReturnValue(answer.promise)
+
+    act(() => signalEverything())
+    await act(async () => answer.resolve(opts({ fresh: true })))
+    await settle()
+    act(() => signalEverything())
+    await settle()
+
+    expect(onSignedIn).toHaveBeenCalledTimes(1)
+    expect(onSignedIn).toHaveBeenCalledWith('approve:act_1')
+  })
+
+  it('checks again for a sign-in that lands while a check is in flight', async () => {
+    const onSignedIn = await openOnTheCodeStep()
+    const first = deferred<SignInAgainOptions>()
+    hoisted.options.mockReturnValueOnce(first.promise)
+
+    // The tab comes back before the link was opened: not fresh yet.
+    act(() => window.dispatchEvent(new Event('focus')))
+    // The sign-in finishes while that check is still out.
+    hoisted.options.mockResolvedValue(opts({ fresh: true }))
+    act(() => hoisted.broadcast.onSuccess?.())
+    await act(async () => first.resolve(opts()))
+    await settle()
+
+    expect(onSignedIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('resumes nothing after the dialog was closed during a check', async () => {
+    const onSignedIn = await openOnTheCodeStep()
+    const answer = deferred<SignInAgainOptions>()
+    hoisted.options.mockReturnValue(answer.promise)
+
+    act(() => window.dispatchEvent(new Event('focus')))
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    await act(async () => answer.resolve(opts({ fresh: true })))
+    await settle()
+
     expect(onSignedIn).not.toHaveBeenCalled()
   })
 })
@@ -192,6 +274,9 @@ describe('coming back from an identity provider', () => {
     await waitFor(() => expect(onSignedIn).toHaveBeenCalledWith('approve:act_1'))
     expect(window.location.pathname + window.location.search).toBe(PAGE)
     expect(window.sessionStorage.getItem(STASH_KEY)).toBeNull()
+    act(() => signalEverything())
+    await settle()
+    expect(onSignedIn).toHaveBeenCalledTimes(1)
   })
 
   it('resumes nothing when the provider signed in a different account', async () => {
