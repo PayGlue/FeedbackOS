@@ -12,10 +12,24 @@ import type { PermissionKey } from '@/lib/shared/permissions'
 vi.mock('@/lib/server/config', () => ({ config: { trustedProxyHops: 1 } }))
 
 const mockInsertValues = vi.fn()
+const mockOnConflictDoUpdate = vi.fn()
 vi.mock('@/lib/server/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/server/db')>()),
   db: {
-    insert: () => ({ values: (...args: unknown[]) => mockInsertValues(...args) }),
+    insert: () => ({
+      values: (...args: unknown[]) => {
+        const inserted = mockInsertValues(...args)
+        // A plain insert awaits this; a summary row goes on to its upsert.
+        return {
+          then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+            Promise.resolve(inserted).then(resolve, reject),
+          onConflictDoUpdate: (...upsert: unknown[]) => {
+            mockOnConflictDoUpdate(...upsert)
+            return Promise.resolve(inserted)
+          },
+        }
+      },
+    }),
   },
 }))
 
@@ -163,7 +177,7 @@ describe('REST write auditing', () => {
       }
     }
 
-  function keyed(method: string, path: string, body?: unknown) {
+  function keyed(method: string, path: string, body?: unknown, extra: Record<string, string> = {}) {
     return new Request(`https://acme.example${path}`, {
       method,
       headers: {
@@ -171,10 +185,47 @@ describe('REST write auditing', () => {
         'content-type': 'application/json',
         'user-agent': 'zapier/1.0',
         'x-request-id': 'req_42',
+        ...extra,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   }
+
+  it('counts import-mode writes into one summary row instead of a row each', async () => {
+    const req = keyed('POST', '/api/v1/posts', {}, { 'x-import-mode': 'true' })
+    const result = await serve(
+      req,
+      route(() => createdResponse({ id: NEW_POST_ID }))
+    )
+
+    expect(result.response?.status).toBe(201)
+    expect(mockInsertValues).toHaveBeenCalledTimes(1)
+    const row = mockInsertValues.mock.calls[0][0]
+    expect(row).toMatchObject({
+      eventType: 'api.import',
+      eventOutcome: 'success',
+      channel: 'api',
+      credentialKind: 'api_key',
+      credentialId: KEY.id,
+      clientName: 'Zapier',
+      onBehalfOfPrincipalId: CREATOR,
+      metadata: { count: 1, failures: 0 },
+    })
+    expect(row.metadata.window).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$/)
+    // Later writes in the same window add to this row rather than adding rows.
+    expect(mockOnConflictDoUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('records each write when a key that may not import asks for import mode', async () => {
+    keyRole('member')
+    const req = keyed('POST', '/api/v1/posts', {}, { 'x-import-mode': 'true' })
+    await serve(
+      req,
+      route(() => createdResponse({ id: NEW_POST_ID }))
+    )
+    expect(mockInsertValues.mock.calls[0][0]).toMatchObject({ eventType: 'api.write' })
+    expect(mockOnConflictDoUpdate).not.toHaveBeenCalled()
+  })
 
   async function serve(
     req: Request,

@@ -22,8 +22,9 @@ import {
   user,
   type Transaction,
 } from '@/lib/server/db'
-import type { SQL } from 'drizzle-orm'
-import type { PrincipalId, UserId } from '@quackback/ids'
+import { createHash } from 'node:crypto'
+import { sql, type SQL } from 'drizzle-orm'
+import { fromUuid, type PrincipalId, type UserId } from '@quackback/ids'
 import type { AuditChannel, AuditCredentialKind } from '@/lib/shared/audit-attribution'
 import { getClientIp } from '@/lib/server/domains/api/rate-limit'
 import type { AuthContext } from '@/lib/server/functions/auth-helpers'
@@ -171,6 +172,9 @@ export type AuditEventType =
   // target and outcome only; never a request body or a credential.
   | 'api.write'
   | 'mcp.tool_call'
+  // A bulk import's writes, summarised: one row per API key per minute with
+  // a count, in place of an api.write row each.
+  | 'api.import'
 
 export type AuditEventOutcome = 'success' | 'failure'
 
@@ -269,6 +273,59 @@ function auditInsertValues(input: RecordAuditEventInput): typeof auditLog.$infer
     // How the change arrived, from the boundary the caller runs under (see
     // attribution.ts), so no call site has to pass it.
     ...auditAttributionColumns(),
+  }
+}
+
+/**
+ * The row id a rollup key always maps to: a name-derived UUID (version 8), so
+ * every replica counting the same key lands on the same row.
+ */
+function rollupRowId(rollupKey: string): string {
+  const bytes = createHash('sha256').update(rollupKey).digest().subarray(0, 16)
+  bytes[6] = (bytes[6] & 0x0f) | 0x80
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = bytes.toString('hex')
+  return fromUuid(
+    'audit',
+    `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  )
+}
+
+/**
+ * Count an event into one row per `rollupKey` instead of writing a row each:
+ * the first event inserts the row with `count: 1`, and every later one adds
+ * to `count`, and to `failures` when it failed, which also marks the row a
+ * failure. One upsert per event, atomic across replicas. For bursts that
+ * would otherwise bury the rest of the log, such as a bulk import. Best
+ * effort, like recordAuditEvent.
+ */
+export async function recordAuditRollup(
+  input: RecordAuditEventInput,
+  rollupKey: string
+): Promise<void> {
+  const failed = input.outcome === 'failure'
+  const failures = failed ? 1 : 0
+  try {
+    await db
+      .insert(auditLog)
+      .values({
+        ...auditInsertValues(input),
+        id: rollupRowId(rollupKey) as typeof auditLog.$inferInsert.id,
+        metadata: { ...(input.metadata ?? {}), count: 1, failures },
+      })
+      .onConflictDoUpdate({
+        target: auditLog.id,
+        set: {
+          metadata: sql`jsonb_set(
+            jsonb_set(${auditLog.metadata}, '{count}',
+              to_jsonb(coalesce((${auditLog.metadata}->>'count')::int, 0) + 1)),
+            '{failures}',
+            to_jsonb(coalesce((${auditLog.metadata}->>'failures')::int, 0) + ${failures}::int))`,
+          ...(failed ? { eventOutcome: 'failure' } : {}),
+        },
+      })
+  } catch (error) {
+    log.error({ err: error, event: input.event }, 'recordAuditRollup failed')
   }
 }
 

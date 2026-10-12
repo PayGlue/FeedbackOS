@@ -157,7 +157,10 @@ export async function withApiKeyAuth(
   // The key is now known, so this request's changes are attributed to it, and
   // to the teammate who created it. Stated before the permission gates so a
   // refused write is attributed too.
-  setAuditAttribution(apiKeyAttribution(auth.apiKey, 'api'), apiKeyAuditActor(auth))
+  // An admin key's import is summarised per minute rather than row by row.
+  setAuditAttribution(apiKeyAttribution(auth.apiKey, 'api'), apiKeyAuditActor(auth), {
+    importMode,
+  })
 
   // A key's authority is its resolved permission set (role preset intersected
   // with the creator's current permissions) INTERSECTED with the key's stored

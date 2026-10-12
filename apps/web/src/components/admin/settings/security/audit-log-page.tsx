@@ -86,6 +86,10 @@ const FILTER_EVENT_TYPES: FilterEventOption[] = [
   { group: 'Portal', label: 'Sign-in failed', value: 'auth.signin.failed' },
   { group: 'Portal', label: 'Visibility changed', value: 'portal.visibility.changed' },
   { group: 'Labs', label: 'Experiment changed', value: 'labs.experiment.changed' },
+  // Changes made with an API key or an MCP client, recorded at the boundary.
+  { group: 'API and MCP', label: 'API write', value: 'api.write' },
+  { group: 'API and MCP', label: 'API import', value: 'api.import' },
+  { group: 'API and MCP', label: 'MCP tool call', value: 'mcp.tool_call' },
   { group: 'Portal', label: 'Widget sign-in changed', value: 'portal.widget_signin.changed' },
   // Widget activity, separated because handshake events are high-volume on active workspaces.
   // portal.widget_handshake.consumed is flagged excludeByDefault for future multi-select support.

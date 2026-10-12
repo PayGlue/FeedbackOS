@@ -51,6 +51,8 @@ interface AttributionSlot {
   attribution: AuditAttribution | null
   /** Who the boundary authenticated, for the events the boundary itself records. */
   actor: AuditActor | null
+  /** The request is a bulk import, which the boundary summarises rather than records write by write. */
+  importMode: boolean
 }
 
 /**
@@ -76,18 +78,28 @@ function capName(name: string | null | undefined): string | null {
 
 /** Run `fn` with `attribution` as the boundary for its whole async subtree. */
 export function runWithAuditAttribution<T>(attribution: AuditAttribution | null, fn: () => T): T {
-  return storage.run({ attribution, actor: null }, fn)
+  return storage.run({ attribution, actor: null, importMode: false }, fn)
 }
 
 /**
  * Fill the enclosing boundary's slot. For a boundary that runs inside a
  * handler rather than around it (REST key auth). No-op outside any boundary.
  */
-export function setAuditAttribution(attribution: AuditAttribution, actor?: AuditActor): void {
+export function setAuditAttribution(
+  attribution: AuditAttribution,
+  actor?: AuditActor,
+  options?: { importMode?: boolean }
+): void {
   const slot = storage.getStore()
   if (!slot) return
   slot.attribution = attribution
   if (actor) slot.actor = actor
+  if (options?.importMode) slot.importMode = true
+}
+
+/** Whether the enclosing boundary is a bulk import. */
+export function isAuditImportMode(): boolean {
+  return storage.getStore()?.importMode ?? false
 }
 
 /** The active attribution, or null when no boundary has stated one. */

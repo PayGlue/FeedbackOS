@@ -10,12 +10,13 @@
  * (domains/api/auth.ts), and the response is already in hand.
  *
  * A request no key authenticated is not recorded: it changed nothing, and
- * anyone can send one.
+ * anyone can send one. An import (an admin key with `x-import-mode`) is
+ * summarised as `api.import`, one row per key per minute with a count.
  */
 import { isUuid, isValidTypeId } from '@quackback/ids'
 import { logger } from '@/lib/server/logger'
-import { getAuditAttribution, getAuditBoundaryActor } from './attribution'
-import { recordAuditEvent, type AuditTarget } from './log'
+import { getAuditAttribution, getAuditBoundaryActor, isAuditImportMode } from './attribution'
+import { recordAuditEvent, recordAuditRollup, type AuditTarget } from './log'
 import { typeIdTarget } from './targets'
 
 const log = logger.child({ component: 'audit' })
@@ -77,9 +78,28 @@ export async function recordApiWrite(request: Request, response: Response | null
     const attribution = getAuditAttribution()
     if (attribution?.channel !== 'api') return
 
-    const pathname = new URL(request.url).pathname
     const status = response?.status ?? 500
     const failed = status >= 400
+    const actor = getAuditBoundaryActor() ?? { authMethod: 'api_key' as const }
+
+    // A bulk import is one row per key per minute with a count, not a row per
+    // write: a large import would otherwise bury every other event for a year.
+    if (isAuditImportMode()) {
+      const window = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString()
+      await recordAuditRollup(
+        {
+          event: 'api.import',
+          outcome: failed ? 'failure' : 'success',
+          actor,
+          headers: request.headers,
+          metadata: { window },
+        },
+        `api.import:${attribution.credentialId ?? ''}:${window}`
+      )
+      return
+    }
+
+    const pathname = new URL(request.url).pathname
 
     let target = apiPathTarget(pathname)
     let errorCode: string | null = null
@@ -93,7 +113,7 @@ export async function recordApiWrite(request: Request, response: Response | null
     await recordAuditEvent({
       event: 'api.write',
       outcome: failed ? 'failure' : 'success',
-      actor: getAuditBoundaryActor() ?? { authMethod: 'api_key' },
+      actor,
       headers: request.headers,
       target: target ?? undefined,
       metadata: {
