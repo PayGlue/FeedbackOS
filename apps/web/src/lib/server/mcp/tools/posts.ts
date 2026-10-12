@@ -445,8 +445,9 @@ Examples:
     handler: async (args) => {
       const activities = await getActivityForPost(args.postId as PostId)
 
-      // Whether each actor is on the team today decides if their name is
-      // marked untrusted; it rides beside the result and is never sent.
+      // Whether each actor is on the team today (from the same read) decides
+      // if their name is marked untrusted; it rides beside the result and is
+      // never sent.
       return withItemFacts(
         jsonResult({
           postId: args.postId,
@@ -458,7 +459,9 @@ Examples:
             createdAt: a.createdAt,
           })),
         }),
-        { activities: activities.map((a) => ({ actorOnTeam: a.actorOnTeam })) }
+        Object.fromEntries(
+          activities.map((a, i) => [`activities[${i}]`, { authorOnTeam: a.actorOnTeam }])
+        )
       )
     },
   })

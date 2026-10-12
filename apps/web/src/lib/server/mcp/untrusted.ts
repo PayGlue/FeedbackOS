@@ -64,7 +64,7 @@ export interface UntrustedItemsRule {
   each: string
   /**
    * True when the item was written outside the team. `facts` are what the
-   * handler attached for this item with withItemFacts (top-level items only).
+   * handler attached at the item's path with withItemFacts.
    */
   where: (item: JsonObject, facts: JsonObject | undefined) => boolean
   /** Dotted key paths inside each item. */
@@ -73,14 +73,24 @@ export interface UntrustedItemsRule {
   nested?: string
 }
 
+/** Lists `at.<field>` when `where` accepts the object at `at`. */
+export interface UntrustedObjectRule {
+  /** Dotted key path to an object in the result, or '' for the result itself. */
+  at: string
+  /** True when the object was written outside the team; `facts` as for items. */
+  where: (object: JsonObject, facts: JsonObject | undefined) => boolean
+  /** Dotted key paths inside the object. */
+  fields: readonly string[]
+}
+
 /** Rules for one result shape of a tool that returns several (get_details). */
 export interface UntrustedVariantRule {
   match: (result: JsonObject) => boolean
   rules: readonly UntrustedRule[]
 }
 
-/** A path pattern (`title`, `posts[].title`), a per-item rule, or a variant. */
-export type UntrustedRule = string | UntrustedItemsRule | UntrustedVariantRule
+/** A path pattern (`title`, `posts[].title`), a per-item or object rule, or a variant. */
+export type UntrustedRule = string | UntrustedItemsRule | UntrustedObjectRule | UntrustedVariantRule
 export type UntrustedSpec = readonly UntrustedRule[]
 
 /**
@@ -96,8 +106,22 @@ const NONE: UntrustedSpec = []
  */
 const notSentByTeammate = (message: JsonObject) => message.senderType !== 'agent'
 
-/** Comments record whether their author was on the team. */
-const notWrittenByTeam = (comment: JsonObject) => comment.isTeamMember !== true
+/**
+ * Names are read live from the author's principal, so a name is the team's
+ * only while its author is a teammate or a service principal today: a former
+ * teammate can rename themselves on the portal. Handlers attach that as the
+ * `authorOnTeam` fact; an object without it is marked.
+ */
+const authorOffTeam = (_object: JsonObject, facts: JsonObject | undefined) =>
+  facts?.authorOnTeam !== true
+
+/**
+ * A comment is team text only when a teammate wrote it (isTeamMember, set at
+ * write time) and is still on the team: authors keep editing their own
+ * comments after they leave.
+ */
+const commentOutsideTeam = (comment: JsonObject, facts: JsonObject | undefined) =>
+  comment.isTeamMember !== true || authorOffTeam(comment, facts)
 
 /**
  * Metadata keys holding outside text, for each post activity type: post
@@ -142,17 +166,12 @@ const isKnownActivity = (activity: JsonObject) =>
   typeof activity.type === 'string' && Object.hasOwn(ACTIVITY_METADATA, activity.type)
 
 /**
- * get_post_activity rows. actorName is the actor's name today, so it is
- * trusted only while the actor is a teammate or a service principal (the
- * handler's `actorOnTeam` fact); a portal user or a former teammate chose it.
- * Metadata is marked by each row's own type.
+ * get_post_activity rows. actorName is the actor's name today, trusted only
+ * while the actor is on the team (the row's `authorOnTeam` fact). Metadata is
+ * marked by each row's own type.
  */
 const POST_ACTIVITY_RULES: UntrustedSpec = [
-  {
-    each: 'activities',
-    where: (_activity: JsonObject, facts: JsonObject | undefined) => facts?.actorOnTeam !== true,
-    fields: ['actorName'],
-  },
+  { each: 'activities', where: authorOffTeam, fields: ['actorName'] },
   ...Object.entries(ACTIVITY_METADATA)
     .filter(([, keys]) => keys.length > 0)
     .map(([type, keys]) => ({
@@ -176,7 +195,8 @@ const entity = (prefix: string) => (result: JsonObject) =>
  * imports write posts; teammates post too, often relaying a customer's words,
  * and a post carries no author-role signal, so every post is marked.
  * summaryJson is generated from the post and its comments and carries their
- * text. pinnedComment is not listed: only a teammate's comment can be pinned.
+ * text. Only a teammate's comment can be pinned, so pinnedComment is team text
+ * while its author is still on the team.
  */
 const POST_DETAILS: UntrustedSpec = [
   'title',
@@ -187,23 +207,31 @@ const POST_DETAILS: UntrustedSpec = [
   'mergedPosts[].authorName',
   {
     each: 'comments',
-    where: notWrittenByTeam,
+    where: commentOutsideTeam,
     fields: ['content', 'authorName'],
     nested: 'replies',
   },
+  { at: 'pinnedComment', where: authorOffTeam, fields: ['content', 'authorName'] },
 ]
 
-/** Messages on a conversation or ticket thread. */
-const THREAD_MESSAGES: UntrustedItemsRule = {
-  each: 'messages',
-  where: notSentByTeammate,
-  fields: ['content', 'authorName'],
-}
+/**
+ * Messages on a conversation or ticket thread. A teammate's message text
+ * stays team text (only the team can edit it), but its author name is read
+ * live like every other name.
+ */
+const THREAD_MESSAGES: UntrustedSpec = [
+  { each: 'messages', where: notSentByTeammate, fields: ['content', 'authorName'] },
+  { each: 'messages', where: authorOffTeam, fields: ['authorName'] },
+]
+
+/** An article's author, as articleResult returns it. */
+const ARTICLE_AUTHOR: UntrustedObjectRule = { at: 'author', where: authorOffTeam, fields: ['name'] }
 
 /**
  * Every registered tool's outside-authored result paths. Board, tag, status,
- * ticket-type and category names, changelog entries, help center articles,
- * teammate names and settings are team-authored; ids, counts, statuses and
+ * ticket-type and category names, changelog entries, help center articles
+ * and settings are team-authored; the names of their authors are team text
+ * only while those authors are on the team. Ids, counts, statuses and
  * timestamps are system values.
  */
 export const UNTRUSTED_TOOL_FIELDS = {
@@ -213,10 +241,16 @@ export const UNTRUSTED_TOOL_FIELDS = {
     'posts[].authorName',
     'posts[].summary',
     'changelogs[].linkedPosts[].title',
+    { each: 'changelogs', where: authorOffTeam, fields: ['authorName'] },
+    { each: 'articles', where: authorOffTeam, fields: ['authorName'] },
   ],
   get_details: [
     { match: entity('post'), rules: POST_DETAILS },
-    { match: entity('changelog'), rules: ['linkedPosts[].title'] },
+    {
+      match: entity('changelog'),
+      rules: ['linkedPosts[].title', { at: '', where: authorOffTeam, fields: ['authorName'] }],
+    },
+    { match: entity('article'), rules: [ARTICLE_AUTHOR] },
   ],
 
   triage_post: ['title'],
@@ -243,14 +277,14 @@ export const UNTRUSTED_TOOL_FIELDS = {
   dismiss_suggestion: NONE,
   restore_suggestion: NONE,
 
-  create_article: NONE,
-  update_article: NONE,
+  create_article: [ARTICLE_AUTHOR],
+  update_article: [ARTICLE_AUTHOR],
   delete_article: NONE,
   manage_category: NONE,
 
   // A subject is an email subject, an issue title, or a preview of the first message.
   list_conversations: ['conversations[].subject'],
-  get_conversation: ['conversation.subject', 'conversation.visitorEmail', THREAD_MESSAGES],
+  get_conversation: ['conversation.subject', 'conversation.visitorEmail', ...THREAD_MESSAGES],
   reply_to_conversation: NONE,
   suggest_post: NONE,
   share_post: NONE,
@@ -258,7 +292,7 @@ export const UNTRUSTED_TOOL_FIELDS = {
 
   // Requesters, email intake and workflows title tickets as well as teammates.
   list_tickets: ['tickets[].title'],
-  get_ticket: ['ticket.title', THREAD_MESSAGES],
+  get_ticket: ['ticket.title', ...THREAD_MESSAGES],
   create_ticket: NONE,
   reply_to_ticket: NONE,
   add_ticket_note: NONE,
@@ -313,25 +347,31 @@ function valueAt(value: unknown, keyPath: string): unknown {
   return current
 }
 
+/** `fields` of the object at `path` that hold text, as full paths. */
+function addFields(
+  object: JsonObject,
+  path: string,
+  fields: readonly string[],
+  out: Set<string>
+): void {
+  for (const field of fields) {
+    if (holdsText(valueAt(object, field))) out.add(path ? `${path}.${field}` : field)
+  }
+}
+
 function collectItems(
   rule: UntrustedItemsRule,
   items: unknown,
   prefix: string,
   out: Set<string>,
-  facts: readonly JsonObject[] | undefined
+  facts: ItemFacts | undefined
 ): void {
   if (!Array.isArray(items)) return
   items.forEach((item, index) => {
     if (!isObject(item)) return
     const path = `${prefix}[${index}]`
-    if (rule.where(item, facts?.[index])) {
-      for (const field of rule.fields) {
-        if (holdsText(valueAt(item, field))) out.add(`${path}.${field}`)
-      }
-    }
-    if (rule.nested) {
-      collectItems(rule, item[rule.nested], `${path}.${rule.nested}`, out, undefined)
-    }
+    if (rule.where(item, facts?.[path])) addFields(item, path, rule.fields, out)
+    if (rule.nested) collectItems(rule, item[rule.nested], `${path}.${rule.nested}`, out, facts)
   })
 }
 
@@ -344,7 +384,12 @@ function collect(
   if (typeof rule === 'string') {
     if (reaches(result, segmentsOf(rule))) out.add(rule)
   } else if ('each' in rule) {
-    collectItems(rule, valueAt(result, rule.each), rule.each, out, facts?.[rule.each])
+    collectItems(rule, valueAt(result, rule.each), rule.each, out, facts)
+  } else if ('at' in rule) {
+    const object = rule.at ? valueAt(result, rule.at) : result
+    if (isObject(object) && rule.where(object, facts?.[rule.at])) {
+      addFields(object, rule.at, rule.fields, out)
+    }
   } else if (rule.match(result)) {
     for (const inner of rule.rules) collect(inner, result, out, facts)
   }
@@ -365,16 +410,20 @@ export function untrustedFields(
 // Item facts
 // ============================================================================
 
-/** Per-item facts, keyed by the `each` path of the array they describe, in item order. */
-export type ItemFacts = Readonly<Record<string, readonly JsonObject[]>>
+/**
+ * Facts about objects in a result, keyed by each object's path as the
+ * descriptor would print it: `comments[0].replies[1]`, `pinnedComment`, or ''
+ * for the result itself.
+ */
+export type ItemFacts = Readonly<Record<string, JsonObject>>
 
 /** Facts ride beside the result object and are never serialized. */
 const itemFacts = new WeakMap<CallToolResult, ItemFacts>()
 
 /**
- * Attach facts about a result's items that rules need but the client must not
- * see, such as whether an activity's actor is on the team today. A rule's
- * `where` receives the facts for its item; an item without facts gets none,
+ * Attach facts about a result's objects that rules need but the client must
+ * not see, such as whether an author is on the team today. A rule's `where`
+ * receives the facts at its object's path; an object without facts gets none,
  * so a rule that relies on them marks it.
  */
 export function withItemFacts(result: CallToolResult, facts: ItemFacts): CallToolResult {

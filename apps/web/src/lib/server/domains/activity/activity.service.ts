@@ -8,7 +8,7 @@
 
 import { db, postActivity, eq, desc, principal as principalTable } from '@/lib/server/db'
 import type { PostId, PrincipalId } from '@quackback/ids'
-import { isTeamMember } from '@/lib/shared/roles'
+import { isOnTeam } from '@/lib/server/domains/principals/principal-standing'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'activity' })
@@ -117,6 +117,6 @@ export async function getActivityForPost(postId: PostId): Promise<ActivityRow[]>
 
   return rows.map(({ actorType, actorRole, ...row }) => ({
     ...row,
-    actorOnTeam: actorType === 'service' || isTeamMember(actorRole),
+    actorOnTeam: isOnTeam({ type: actorType, role: actorRole }),
   })) as ActivityRow[]
 }

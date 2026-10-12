@@ -42,6 +42,11 @@ function malformedPaths(rules: readonly UntrustedRule[]): string[] {
       for (const path of [rule.each, ...rule.fields, ...(rule.nested ? [rule.nested] : [])]) {
         if (!KEY_PATH.test(path)) bad.push(path)
       }
+    } else if ('at' in rule) {
+      // `at` is '' for the result itself.
+      for (const path of [...(rule.at ? [rule.at] : []), ...rule.fields]) {
+        if (!KEY_PATH.test(path)) bad.push(path)
+      }
     } else {
       bad.push(...malformedPaths(rule.rules))
     }

@@ -165,39 +165,67 @@ describe('markUntrusted', () => {
 })
 
 describe('item facts', () => {
-  it('gives each top-level item its facts and never serializes them', () => {
+  const offTeam = (_object: Record<string, unknown>, facts?: Record<string, unknown>) =>
+    facts?.onTeam !== true
+  const fieldsOf = (result: CallToolResult, spec: UntrustedSpec) =>
+    JSON.parse((markUntrusted(result, spec).content[0] as { text: string }).text).untrusted?.fields
+
+  it('gives top-level and nested items the facts at their path, never serializing them', () => {
     const spec: UntrustedSpec = [
-      {
-        each: 'rows',
-        where: (_row, facts) => facts?.onTeam !== true,
-        fields: ['name'],
-        nested: 'children',
-      },
+      { each: 'rows', where: offTeam, fields: ['name'], nested: 'children' },
     ]
     const body = {
       rows: [
-        { name: 'Jane', children: [{ name: 'Nested', children: [] }] },
-        { name: 'Ada', children: [] },
+        { name: 'Jane', children: [{ name: 'Former', children: [] }] },
+        { name: 'Ada', children: [{ name: 'Bo', children: [] }] },
       ],
     }
     const result = withItemFacts(textResult(JSON.stringify(body)), {
-      rows: [{ onTeam: true }, { onTeam: false }],
+      'rows[0]': { onTeam: true },
+      'rows[0].children[0]': { onTeam: false },
+      'rows[1]': { onTeam: false },
+      'rows[1].children[0]': { onTeam: true },
     })
 
-    const text = (markUntrusted(result, spec).content[0] as { text: string }).text
-
-    // Nested items get no facts, so a rule that needs them marks them.
-    expect(JSON.parse(text).untrusted.fields).toEqual(['rows[0].children[0].name', 'rows[1].name'])
-    expect(text).not.toContain('onTeam')
+    expect(fieldsOf(result, spec)).toEqual(['rows[0].children[0].name', 'rows[1].name'])
+    expect(JSON.stringify(markUntrusted(result, spec))).not.toContain('onTeam')
   })
 
-  it('marks every item when the handler attached no facts', () => {
+  it('applies an object rule to the result itself or to an object inside it', () => {
     const spec: UntrustedSpec = [
-      { each: 'rows', where: (_row, facts) => facts?.onTeam !== true, fields: ['name'] },
+      { at: '', where: offTeam, fields: ['authorName'] },
+      { at: 'pinned', where: offTeam, fields: ['content', 'authorName'] },
+      { at: 'missing', where: offTeam, fields: ['name'] },
     ]
-    const result = textResult(JSON.stringify({ rows: [{ name: 'Jane' }] }))
-    const text = (markUntrusted(result, spec).content[0] as { text: string }).text
-    expect(JSON.parse(text).untrusted.fields).toEqual(['rows[0].name'])
+    const body = { authorName: 'Former', pinned: { content: 'Hi', authorName: 'Jane' } }
+
+    expect(
+      fieldsOf(
+        withItemFacts(textResult(JSON.stringify(body)), {
+          '': { onTeam: false },
+          pinned: { onTeam: true },
+        }),
+        spec
+      )
+    ).toEqual(['authorName'])
+    expect(
+      fieldsOf(
+        withItemFacts(textResult(JSON.stringify(body)), {
+          '': { onTeam: true },
+          pinned: { onTeam: false },
+        }),
+        spec
+      )
+    ).toEqual(['pinned.content', 'pinned.authorName'])
+  })
+
+  it('marks every object when the handler attached no facts', () => {
+    const spec: UntrustedSpec = [
+      { each: 'rows', where: offTeam, fields: ['name'] },
+      { at: '', where: offTeam, fields: ['authorName'] },
+    ]
+    const result = textResult(JSON.stringify({ authorName: 'Jane', rows: [{ name: 'Jane' }] }))
+    expect(fieldsOf(result, spec)).toEqual(['rows[0].name', 'authorName'])
   })
 })
 
