@@ -180,12 +180,16 @@ export async function resolveAuthContext(request: Request): Promise<McpAuthConte
     // back-compat — the same rule the REST permission gates apply).
     const keyScopes = effectiveScopes(authResult.apiKey.scopes)
 
-    // Service principals (API keys) use displayName; human principals use user.name
+    // Role and permissions are the key's authority exactly as the REST API
+    // resolves it, capped at its creator's current access; the permission set
+    // is the ceiling every MCP actor built from this context carries.
+    // Service principals (API keys) use displayName; human principals use user.name.
     if (principalRecord.type === 'service') {
       return {
         principalId: authResult.principalId,
         name: principalRecord.displayName ?? authResult.apiKey.name,
         role: authResult.role as Role,
+        permissions: authResult.permissions,
         authMethod: 'api-key',
         scopes: keyScopes,
       }
@@ -198,6 +202,7 @@ export async function resolveAuthContext(request: Request): Promise<McpAuthConte
       name: principalRecord.displayName ?? principalRecord.user?.name ?? 'Unknown',
       email: principalRecord.user?.email ?? undefined,
       role: authResult.role as Role,
+      permissions: authResult.permissions,
       authMethod: 'api-key',
       scopes: keyScopes,
     }
