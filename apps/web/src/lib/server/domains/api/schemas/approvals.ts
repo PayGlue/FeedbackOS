@@ -149,7 +149,7 @@ registerPath('/approvals', {
   get: {
     tags: ['Approvals'],
     summary: 'List approvals',
-    description: `Returns the approvals this key follows, newest first. ${WHO_SEES_WHAT} Nothing here decides an approval: a person decides it in the app, at its url.`,
+    description: `Returns the approvals this key follows, newest first. ${WHO_SEES_WHAT} One call reads a bounded number of requests, so a page can hold fewer items than limit, even none, while meta.pagination.hasMore is true; keep following the cursor. Nothing here decides an approval: a person decides it in the app, at its url.`,
     parameters: [
       {
         name: 'status',

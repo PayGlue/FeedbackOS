@@ -126,7 +126,7 @@ function holdsAll(actor: Actor, required: ReadonlySet<PermissionKey>): boolean {
  * it needs. A fresh sign-in is set aside.
  */
 export function qualifiesToDecide(
-  row: PendingActionRow,
+  row: Pick<PendingActionRow, 'requestedById' | 'risk' | 'toolName' | 'args'>,
   actor: Actor,
   required: ReadonlySet<PermissionKey>
 ): boolean {

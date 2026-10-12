@@ -50,7 +50,10 @@ import {
   type ApprovalFollower,
 } from '../approvals.follow'
 
-const fixture = await createDbTestFixture()
+const statements: string[] = []
+const fixture = await createDbTestFixture({
+  logger: { logQuery: (query) => statements.push(query) },
+})
 
 let owner: Actor
 let otherAdmin: Actor
@@ -385,6 +388,130 @@ describe('the list', () => {
     expect(second.items.map((item) => item.id)).toEqual([filed[0]])
     expect(second.hasMore).toBe(false)
     expect(second.nextCursor).toBeNull()
+  })
+
+  /**
+   * Oldest first: A1, x, x, A2, x, A3, x, x, A4. The key filed the A rows; the
+   * x rows are changelog requests its creator could decide, which the key's
+   * settings-only scopes leave out once each row is checked.
+   */
+  async function interleaved() {
+    const key = await seedKey(owner)
+    const thread = (await createWorkspaceThread(otherAdmin)).key
+    let turn = 0
+    const theirs = async () =>
+      enqueueWorkspaceSettingsProposal(
+        otherAdmin,
+        [{ area: 'changelog', patch: { autoSubscribe: false } }],
+        thread,
+        `turn-${++turn}`
+      )
+    const mine = async (name: string) => (await fileThrough(key, name)).id
+    const a1 = await mine('A1')
+    await theirs()
+    await theirs()
+    const a2 = await mine('A2')
+    await theirs()
+    const a3 = await mine('A3')
+    await theirs()
+    await theirs()
+    const a4 = await mine('A4')
+    return { follower: await follow(key), a1, a2, a3, a4 }
+  }
+
+  it('pages past the rows it leaves out, a few rows at a time', async () => {
+    const { follower, a1, a2, a3, a4 } = await interleaved()
+    const scan = { batch: 2, cap: 1000 }
+
+    const first = await listApprovalsForFollower(follower, { limit: 2 }, scan)
+    expect(first.items.map((item) => item.id)).toEqual([a4, a3])
+    expect(first).toMatchObject({ hasMore: true, nextCursor: a3 })
+
+    const second = await listApprovalsForFollower(
+      follower,
+      { limit: 2, cursor: first.nextCursor as AssistantPendingActionId },
+      scan
+    )
+    expect(second.items.map((item) => item.id)).toEqual([a2, a1])
+    expect(second).toMatchObject({ hasMore: false, nextCursor: null })
+  })
+
+  it('stops at its read cap with a cursor to carry on from the last row read', async () => {
+    const { follower, a1, a2, a3, a4 } = await interleaved()
+    const scan = { batch: 2, cap: 3 }
+    const pages: Awaited<ReturnType<typeof listApprovalsForFollower>>[] = []
+    let cursor: AssistantPendingActionId | undefined
+    for (let call = 0; call < 10; call++) {
+      const page = await listApprovalsForFollower(follower, { limit: 2, cursor }, scan)
+      pages.push(page)
+      if (!page.hasMore) break
+      cursor = page.nextCursor as AssistantPendingActionId
+    }
+
+    expect(pages.flatMap((page) => page.items.map((item) => item.id))).toEqual([a4, a3, a2, a1])
+    // The first call read A4 and two rows it left out, then stopped: one item,
+    // more to come, and a cursor at the last row it read.
+    expect(pages[0]!.items.map((item) => item.id)).toEqual([a4])
+    expect(pages[0]!.hasMore).toBe(true)
+    expect([a4, a3]).not.toContain(pages[0]!.nextCursor)
+    expect(pages.at(-1)!.hasMore).toBe(false)
+  })
+
+  it('leaves out in the query what its creator could never decide', async () => {
+    const key = await seedKey(owner)
+    const mine = (await fileThrough(key, 'Mine')).id
+    const thread = (await createWorkspaceThread(otherAdmin)).key
+    // Newer rows the creator could never decide: a critical request, one the
+    // creator filed in the app themselves, and an action from a chat platform
+    // thread, which is decided there.
+    const critical = await enqueueWorkspaceSettingsProposal(
+      otherAdmin,
+      [{ area: 'portal', patch: { displayName: 'Critical' } }],
+      thread,
+      'turn-1'
+    )
+    await testDb
+      .update(assistantPendingActions)
+      .set({ risk: 'critical' })
+      .where(eq(assistantPendingActions.id, critical.id))
+    await proposePendingAction({
+      toolName: 'propose_settings_change',
+      args: critical.args,
+      summary: 'Change the workspace name',
+      originRole: 'workspace_assistant',
+      requester: { via: 'ui', requestedById: owner.principalId! },
+    })
+    await proposePendingAction({
+      workspaceThreadKey: 'slack:T1:C1',
+      toolName: 'end_conversation',
+      args: {},
+      summary: 'Close the conversation',
+      originRole: 'workspace_assistant',
+    })
+
+    // One row read per call: each newer row has to be left out by the query.
+    const page = await listApprovalsForFollower(
+      await follow(key),
+      { limit: 1 },
+      { batch: 1, cap: 1 }
+    )
+    expect(page.items.map((item) => item.id)).toEqual([mine])
+  })
+
+  it('reads only the columns a response needs', async () => {
+    const key = await seedKey(owner)
+    await fileThrough(key, 'Mine')
+    const follower = await follow(key)
+    statements.length = 0
+    await listApprovalsForFollower(follower, {})
+    const reads = statements.filter((statement) =>
+      /^select[\s\S]*from "assistant_pending_actions"/i.test(statement.trim())
+    )
+    expect(reads.length).toBeGreaterThan(0)
+    for (const statement of reads) {
+      for (const column of ['result', 'idempotency_key', 'execution_error', 'args_digest'])
+        expect(statement, column).not.toContain(`"${column}"`)
+    }
   })
 
   it('filters by status', async () => {

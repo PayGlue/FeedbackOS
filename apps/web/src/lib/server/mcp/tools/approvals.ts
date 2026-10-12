@@ -81,7 +81,7 @@ Examples:
 
   registerTool<{ status?: ApprovalStatus; cursor?: string; limit?: number }>(server, auth, {
     name: 'list_approvals',
-    description: `List the approval requests you follow, newest first: the ones you filed, and the ones the person you act for could decide. Filter by status; page with cursor. Each item carries the url where a person decides it. You cannot approve or reject anything with this tool; only a person can, in the app.
+    description: `List the approval requests you follow, newest first: the ones you filed, and the ones the person you act for could decide. Filter by status; page with cursor. A page can hold fewer items than limit while hasMore is true; keep paging with nextCursor. Each item carries the url where a person decides it. You cannot approve or reject anything with this tool; only a person can, in the app.
 Examples:
 {"status":"pending"}
 {"status":"rejected","limit":10}`,

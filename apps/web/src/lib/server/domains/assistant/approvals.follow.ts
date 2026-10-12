@@ -22,19 +22,23 @@ import {
   and,
   or,
   eq,
+  ne,
   gt,
   lt,
   lte,
   desc,
   like,
   sql,
+  isNull,
   inArray,
+  notInArray,
   principal,
   assistantPendingActions,
   type ApprovalDecisionChannel,
   type ApprovalRequestChannel,
   type ApprovalRisk,
 } from '@/lib/server/db'
+import type { SQL } from 'drizzle-orm'
 import type { AssistantPendingActionId, PrincipalId } from '@quackback/ids'
 import type { Actor } from '@/lib/server/policy/types'
 import { permissionsForPrincipal, resolveActorPermissions } from '@/lib/server/policy/permissions'
@@ -49,6 +53,7 @@ import { approvalPath, type ApprovalStatus } from '@/lib/shared/assistant/approv
 import { settingsProposalSchema } from '@/lib/shared/assistant/settings-proposals'
 import type { JsonValue } from '@/lib/shared/json'
 import { SETTINGS_PROPOSAL_TOOL, summarizeSettingsProposal } from './approval-policy'
+import { WORKSPACE_THREAD_PREFIX } from './workspace-safety'
 import { approvalNotFound, approvalRiskOf, isDecidableApproval } from './approvals.service'
 import { approvalRequirements, parentVisible, qualifiesToDecide } from './approvals.queue'
 
@@ -114,8 +119,53 @@ export interface ApprovalFollower {
 
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
-/** Rows read per round before the per-row permission check. */
+/** Rows read per query before the per-row permission check. */
 const SCAN_BATCH = 200
+/** Rows one list call reads at most, however few of them the caller follows. */
+const READ_CAP = 1000
+
+type RequestContent = Record<string, unknown>
+
+/**
+ * A request's content, read only for a settings request, the one kind whose
+ * changes a response lists. An assistant action's content never leaves the
+ * database here.
+ */
+const settingsContent =
+  sql<RequestContent | null>`CASE WHEN ${assistantPendingActions.toolName} = ${SETTINGS_PROPOSAL_TOOL} THEN ${assistantPendingActions.args} END`.mapWith(
+    assistantPendingActions.args
+  )
+
+/** The columns a follower read needs. */
+const FOLLOW_COLUMNS = {
+  id: assistantPendingActions.id,
+  toolName: assistantPendingActions.toolName,
+  args: settingsContent,
+  status: assistantPendingActions.status,
+  disposition: assistantPendingActions.disposition,
+  risk: assistantPendingActions.risk,
+  originRole: assistantPendingActions.originRole,
+  conversationId: assistantPendingActions.conversationId,
+  ticketId: assistantPendingActions.ticketId,
+  workspaceThreadKey: assistantPendingActions.workspaceThreadKey,
+  requestedVia: assistantPendingActions.requestedVia,
+  requestedById: assistantPendingActions.requestedById,
+  onBehalfOfPrincipalId: assistantPendingActions.onBehalfOfPrincipalId,
+  credentialId: assistantPendingActions.credentialId,
+  clientName: assistantPendingActions.clientName,
+  proposedAt: assistantPendingActions.proposedAt,
+  expiresAt: assistantPendingActions.expiresAt,
+  decidedById: assistantPendingActions.decidedById,
+  decidedAt: assistantPendingActions.decidedAt,
+  decidedVia: assistantPendingActions.decidedVia,
+  decisionReason: assistantPendingActions.decisionReason,
+}
+
+/** A request as a follower read holds it; `args` is empty unless it is a settings request. */
+type FollowRow = Pick<PendingActionRow, Exclude<keyof typeof FOLLOW_COLUMNS, 'args'>> & {
+  args: RequestContent
+}
+
 /** The disposition prefix of a request a newer, combined one replaced. */
 const SUPERSEDED = 'superseded'
 
@@ -180,7 +230,7 @@ const REQUESTED_BY: Record<ApprovalRequestChannel, string> = {
 
 /** The title, summary and changes of a request, all written by the server. */
 async function describeRequest(
-  row: PendingActionRow
+  row: FollowRow
 ): Promise<Pick<PublicApproval, 'title' | 'summary' | 'changes'>> {
   if (row.toolName === SETTINGS_PROPOSAL_TOOL) {
     const parsed = settingsProposalSchema.safeParse(row.args)
@@ -205,7 +255,7 @@ async function describeRequest(
 }
 
 /** One approval as clients read it. Never the stored content beyond a settings diff. */
-export async function toPublicApproval(row: PendingActionRow): Promise<PublicApproval> {
+export async function toPublicApproval(row: FollowRow): Promise<PublicApproval> {
   return {
     id: row.id,
     status: approvalStatusOf(row),
@@ -294,11 +344,39 @@ async function keyCreatorActor(key: {
   )
 }
 
-function filedBy(row: PendingActionRow, filed: ApprovalFollower['filed']): boolean {
+function filedBy(row: FollowRow, filed: ApprovalFollower['filed']): boolean {
   return (
     !!filed &&
     row.credentialId === filed.credentialId &&
     (!filed.onBehalfOfPrincipalId || row.onBehalfOfPrincipalId === filed.onBehalfOfPrincipalId)
+  )
+}
+
+/**
+ * The rows a person might decide, as far as the query can tell: an item they
+ * may see, a kind of request people decide here (isDecidableApproval), a risk
+ * their role may decide, and not one they asked for themselves. Whether they
+ * hold every permission the operation needs is checked per row after.
+ */
+function decidableBy(decider: Actor) {
+  const table = assistantPendingActions
+  return and(
+    parentVisible(decider),
+    or(
+      isNull(table.workspaceThreadKey),
+      and(
+        like(table.workspaceThreadKey, `${WORKSPACE_THREAD_PREFIX}%`),
+        eq(table.toolName, SETTINGS_PROPOSAL_TOOL)
+      )
+    ),
+    // A row with no stored risk is read as low or medium (approvalRiskOf).
+    or(
+      isNull(table.risk),
+      notInArray(table.risk, decider.role === 'admin' ? ['critical'] : ['critical', 'high'])
+    ),
+    decider.principalId
+      ? or(isNull(table.requestedById), ne(table.requestedById, decider.principalId))
+      : undefined
   )
 }
 
@@ -313,13 +391,13 @@ function followerScope(follower: ApprovalFollower) {
           : undefined
       )
     : undefined
-  const decidable = decider ? parentVisible(decider) : undefined
+  const decidable = decider ? decidableBy(decider) : undefined
   if (own && decidable) return or(own, decidable)
   return own ?? decidable ?? null
 }
 
 async function follows(
-  row: PendingActionRow,
+  row: FollowRow,
   follower: ApprovalFollower,
   requirementsOf: ReturnType<typeof approvalRequirements>
 ): Promise<boolean> {
@@ -330,6 +408,17 @@ async function follows(
   return !!required && qualifiesToDecide(row, decider, required)
 }
 
+/** Read the rows a follower might read, newest first, in the columns a response needs. */
+async function readFollowRows(where: SQL | undefined, limit: number): Promise<FollowRow[]> {
+  const rows = await db
+    .select(FOLLOW_COLUMNS)
+    .from(assistantPendingActions)
+    .where(where)
+    .orderBy(desc(assistantPendingActions.id))
+    .limit(limit)
+  return rows.map((row) => ({ ...row, args: row.args ?? {} }))
+}
+
 /** One approval this caller follows; anything else reads as not found. */
 export async function getApprovalForFollower(
   follower: ApprovalFollower,
@@ -337,52 +426,74 @@ export async function getApprovalForFollower(
 ): Promise<PublicApproval> {
   const scope = followerScope(follower)
   if (!scope) throw approvalNotFound()
-  const [row] = await db
-    .select()
-    .from(assistantPendingActions)
-    .where(and(eq(assistantPendingActions.id, id), scope))
-    .limit(1)
+  const [row] = await readFollowRows(and(eq(assistantPendingActions.id, id), scope), 1)
   if (!row || !(await follows(row, follower, approvalRequirements()))) throw approvalNotFound()
   return toPublicApproval(row)
 }
 
-/** The approvals this caller follows, newest first, optionally in one state. */
+/** How much one list call reads: rows per query, and rows in all. */
+export interface ApprovalScan {
+  batch: number
+  cap: number
+}
+
+const DEFAULT_SCAN: ApprovalScan = { batch: SCAN_BATCH, cap: READ_CAP }
+
+/**
+ * The approvals this caller follows, newest first, optionally in one state.
+ *
+ * One call reads at most `scan.cap` rows. When it stops there before the page
+ * is full, it returns what it found with `hasMore` and a cursor at the last row
+ * it read, so a page can hold fewer items than `limit`, even none, while more
+ * remain.
+ */
 export async function listApprovalsForFollower(
   follower: ApprovalFollower,
-  options: { status?: ApprovalStatus; limit?: number; cursor?: AssistantPendingActionId }
+  options: { status?: ApprovalStatus; limit?: number; cursor?: AssistantPendingActionId },
+  scan: ApprovalScan = DEFAULT_SCAN
 ): Promise<ApprovalPage> {
   const scope = followerScope(follower)
   if (!scope) return { items: [], nextCursor: null, hasMore: false }
   const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT))
   const now = new Date()
   const requirementsOf = approvalRequirements()
-  const matched: PendingActionRow[] = []
+  const matched: FollowRow[] = []
   let after = options.cursor
-  for (;;) {
-    const rows = await db
-      .select()
-      .from(assistantPendingActions)
-      .where(
-        and(
-          scope,
-          statusFilter(options.status, now),
-          after ? lt(assistantPendingActions.id, after) : undefined
-        )
-      )
-      .orderBy(desc(assistantPendingActions.id))
-      .limit(SCAN_BATCH)
+  let read = 0
+  let lastRead: string | null = null
+  let exhausted = false
+  while (matched.length <= limit && read < scan.cap) {
+    const take = Math.min(scan.batch, scan.cap - read)
+    const rows = await readFollowRows(
+      and(
+        scope,
+        statusFilter(options.status, now),
+        after ? lt(assistantPendingActions.id, after) : undefined
+      ),
+      take
+    )
+    read += rows.length
+    exhausted = rows.length < take
     for (const row of rows) {
-      if (matched.length > limit) break
+      lastRead = row.id
       if (await follows(row, follower, requirementsOf)) matched.push(row)
+      if (matched.length > limit) break
     }
-    if (matched.length > limit || rows.length < SCAN_BATCH) break
+    if (exhausted) break
     after = rows[rows.length - 1]!.id
   }
-  const page = matched.slice(0, limit)
-  const hasMore = matched.length > limit
+  if (matched.length > limit) {
+    const page = matched.slice(0, limit)
+    return {
+      items: await Promise.all(page.map(toPublicApproval)),
+      nextCursor: page[page.length - 1]!.id,
+      hasMore: true,
+    }
+  }
   return {
-    items: await Promise.all(page.map(toPublicApproval)),
-    nextCursor: hasMore ? page[page.length - 1]!.id : null,
-    hasMore,
+    items: await Promise.all(matched.map(toPublicApproval)),
+    // Stopped at the cap: carry on after the last row read.
+    nextCursor: exhausted ? null : lastRead,
+    hasMore: !exhausted,
   }
 }

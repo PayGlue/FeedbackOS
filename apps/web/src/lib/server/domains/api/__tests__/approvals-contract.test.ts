@@ -70,6 +70,8 @@ describe('approvals OpenAPI contract', () => {
     const description = String(list?.get?.description)
     expect(description).toContain('filed')
     expect(description).toContain('creator')
+    // A call reads a bounded number of rows, so a short page can still have more.
+    expect(description).toContain('fewer items than limit')
     expect(JSON.stringify({ list, one })).not.toContain(String.fromCharCode(0x2014))
   })
 
