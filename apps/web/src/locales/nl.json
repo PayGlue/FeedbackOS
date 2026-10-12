@@ -1786,6 +1786,8 @@
   "admin.approvals.empty.waiting": "Niets wacht.",
   "admin.approvals.empty.decided": "Nog niets besloten.",
   "admin.approvals.back": "Terug naar goedkeuringen",
+  "admin.approvals.loading": "Laden",
+  "admin.approvals.notFound": "Dit verzoek is niet gevonden.",
   "admin.approvals.risk.low": "Laag",
   "admin.approvals.risk.medium": "Gemiddeld",
   "admin.approvals.risk.high": "Hoog",

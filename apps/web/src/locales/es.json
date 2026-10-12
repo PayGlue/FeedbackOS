@@ -1786,6 +1786,8 @@
   "admin.approvals.empty.waiting": "Nada pendiente.",
   "admin.approvals.empty.decided": "Aún no hay nada decidido.",
   "admin.approvals.back": "Volver a aprobaciones",
+  "admin.approvals.loading": "Cargando",
+  "admin.approvals.notFound": "No se encontró esta solicitud.",
   "admin.approvals.risk.low": "Bajo",
   "admin.approvals.risk.medium": "Medio",
   "admin.approvals.risk.high": "Alto",

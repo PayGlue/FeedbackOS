@@ -1786,6 +1786,8 @@
   "admin.approvals.empty.waiting": "Ничего не ожидает.",
   "admin.approvals.empty.decided": "Пока ничего не решено.",
   "admin.approvals.back": "Назад к одобрениям",
+  "admin.approvals.loading": "Загрузка",
+  "admin.approvals.notFound": "Этот запрос не найден.",
   "admin.approvals.risk.low": "Низкий",
   "admin.approvals.risk.medium": "Средний",
   "admin.approvals.risk.high": "Высокий",

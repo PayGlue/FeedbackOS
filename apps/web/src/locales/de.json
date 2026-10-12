@@ -1786,6 +1786,8 @@
   "admin.approvals.empty.waiting": "Nichts wartet.",
   "admin.approvals.empty.decided": "Noch nichts entschieden.",
   "admin.approvals.back": "Zurück zu den Freigaben",
+  "admin.approvals.loading": "Wird geladen",
+  "admin.approvals.notFound": "Diese Anfrage wurde nicht gefunden.",
   "admin.approvals.risk.low": "Niedrig",
   "admin.approvals.risk.medium": "Mittel",
   "admin.approvals.risk.high": "Hoch",

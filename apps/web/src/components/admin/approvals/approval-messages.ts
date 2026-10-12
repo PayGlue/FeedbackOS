@@ -10,6 +10,8 @@ export const approvalMessages = defineMessages({
   emptyWaiting: { id: 'admin.approvals.empty.waiting', defaultMessage: 'Nothing waiting.' },
   emptyDecided: { id: 'admin.approvals.empty.decided', defaultMessage: 'Nothing decided yet.' },
   back: { id: 'admin.approvals.back', defaultMessage: 'Back to approvals' },
+  loading: { id: 'admin.approvals.loading', defaultMessage: 'Loading' },
+  notFound: { id: 'admin.approvals.notFound', defaultMessage: 'This request was not found.' },
   riskLow: { id: 'admin.approvals.risk.low', defaultMessage: 'Low' },
   riskMedium: { id: 'admin.approvals.risk.medium', defaultMessage: 'Medium' },
   riskHigh: { id: 'admin.approvals.risk.high', defaultMessage: 'High' },

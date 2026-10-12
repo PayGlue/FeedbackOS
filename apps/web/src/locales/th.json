@@ -2019,6 +2019,8 @@
   "admin.approvals.empty.waiting": "ไม่มีรายการที่รออยู่",
   "admin.approvals.empty.decided": "ยังไม่มีรายการที่ตัดสินแล้ว",
   "admin.approvals.back": "กลับไปที่การอนุมัติ",
+  "admin.approvals.loading": "กำลังโหลด",
+  "admin.approvals.notFound": "ไม่พบคำขอนี้",
   "admin.approvals.risk.low": "ต่ำ",
   "admin.approvals.risk.medium": "ปานกลาง",
   "admin.approvals.risk.high": "สูง",

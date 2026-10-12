@@ -1786,6 +1786,8 @@
   "admin.approvals.empty.waiting": "没有待处理的请求。",
   "admin.approvals.empty.decided": "还没有已决定的请求。",
   "admin.approvals.back": "返回审批",
+  "admin.approvals.loading": "正在加载",
+  "admin.approvals.notFound": "未找到此请求。",
   "admin.approvals.risk.low": "低",
   "admin.approvals.risk.medium": "中",
   "admin.approvals.risk.high": "高",

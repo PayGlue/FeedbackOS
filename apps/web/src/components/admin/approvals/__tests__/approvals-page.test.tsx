@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
 import type { ReactNode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { IntlProvider } from 'react-intl'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,14 +16,32 @@ const state = vi.hoisted(() => ({
   reject: vi.fn(),
   getApproval: vi.fn(),
   undo: vi.fn(),
+  wide: true,
+  listeners: new Set<() => void>(),
 }))
 
-vi.mock('@tanstack/react-router', () => ({
-  getRouteApi: () => ({
-    useNavigate: () => state.navigate,
-    useSearch: () => state.search,
-  }),
-  useRouter: () => ({ invalidate: vi.fn(async () => undefined) }),
+// The URL as a small store: navigating changes the search the page reads.
+function navigateTo({ search }: { search: object | ((previous: object) => object) }) {
+  state.search = (typeof search === 'function' ? search(state.search) : search) as never
+  for (const listener of state.listeners) listener()
+}
+
+vi.mock('@tanstack/react-router', async () => {
+  const { useSyncExternalStore } = await import('react')
+  const subscribe = (listener: () => void) => {
+    state.listeners.add(listener)
+    return () => state.listeners.delete(listener)
+  }
+  return {
+    getRouteApi: () => ({
+      useNavigate: () => state.navigate,
+      useSearch: () => useSyncExternalStore(subscribe, () => state.search),
+    }),
+    useRouter: () => ({ invalidate: vi.fn(async () => undefined) }),
+  }
+})
+vi.mock('@/lib/client/hooks/use-media-query', () => ({
+  useMediaQuery: () => state.wide,
 }))
 vi.mock('@/lib/server/functions/approvals', () => ({
   listApprovalsFn: async ({ data }: { data: { view?: string } }) =>
@@ -88,6 +106,7 @@ function view(overrides: Partial<ApprovalView> = {}): ApprovalView {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = queryClient
   return render(
     <QueryClientProvider client={queryClient}>
       <IntlProvider locale="en" defaultLocale="en" messages={{}}>
@@ -97,9 +116,13 @@ function renderPage() {
   )
 }
 
+let client: QueryClient
+
 beforeEach(() => {
   state.search = {}
+  state.wide = true
   state.navigate.mockReset()
+  state.navigate.mockImplementation(navigateTo)
   state.approve.mockReset()
   state.reject.mockReset()
   state.getApproval.mockReset()
@@ -162,12 +185,9 @@ describe('ApprovalsPage', () => {
     state.waiting = [view()]
     renderPage()
     await screen.findByRole('list')
+    await waitFor(() => expect(state.search).toEqual({ id: 'assistant_action_01' }))
     fireEvent.click(screen.getByRole('tab', { name: 'Decided' }))
-    expect(state.navigate).toHaveBeenCalled()
-    const { search } = state.navigate.mock.calls[0]![0] as {
-      search: (previous: object) => object
-    }
-    expect(search({ id: 'assistant_action_01' })).toEqual({ view: 'decided', id: undefined })
+    expect(state.search).toEqual({ view: 'decided', id: undefined })
   })
 
   it('says when nothing is waiting', async () => {
@@ -437,5 +457,78 @@ describe('ApprovalsPage', () => {
     const row = (await screen.findByText('Workspace name')).closest('div')!
     expect(within(row).getByText('From', { selector: '.sr-only' })).toBeInTheDocument()
     expect(within(row).getByText('To', { selector: '.sr-only' })).toBeInTheDocument()
+  })
+
+  it('opens the newest request beside the list once, and keeps it when a newer one arrives', async () => {
+    state.waiting = [view()]
+    renderPage()
+    await waitFor(() => expect(state.search).toEqual({ id: 'assistant_action_01' }))
+    state.waiting = [
+      view({
+        id: 'assistant_action_02',
+        summary: 'Turn on Messenger',
+        proposedAt: new Date().toISOString(),
+      }),
+      view(),
+    ]
+    await act(() => client.refetchQueries())
+    await screen.findByText('Turn on Messenger')
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Change the workspace name' })
+    ).toBeInTheDocument()
+    expect(state.search).toEqual({ id: 'assistant_action_01' })
+  })
+
+  it('on a phone, opens nothing and marks no row current until one is chosen', async () => {
+    state.wide = false
+    state.waiting = [view()]
+    renderPage()
+    const list = await screen.findByRole('list')
+    expect(within(list).getByRole('button')).not.toHaveAttribute('aria-current')
+    expect(screen.queryByRole('heading', { level: 2 })).toBeNull()
+    expect(state.search).toEqual({})
+    // The list column draws its edge only beside the detail, not at the screen edge.
+    const column = list.closest('[data-slot="approvals-list"]')!
+    expect(column.className).toContain('md:border-r')
+    expect(column.className.split(' ')).not.toContain('border-r')
+    fireEvent.click(within(list).getByRole('button'))
+    expect(within(list).getByRole('button')).toHaveAttribute('aria-current', 'true')
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Change the workspace name' })
+    ).toBeInTheDocument()
+  })
+
+  it('loads a linked request the tab does not list, never showing another in its place', async () => {
+    state.waiting = [view()]
+    state.search = { id: 'assistant_action_09' }
+    let resolve: (value: ApprovalView) => void = () => undefined
+    state.getApproval.mockReturnValue(
+      new Promise<ApprovalView>((done) => {
+        resolve = done
+      })
+    )
+    renderPage()
+    await screen.findByRole('list')
+    expect(await screen.findByRole('status', { name: 'Loading' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2 })).toBeNull()
+    await act(async () =>
+      resolve(view({ id: 'assistant_action_09', summary: 'Publish the release notes' }))
+    )
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Publish the release notes' })
+    ).toBeInTheDocument()
+    expect(state.search).toEqual({ id: 'assistant_action_09' })
+  })
+
+  it('says a linked request was not found when it cannot be read', async () => {
+    state.waiting = [view()]
+    state.search = { id: 'assistant_action_09' }
+    state.getApproval.mockRejectedValue(new Error('This request was not found.'))
+    renderPage()
+    expect(await screen.findByText('This request was not found.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2 })).toBeNull()
+    expect(state.search).toEqual({ id: 'assistant_action_09' })
   })
 })
