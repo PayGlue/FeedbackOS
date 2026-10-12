@@ -37,7 +37,7 @@ export const approvalMessages = defineMessages({
   statusFailed: { id: 'admin.approvals.status.failed', defaultMessage: 'Failed' },
   applied: {
     id: 'admin.approvals.result.applied',
-    defaultMessage: 'Applied just now. {name} has been told.',
+    defaultMessage: 'Applied just now.',
   },
   appliedFinal: {
     id: 'admin.approvals.result.appliedFinal',
@@ -45,7 +45,7 @@ export const approvalMessages = defineMessages({
   },
   rejected: {
     id: 'admin.approvals.result.rejected',
-    defaultMessage: 'Rejected. {name} has been told.',
+    defaultMessage: 'Rejected.',
   },
   undone: {
     id: 'admin.approvals.result.undone',

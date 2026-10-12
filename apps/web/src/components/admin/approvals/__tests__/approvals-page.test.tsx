@@ -188,7 +188,7 @@ describe('ApprovalsPage', () => {
     expect(reason).toHaveAttribute('placeholder', 'Optional')
     fireEvent.change(reason, { target: { value: 'Not now' } })
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
-    await screen.findByText('Rejected. James Morton has been told.')
+    await screen.findByText('Rejected.')
     expect(state.reject).toHaveBeenCalledWith({
       data: { approvalId: 'assistant_action_01', contentHash: 'digest-1', reason: 'Not now' },
     })
@@ -214,7 +214,7 @@ describe('ApprovalsPage', () => {
     })
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
-    await screen.findByText('Applied just now. James Morton has been told.')
+    await screen.findByText('Applied just now.')
     expect(state.approve).toHaveBeenCalledWith({
       data: { approvalId: 'assistant_action_01', contentHash: 'digest-1' },
     })

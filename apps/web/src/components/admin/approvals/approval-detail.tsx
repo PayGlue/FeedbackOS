@@ -305,10 +305,10 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
           <span className="min-w-0">
             {stage === 'applied'
               ? approval.undoable
-                ? intl.formatMessage(approvalMessages.applied, { name: told })
+                ? intl.formatMessage(approvalMessages.applied)
                 : intl.formatMessage(approvalMessages.appliedFinal)
               : stage === 'rejected'
-                ? intl.formatMessage(approvalMessages.rejected, { name: told })
+                ? intl.formatMessage(approvalMessages.rejected)
                 : stage === 'undone'
                   ? intl.formatMessage(approvalMessages.undone)
                   : intl.formatMessage(approvalMessages.failed)}
