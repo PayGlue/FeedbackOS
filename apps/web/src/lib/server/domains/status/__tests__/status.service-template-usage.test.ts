@@ -63,7 +63,7 @@ vi.mock('@/lib/server/db', async (importOriginal) => {
 vi.mock('../status.components', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../status.components')>()),
   reconcileComponentStatus: (...args: unknown[]) => mockReconcileComponentStatus(...args),
-  dispatchStatusEvent: (...args: unknown[]) => mockDispatchStatusEvent(...args),
+  writeStatusEvent: (...args: unknown[]) => mockDispatchStatusEvent(...args),
 }))
 
 vi.mock('../status.maintenance', async (importOriginal) => ({

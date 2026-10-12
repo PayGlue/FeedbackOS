@@ -64,7 +64,7 @@ vi.mock('../status.components', async (importOriginal) => ({
   reconcileComponentStatuses: async (ids: Iterable<string>, ...rest: unknown[]) => {
     for (const id of [...new Set(ids)].sort()) await mockReconcileComponentStatus(id, ...rest)
   },
-  dispatchStatusEvent: (...args: unknown[]) => mockDispatchStatusEvent(...args),
+  writeStatusEvent: (...args: unknown[]) => mockDispatchStatusEvent(...args),
 }))
 
 vi.mock('@/lib/server/events/scheduler', () => ({
@@ -146,7 +146,8 @@ describe('handleMaintenanceStart — stale reschedule boundary', () => {
     expect(mockDispatchStatusEvent).toHaveBeenCalledWith(
       'status.maintenance_started',
       expect.anything(),
-      expect.objectContaining({ incidentId: INCIDENT_B })
+      expect.objectContaining({ incidentId: INCIDENT_B }),
+      expect.anything()
     )
   })
 

@@ -71,7 +71,7 @@ vi.mock('../status.components', async (importOriginal) => ({
   reconcileComponentStatuses: async (ids: Iterable<string>, ...rest: unknown[]) => {
     for (const id of [...new Set(ids)].sort()) await mockReconcileComponentStatus(id, ...rest)
   },
-  dispatchStatusEvent: (...args: unknown[]) => mockDispatchStatusEvent(...args),
+  writeStatusEvent: (...args: unknown[]) => mockDispatchStatusEvent(...args),
 }))
 
 vi.mock('../status.maintenance', async (importOriginal) => ({

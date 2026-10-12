@@ -24,6 +24,7 @@ import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { assertTrimmedName, nextPosition, positionCaseSql } from '@/lib/server/utils'
 import { logger } from '@/lib/server/logger'
 import type { EventActor } from '@/lib/server/events/dispatch'
+import type { EventData } from '@/lib/server/events/types'
 import type {
   StatusComponentStatus,
   StatusComponentEventSource,
@@ -427,6 +428,35 @@ export type StatusEventType =
   | 'status.maintenance_started'
   | 'status.maintenance_completed'
   | 'status.component_changed'
+
+/** A status event as the envelope the outbox writer takes. */
+export function buildStatusEvent(
+  type: StatusEventType,
+  actor: EventActor,
+  data: Record<string, unknown>
+): EventData {
+  return {
+    id: globalThis.crypto.randomUUID(),
+    type,
+    timestamp: new Date().toISOString(),
+    actor,
+    data,
+  } as unknown as EventData
+}
+
+/**
+ * Write a status event on the transaction that makes the change it describes,
+ * so the two commit or roll back together and a crash can't lose the event.
+ */
+export async function writeStatusEvent(
+  type: StatusEventType,
+  actor: EventActor,
+  data: Record<string, unknown>,
+  tx: Transaction
+): Promise<void> {
+  const { writeEventToOutbox } = await import('@/lib/server/events/outbox-dispatch')
+  await writeEventToOutbox(buildStatusEvent(type, actor, data), tx)
+}
 
 /**
  * Mirrors the private `dispatchEvent` helper in events/dispatch.ts (best-effort,
