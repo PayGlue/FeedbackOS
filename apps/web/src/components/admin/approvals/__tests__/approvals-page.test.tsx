@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
   wide: true,
   listeners: new Set<() => void>(),
   listFails: false,
+  bellRead: vi.fn(),
 }))
 
 // The URL as a small store: navigating changes the search the page reads.
@@ -53,6 +54,7 @@ vi.mock('@/lib/server/functions/approvals', () => ({
   getWaitingApprovalsFn: async () => ({ count: 0, latest: [] }),
   approveApprovalFn: (args: unknown) => state.approve(args),
   rejectApprovalFn: (args: unknown) => state.reject(args),
+  markApprovalBellReadFn: () => state.bellRead(),
 }))
 vi.mock('@/lib/server/functions/workspace-copilot', () => ({
   undoWorkspaceSettingsProposalFn: (args: unknown) => state.undo(args),
@@ -125,6 +127,8 @@ beforeEach(() => {
   state.search = {}
   state.wide = true
   state.listFails = false
+  state.bellRead.mockReset()
+  state.bellRead.mockResolvedValue({ marked: 0 })
   state.navigate.mockReset()
   state.navigate.mockImplementation(navigateTo)
   state.approve.mockReset()
@@ -555,5 +559,19 @@ describe('ApprovalsPage', () => {
     renderPage()
     expect(await screen.findByRole('alert')).toHaveTextContent('Approvals could not be loaded.')
     expect(screen.queryByText('Nothing decided yet.')).toBeNull()
+  })
+
+  it('reads the approval bell once as the page opens, and refreshes the bell', async () => {
+    state.waiting = [view()]
+    state.bellRead.mockResolvedValue({ marked: 1 })
+    renderPage()
+    client.setQueryData(['notifications', 'unreadCount'], 3)
+    const list = await screen.findByRole('list')
+    await waitFor(() => expect(state.bellRead).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(client.getQueryState(['notifications', 'unreadCount'])?.isInvalidated).toBe(true)
+    )
+    fireEvent.click(within(list).getByRole('button'))
+    expect(state.bellRead).toHaveBeenCalledTimes(1)
   })
 })

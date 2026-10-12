@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useIntl } from 'react-intl'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
 import { approvalQueries, type ApprovalsView } from '@/lib/client/queries/approvals'
+import { notificationsKeys } from '@/lib/client/hooks/use-notifications-queries'
+import { markApprovalBellReadFn } from '@/lib/server/functions/approvals'
 import { useMediaQuery } from '@/lib/client/hooks/use-media-query'
 import { PageHeader } from '@/components/shared/page-header'
 import { Spinner } from '@/components/shared/spinner'
@@ -122,6 +124,7 @@ function DetailPlaceholder({
  */
 export function ApprovalsPage() {
   const intl = useIntl()
+  const queryClient = useQueryClient()
   const navigate = route.useNavigate()
   const search = route.useSearch()
   const sideBySide = useMediaQuery(SIDE_BY_SIDE)
@@ -159,6 +162,16 @@ export function ApprovalsPage() {
   })
   const selected = listed ?? (linked.data ? (latest.get(linked.data.id) ?? linked.data) : undefined)
   const placeholder = !search.id || selected ? null : linked.isError ? 'missing' : 'loading'
+
+  // Opening Approvals reads the approval bell: what it counted is in front of
+  // the viewer now. The bell refreshes when that cleared anything.
+  useEffect(() => {
+    void markApprovalBellReadFn()
+      .then(({ marked }) =>
+        marked > 0 ? queryClient.invalidateQueries({ queryKey: notificationsKeys.all }) : undefined
+      )
+      .catch(() => undefined)
+  }, [queryClient])
 
   const select = (id: string | undefined) =>
     void navigate({ search: (prev) => ({ ...prev, id }), replace: true })
