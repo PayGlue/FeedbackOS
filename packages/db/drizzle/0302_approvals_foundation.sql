@@ -69,6 +69,16 @@ END $$;
 -- One unread approval bell per person: concurrent requests then count up the
 -- same row through an upsert instead of adding a second one. The type is new
 -- with this migration, so no existing rows can collide.
+--
+-- Built here rather than concurrently after the migration, because the upsert
+-- needs it from the first approval bell. The build scans the whole table under
+-- a SHARE lock (new notifications wait; reads do not), but the partial index
+-- holds no rows yet, so the scan is all it costs. Measured on Postgres 18 with
+-- 1,000,000 notifications (423 MB with their indexes, 2,000 recipients, 90%
+-- read), inside a transaction as the migrator runs it, on a busy machine
+-- (load average 15) with the table cached: 108 to 121 ms for the build,
+-- under 0.5 s with the commit. A table read cold from disk adds the time to
+-- read it once.
 CREATE UNIQUE INDEX IF NOT EXISTS "in_app_notifications_unread_approval_idx" ON "in_app_notifications" ("principal_id") WHERE "type" = 'approval_requested' AND "read_at" IS NULL AND "archived_at" IS NULL;
 --> statement-breakpoint
 -- The requests still waiting for a decision, newest first: what the approvals
