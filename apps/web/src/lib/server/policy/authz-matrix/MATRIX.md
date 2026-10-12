@@ -1008,7 +1008,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 3. MCP tools
 
-43 tools. "Team" = requires an admin/member role in addition to the scope.
+45 tools. "Team" = requires an admin/member role in addition to the scope.
 
 | Tool | Scope(s) | Team |
 | --- | --- | :---: |
@@ -1024,12 +1024,14 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | delete_comment | write:feedback | · |
 | delete_post | write:feedback | ✓ |
 | dismiss_suggestion | write:feedback | ✓ |
+| get_approval | read:settings | ✓ |
 | get_conversation | read:chat | ✓ |
 | get_details | read:article, read:feedback | ✓ |
 | get_post_activity | read:feedback | ✓ |
 | get_settings | read:settings | ✓ |
 | get_ticket | read:chat | ✓ |
 | link_ticket | write:chat | ✓ |
+| list_approvals | read:settings | ✓ |
 | list_conversations | read:chat | ✓ |
 | list_tickets | read:chat | ✓ |
 | manage_category | write:article | ✓ |

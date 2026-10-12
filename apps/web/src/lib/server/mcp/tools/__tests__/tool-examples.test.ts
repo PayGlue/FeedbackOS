@@ -11,6 +11,7 @@ vi.mock('@/lib/server/domains/settings/cloud/cloud.service', () => ({
 
 import { registerSettingsTools } from '../settings'
 import { registerNavigationTools } from '../navigation'
+import { registerApprovalTools } from '../approvals'
 import { WORKSPACE_WEB_PROMPT } from '@/lib/server/domains/assistant/workspace-prompt'
 import { settingsProposalInputSchema } from '@/lib/shared/assistant/settings-proposals'
 import type { McpAuthContext } from '../../types'
@@ -48,6 +49,7 @@ function registered() {
   } as unknown as McpAuthContext
   registerSettingsTools(server as never, auth)
   registerNavigationTools(server as never, auth)
+  registerApprovalTools(server as never, auth)
   return tools
 }
 
