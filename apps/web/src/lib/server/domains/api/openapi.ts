@@ -93,11 +93,11 @@ All API endpoints require authentication using an API key. Include your API key 
 Authorization: Bearer qb_your_api_key_here
 \`\`\`
 
-API keys can be created in the Quackback admin dashboard under Settings > API Keys.
+API keys can be created in the Quackback admin dashboard under Settings > Developers.
 
 ## Rate Limiting
 
-Requests are limited per client IP address. The default is 100 requests per minute, counted in a fixed one-minute window; some plans set a different limit. Send the header \`X-Import-Mode: true\` on bulk imports to raise the limit to 20 times the per-minute cap (at least 2000). When the limit is exceeded the API responds with \`429\` and error code \`RATE_LIMITED\`, and the \`Retry-After\` header gives the number of seconds to wait before retrying.
+Requests are limited per client IP address. The default is 100 requests per minute, counted in a fixed one-minute window; some plans set a different limit. When the limit is exceeded the API responds with \`429\` and error code \`RATE_LIMITED\`, and the \`Retry-After\` header gives the number of seconds to wait before retrying.
 
 ## Pagination
 
