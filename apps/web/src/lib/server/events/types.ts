@@ -255,6 +255,8 @@ export interface StatusIncidentEventData {
   scheduledEndAt: string | null
   startedAt: string
   componentIds: string[]
+  /** On the publish events: false when the publication does not email subscribers. */
+  notifySubscribers?: boolean
 }
 
 /** status.incident_created + status.maintenance_scheduled (the publish events). */

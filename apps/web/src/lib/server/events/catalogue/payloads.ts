@@ -124,10 +124,22 @@ export const P = {
   }),
   // status page
   'status.incident_created': z.looseObject({
-    incident: z.looseObject({ id, componentIds: z.array(z.string()) }).loose(),
+    incident: z
+      .looseObject({
+        id,
+        componentIds: z.array(z.string()),
+        notifySubscribers: z.boolean().optional(),
+      })
+      .loose(),
   }),
   'status.maintenance_scheduled': z.looseObject({
-    incident: z.looseObject({ id, componentIds: z.array(z.string()) }).loose(),
+    incident: z
+      .looseObject({
+        id,
+        componentIds: z.array(z.string()),
+        notifySubscribers: z.boolean().optional(),
+      })
+      .loose(),
   }),
   'status.incident_updated': z.looseObject({
     incidentId: id,
