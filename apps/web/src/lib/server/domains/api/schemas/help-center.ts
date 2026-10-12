@@ -85,8 +85,9 @@ const CreateArticleBodySchema = createRequestBodySchema({
     .optional()
     .meta({ description: 'Generated from the title when omitted' }),
   description: z.string().max(300).optional(),
-  authorId: TypeIdSchema.optional().meta({
-    description: 'Principal ID of the author. Defaults to the API key owner.',
+  authorId: TypeIdSchema.meta({
+    description:
+      'Principal ID of the team member credited as the author. Required, because API keys act as a service identity rather than a person.',
   }),
 })
 
