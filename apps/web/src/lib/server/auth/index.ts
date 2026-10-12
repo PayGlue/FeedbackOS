@@ -11,6 +11,7 @@ import {
   twoFactor,
 } from 'better-auth/plugins'
 import { mcp } from '@better-auth/mcp'
+import { oauthDeviceAuthorization } from '@better-auth/oauth-provider'
 import { betterAuthMcpResource } from './mcp-plugin-resource'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { generateId, type PrincipalId, type UserId } from '@quackback/ids'
@@ -189,6 +190,7 @@ async function createAuth() {
     oauthResource: oauthResourceTable,
     oauthClientResource: oauthClientResourceTable,
     oauthClientAssertion: oauthClientAssertionTable,
+    deviceCode: deviceCodeTable,
     twoFactor: twoFactorTable,
     eq,
   } = await import('@/lib/server/db')
@@ -412,7 +414,18 @@ async function createAuth() {
     // takes precedence over that map entirely. Entry expiry lives in the
     // library's own window arithmetic (`lastRequest` vs the rule's window), so
     // this only has to hold and bound; the cache evicts oldest-first.
-    rateLimit: { customStorage: workspaceRateLimitStorage },
+    rateLimit: {
+      customStorage: workspaceRateLimitStorage,
+      // The device endpoints are unauthenticated and mint or poll codes, so
+      // each gets its own small budget per address (polling is every 5s).
+      customRules: {
+        '/device/code': { window: 60, max: 10 },
+        '/device/token': { window: 60, max: 30 },
+        '/device': { window: 60, max: 30 },
+        '/device/approve': { window: 60, max: 20 },
+        '/device/deny': { window: 60, max: 20 },
+      },
+    },
     // Route the library's internal logging through pino, redacted. Without it
     // those lines bypass the app logger entirely — unstructured, uncorrelated,
     // and on a resolution failure carrying the whole user-info payload
@@ -446,6 +459,8 @@ async function createAuth() {
         oauthResource: oauthResourceTable,
         oauthClientResource: oauthClientResourceTable,
         oauthClientAssertion: oauthClientAssertionTable,
+        // RFC 8628 device authorization (headless MCP / CLI sign-in)
+        deviceCode: deviceCodeTable,
         // The twoFactor plugin uses model name "twoFactor"; our Drizzle
         // table is `two_factor` (snake-case). The column→field mapping
         // (camelCase plugin field → snake_case column) is handled by
@@ -756,6 +771,16 @@ async function createAuth() {
             email: user.email,
           }
         },
+      }),
+
+      // RFC 8628 device authorization grant on the same OAuth server: a
+      // headless client asks `/device/code`, the person approves the code at
+      // `/device` in a browser, and the client polls `/oauth2/token` with the
+      // device_code grant. Must follow `mcp()`, which supplies the provider.
+      oauthDeviceAuthorization({
+        verificationUri: '/device',
+        expiresIn: '10m',
+        interval: '5s',
       }),
 
       // Generic OAuth plugin for custom OIDC providers (Okta, Auth0, Keycloak, etc.)
