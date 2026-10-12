@@ -13,9 +13,11 @@ import {
   user,
   settings,
   conversations,
+  tickets,
+  ticketStatuses,
   assistantPendingActions,
 } from '@/lib/server/db'
-import { ALL_PERMISSIONS } from '@/lib/shared/permissions'
+import { ALL_PERMISSIONS, PERMISSIONS } from '@/lib/shared/permissions'
 import { permissionsForLegacyRole } from '@/lib/server/policy/permissions'
 import type { Actor } from '@/lib/server/policy/types'
 
@@ -60,6 +62,7 @@ import { createWorkspaceThread } from '../workspace-threads.service'
 import { enqueueWorkspaceSettingsProposal } from '../workspace-settings-actions.service'
 import { proposePendingAction } from '../pending-actions.service'
 import { approveApproval, rejectApproval } from '../approvals.service'
+import { getApprovalForViewer } from '../approvals.queue'
 import {
   listApprovalsForViewer,
   listDecidedApprovalsForViewer,
@@ -366,5 +369,70 @@ describe('one count, every request', () => {
     const forOther = await waitingApprovalsSummary(otherAdmin)
     expect(forOther.count).toBe(1)
     expect(forOther.latest.map((view) => view.id)).toEqual([home.id])
+  })
+})
+
+describe('what a decision can never do', () => {
+  it('never approves a request already turned down', async () => {
+    const pending = await inboxProposal()
+    await rejectApproval(otherAdmin, pending.id, { contentHash: pending.argsDigest! })
+    await expect(
+      approveApproval(member, pending.id, { contentHash: pending.argsDigest! })
+    ).rejects.toMatchObject({ code: 'PENDING_ACTION_NOT_DECIDABLE' })
+    expect((await rowOf(pending.id)).status).toBe('rejected')
+    expect(executed.calls).toEqual([])
+  })
+
+  it('runs a request once when it is approved twice', async () => {
+    const pending = await inboxProposal()
+    await approveApproval(member, pending.id, { contentHash: pending.argsDigest! })
+    await expect(
+      approveApproval(otherAdmin, pending.id, { contentHash: pending.argsDigest! })
+    ).rejects.toMatchObject({ code: 'PENDING_ACTION_NOT_DECIDABLE' })
+    expect(executed.calls).toHaveLength(1)
+    expect((await rowOf(pending.id)).decidedById).toBe(member.principalId)
+  })
+
+  it('treats a ticket outside the teams of a scoped viewer as not found', async () => {
+    const visitor = await seedServicePrincipal('Visitor')
+    const statusId = createId('ticket_status')
+    await testDb.insert(ticketStatuses).values({ id: statusId, name: 'Acme open', slug: statusId })
+    const [ticket] = await testDb
+      .insert(tickets)
+      .values({ title: 'Acme refund', statusId, requesterPrincipalId: visitor })
+      .returning({ id: tickets.id })
+    const pending = await proposePendingAction({
+      ticketId: ticket!.id,
+      toolName: 'create_ticket',
+      args: { title: 'Follow up on the refund' },
+      summary: 'Create a ticket',
+    })
+    // Sees tickets assigned to them or their teams only; this one is neither.
+    const scoped: Actor = {
+      ...member,
+      permissions: new Set(
+        [...(member.permissions ?? []), PERMISSIONS.TICKET_VIEW, PERMISSIONS.TICKET_CREATE].filter(
+          (permission) => permission !== PERMISSIONS.TICKET_VIEW_ALL
+        )
+      ),
+    }
+    await expect(
+      approveApproval(scoped, pending.id, { contentHash: pending.argsDigest! })
+    ).rejects.toMatchObject({ code: 'APPROVAL_NOT_FOUND' })
+    await expect(getApprovalForViewer(scoped, pending.id)).rejects.toMatchObject({
+      code: 'APPROVAL_NOT_FOUND',
+    })
+    expect((await listApprovalsForViewer(scoped)).map((view) => view.id)).not.toContain(pending.id)
+    expect((await listApprovalsForViewer(otherAdmin)).map((view) => view.id)).toContain(pending.id)
+    expect((await rowOf(pending.id)).status).toBe('proposed')
+  })
+
+  it('never lets a member without the settings permission approve a settings request', async () => {
+    const pending = await homeProposal()
+    await expect(
+      approveApproval(member, pending.id, { contentHash: pending.argsDigest! })
+    ).rejects.toMatchObject({ code: 'APPROVAL_PERMISSION_REQUIRED' })
+    expect((await rowOf(pending.id)).status).toBe('proposed')
+    expect(await workspaceName()).toBe('Acme')
   })
 })
