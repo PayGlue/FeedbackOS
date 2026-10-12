@@ -20,6 +20,12 @@ import { hasApiScope } from '@/lib/server/domains/api-keys/api-key-scopes'
 import { resolveActorPermissions } from '@/lib/server/policy/permissions'
 import type { PermissionKey } from '@/lib/shared/permissions'
 import type { McpAuthContext, McpScope } from '../types'
+import {
+  UNTRUSTED_TOOL_FIELDS,
+  markUntrusted,
+  type McpToolName,
+  type UntrustedSpec,
+} from '../untrusted'
 
 // ============================================================================
 // Result wrappers
@@ -191,7 +197,8 @@ async function requireFeature(feature: ToolFeature): Promise<CallToolResult | nu
 }
 
 export interface ToolDef<TArgs> {
-  name: string
+  /** Must be declared in UNTRUSTED_TOOL_FIELDS (../untrusted). */
+  name: McpToolName
   description: string
   schema: z.ZodRawShape
   annotations: ToolAnnotations
@@ -240,12 +247,20 @@ function requiredPermissions<TArgs>(
  * Error ownership also lives here: any error the handler throws becomes the
  * standard errorResult, so handlers only add try/catch when a branch needs a
  * more specific mapping (e.g. get_details' invalid-TypeID message).
+ *
+ * So does untrusted marking: every successful result passes through
+ * markUntrusted with the tool's UNTRUSTED_TOOL_FIELDS declaration, which adds
+ * the `untrusted` descriptor when the result holds text from outside the team.
  */
 export function registerTool<TArgs>(
   server: McpServer,
   auth: McpAuthContext,
   def: ToolDef<TArgs>
 ): void {
+  const untrusted: UntrustedSpec | undefined = UNTRUSTED_TOOL_FIELDS[def.name]
+  if (!untrusted) {
+    throw new Error(`MCP tool "${def.name}" has no UNTRUSTED_TOOL_FIELDS declaration`)
+  }
   const wrapped = (async (args: TArgs): Promise<CallToolResult> => {
     if (def.feature) {
       const denied = await requireFeature(def.feature)
@@ -262,7 +277,7 @@ export function registerTool<TArgs>(
     try {
       const denied = requirePermissions(auth, requiredPermissions(def.permissions, args, auth))
       if (denied) return denied
-      return await def.handler(args)
+      return markUntrusted(await def.handler(args), untrusted)
     } catch (err) {
       return errorResult(err)
     }
