@@ -5,6 +5,7 @@ import {
   UNTRUSTED_NOTE,
   markUntrusted,
   untrustedFields,
+  withItemFacts,
   type UntrustedSpec,
 } from '../untrusted'
 
@@ -160,6 +161,43 @@ describe('markUntrusted', () => {
     expect(markUntrusted(plain, ['title'])).toBe(plain)
     const list = textResult(JSON.stringify([{ title: 'x' }]))
     expect(markUntrusted(list, ['title'])).toBe(list)
+  })
+})
+
+describe('item facts', () => {
+  it('gives each top-level item its facts and never serializes them', () => {
+    const spec: UntrustedSpec = [
+      {
+        each: 'rows',
+        where: (_row, facts) => facts?.onTeam !== true,
+        fields: ['name'],
+        nested: 'children',
+      },
+    ]
+    const body = {
+      rows: [
+        { name: 'Jane', children: [{ name: 'Nested', children: [] }] },
+        { name: 'Ada', children: [] },
+      ],
+    }
+    const result = withItemFacts(textResult(JSON.stringify(body)), {
+      rows: [{ onTeam: true }, { onTeam: false }],
+    })
+
+    const text = (markUntrusted(result, spec).content[0] as { text: string }).text
+
+    // Nested items get no facts, so a rule that needs them marks them.
+    expect(JSON.parse(text).untrusted.fields).toEqual(['rows[0].children[0].name', 'rows[1].name'])
+    expect(text).not.toContain('onTeam')
+  })
+
+  it('marks every item when the handler attached no facts', () => {
+    const spec: UntrustedSpec = [
+      { each: 'rows', where: (_row, facts) => facts?.onTeam !== true, fields: ['name'] },
+    ]
+    const result = textResult(JSON.stringify({ rows: [{ name: 'Jane' }] }))
+    const text = (markUntrusted(result, spec).content[0] as { text: string }).text
+    expect(JSON.parse(text).untrusted.fields).toEqual(['rows[0].name'])
   })
 })
 

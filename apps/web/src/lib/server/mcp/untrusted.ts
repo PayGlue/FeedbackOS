@@ -32,7 +32,9 @@
  * Where a result carries a per-item authorship signal (a message's senderType,
  * a comment's isTeamMember) only the outside items are listed. Where it
  * carries none (post and ticket titles, which teammates can also write) the
- * field is listed whenever any author of it can be outside the team.
+ * field is listed whenever any author of it can be outside the team. A handler
+ * that knows something about its items the client must not see (whether an
+ * activity's actor is on the team today) attaches it with withItemFacts.
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
@@ -60,8 +62,11 @@ export const MCP_SERVER_INSTRUCTIONS =
 export interface UntrustedItemsRule {
   /** Dotted key path to an array in the result. */
   each: string
-  /** True when the item was written outside the team. */
-  where: (item: JsonObject) => boolean
+  /**
+   * True when the item was written outside the team. `facts` are what the
+   * handler attached for this item with withItemFacts (top-level items only).
+   */
+  where: (item: JsonObject, facts: JsonObject | undefined) => boolean
   /** Dotted key paths inside each item. */
   fields: readonly string[]
   /** Key holding child items of the same shape (comment replies), walked the same way. */
@@ -94,78 +99,70 @@ const notSentByTeammate = (message: JsonObject) => message.senderType !== 'agent
 /** Comments record whether their author was on the team. */
 const notWrittenByTeam = (comment: JsonObject) => comment.isTeamMember !== true
 
-interface ActivityDeclaration {
-  /** Only a teammate, or an integration's service principal (named by this app), performs it. */
-  teamActor: boolean
-  /** Metadata keys holding outside text. */
-  metadata: readonly string[]
-}
+/**
+ * Metadata keys holding outside text, for each post activity type: post
+ * titles, author and voter names, owner names (any principal can be assigned
+ * owner, so the name may be one a portal user chose), and what an external
+ * tracker's webhook sent: its status name, issue key and link. Status, board
+ * and tag names are team-authored; ids, counts, colors, slugs, `transition`
+ * (checked to closed or reopened) and `deliveryKey` (a hash) are system
+ * values. The retired roadmap types stay because stored rows keep them. Keyed
+ * by every ActivityType, so a new type fails typecheck until it is declared
+ * here, and a stored row of a type this table lacks has its whole metadata
+ * marked.
+ */
+const ACTIVITY_METADATA = {
+  'post.created': [],
+  'post.deleted': [],
+  'post.restored': [],
+  'status.changed': [],
+  'post.board_changed': [],
+  'post.merged_in': ['duplicatePostTitle', 'duplicateAuthorName'],
+  'post.merged_away': ['canonicalPostTitle'],
+  'post.unmerged': ['otherPostTitle'],
+  'vote.proxy': ['voterName'],
+  'vote.removed': ['voterName'],
+  'owner.assigned': ['ownerName', 'previousOwnerName'],
+  'owner.unassigned': ['previousOwnerName'],
+  'tags.added': [],
+  'tags.removed': [],
+  'comments.locked': [],
+  'comments.unlocked': [],
+  'comment.pinned': [],
+  'comment.unpinned': [],
+  'comment.deleted': [],
+  'comment.removed': [],
+  'comment.restored': [],
+  'external.status_changed': ['externalStatus', 'externalDisplayId', 'externalUrl'],
+  'roadmap.added': [],
+  'roadmap.removed': [],
+} satisfies Record<ActivityType | 'roadmap.added' | 'roadmap.removed', readonly string[]>
+
+const isKnownActivity = (activity: JsonObject) =>
+  typeof activity.type === 'string' && Object.hasOwn(ACTIVITY_METADATA, activity.type)
 
 /**
- * How each post activity row can carry outside text. Without teamActor the
- * actor may be a portal user. Metadata lists post titles, author and voter
- * names, and what an external tracker's webhook sent: its status name, issue
- * key and link. Status, board, tag and owner names are team-authored; ids,
- * counts, colors, slugs, `transition` (checked to closed or reopened) and
- * `deliveryKey` (a hash) are system values. The retired roadmap types stay
- * because stored rows keep them. Keyed by every ActivityType, so a new type
- * fails typecheck until it is declared here, and a stored row of a type this
- * table lacks has its actor and whole metadata marked.
+ * get_post_activity rows. actorName is the actor's name today, so it is
+ * trusted only while the actor is a teammate or a service principal (the
+ * handler's `actorOnTeam` fact); a portal user or a former teammate chose it.
+ * Metadata is marked by each row's own type.
  */
-const POST_ACTIVITY = {
-  'post.created': { teamActor: false, metadata: [] },
-  'post.deleted': { teamActor: false, metadata: [] },
-  'post.restored': { teamActor: true, metadata: [] },
-  'status.changed': { teamActor: true, metadata: [] },
-  'post.board_changed': { teamActor: true, metadata: [] },
-  'post.merged_in': { teamActor: true, metadata: ['duplicatePostTitle', 'duplicateAuthorName'] },
-  'post.merged_away': { teamActor: true, metadata: ['canonicalPostTitle'] },
-  'post.unmerged': { teamActor: true, metadata: ['otherPostTitle'] },
-  'vote.proxy': { teamActor: true, metadata: ['voterName'] },
-  'vote.removed': { teamActor: true, metadata: ['voterName'] },
-  'owner.assigned': { teamActor: true, metadata: [] },
-  'owner.unassigned': { teamActor: true, metadata: [] },
-  'tags.added': { teamActor: true, metadata: [] },
-  'tags.removed': { teamActor: true, metadata: [] },
-  'comments.locked': { teamActor: true, metadata: [] },
-  'comments.unlocked': { teamActor: true, metadata: [] },
-  'comment.pinned': { teamActor: true, metadata: [] },
-  'comment.unpinned': { teamActor: true, metadata: [] },
-  'comment.deleted': { teamActor: false, metadata: [] },
-  'comment.removed': { teamActor: true, metadata: [] },
-  'comment.restored': { teamActor: true, metadata: [] },
-  'external.status_changed': {
-    teamActor: true,
-    metadata: ['externalStatus', 'externalDisplayId', 'externalUrl'],
-  },
-  'roadmap.added': { teamActor: true, metadata: [] },
-  'roadmap.removed': { teamActor: true, metadata: [] },
-} satisfies Record<ActivityType | 'roadmap.added' | 'roadmap.removed', ActivityDeclaration>
-
-function activityDeclaration(activity: JsonObject): ActivityDeclaration | undefined {
-  const type = activity.type
-  return typeof type === 'string' && Object.hasOwn(POST_ACTIVITY, type)
-    ? POST_ACTIVITY[type as keyof typeof POST_ACTIVITY]
-    : undefined
-}
-
-/** get_post_activity rows, each marked by its own type. */
 const POST_ACTIVITY_RULES: UntrustedSpec = [
   {
     each: 'activities',
-    where: (activity: JsonObject) => activityDeclaration(activity)?.teamActor !== true,
+    where: (_activity: JsonObject, facts: JsonObject | undefined) => facts?.actorOnTeam !== true,
     fields: ['actorName'],
   },
-  ...Object.entries(POST_ACTIVITY)
-    .filter(([, declaration]) => declaration.metadata.length > 0)
-    .map(([type, declaration]) => ({
+  ...Object.entries(ACTIVITY_METADATA)
+    .filter(([, keys]) => keys.length > 0)
+    .map(([type, keys]) => ({
       each: 'activities',
       where: (activity: JsonObject) => activity.type === type,
-      fields: declaration.metadata.map((key) => `metadata.${key}`),
+      fields: keys.map((key) => `metadata.${key}`),
     })),
   {
     each: 'activities',
-    where: (activity: JsonObject) => activityDeclaration(activity) === undefined,
+    where: (activity: JsonObject) => !isKnownActivity(activity),
     fields: ['metadata'],
   },
 ]
@@ -320,36 +317,69 @@ function collectItems(
   rule: UntrustedItemsRule,
   items: unknown,
   prefix: string,
-  out: Set<string>
+  out: Set<string>,
+  facts: readonly JsonObject[] | undefined
 ): void {
   if (!Array.isArray(items)) return
   items.forEach((item, index) => {
     if (!isObject(item)) return
     const path = `${prefix}[${index}]`
-    if (rule.where(item)) {
+    if (rule.where(item, facts?.[index])) {
       for (const field of rule.fields) {
         if (holdsText(valueAt(item, field))) out.add(`${path}.${field}`)
       }
     }
-    if (rule.nested) collectItems(rule, item[rule.nested], `${path}.${rule.nested}`, out)
+    if (rule.nested) {
+      collectItems(rule, item[rule.nested], `${path}.${rule.nested}`, out, undefined)
+    }
   })
 }
 
-function collect(rule: UntrustedRule, result: JsonObject, out: Set<string>): void {
+function collect(
+  rule: UntrustedRule,
+  result: JsonObject,
+  out: Set<string>,
+  facts: ItemFacts | undefined
+): void {
   if (typeof rule === 'string') {
     if (reaches(result, segmentsOf(rule))) out.add(rule)
   } else if ('each' in rule) {
-    collectItems(rule, valueAt(result, rule.each), rule.each, out)
+    collectItems(rule, valueAt(result, rule.each), rule.each, out, facts?.[rule.each])
   } else if (rule.match(result)) {
-    for (const inner of rule.rules) collect(inner, result, out)
+    for (const inner of rule.rules) collect(inner, result, out, facts)
   }
 }
 
 /** The declared paths present in `result`, each once, in declaration order. */
-export function untrustedFields(spec: UntrustedSpec, result: JsonObject): string[] {
+export function untrustedFields(
+  spec: UntrustedSpec,
+  result: JsonObject,
+  facts?: ItemFacts
+): string[] {
   const out = new Set<string>()
-  for (const rule of spec) collect(rule, result, out)
+  for (const rule of spec) collect(rule, result, out, facts)
   return [...out]
+}
+
+// ============================================================================
+// Item facts
+// ============================================================================
+
+/** Per-item facts, keyed by the `each` path of the array they describe, in item order. */
+export type ItemFacts = Readonly<Record<string, readonly JsonObject[]>>
+
+/** Facts ride beside the result object and are never serialized. */
+const itemFacts = new WeakMap<CallToolResult, ItemFacts>()
+
+/**
+ * Attach facts about a result's items that rules need but the client must not
+ * see, such as whether an activity's actor is on the team today. A rule's
+ * `where` receives the facts for its item; an item without facts gets none,
+ * so a rule that relies on them marks it.
+ */
+export function withItemFacts(result: CallToolResult, facts: ItemFacts): CallToolResult {
+  itemFacts.set(result, facts)
+  return result
 }
 
 /**
@@ -371,7 +401,7 @@ export function markUntrusted(result: CallToolResult, spec: UntrustedSpec): Call
     return result
   }
   if (!isObject(body)) return result
-  const fields = untrustedFields(spec, body)
+  const fields = untrustedFields(spec, body, itemFacts.get(result))
   if (fields.length === 0) return result
   const marked = { ...body, untrusted: { note: UNTRUSTED_NOTE, fields } }
   const text = first.text.startsWith('{\n')
