@@ -14,7 +14,7 @@ import { registerNavigationTools } from '../navigation'
 import { registerApprovalTools } from '../approvals'
 import { WORKSPACE_WEB_PROMPT } from '@/lib/server/domains/assistant/workspace-prompt'
 import { settingsProposalInputSchema } from '@/lib/shared/assistant/settings-proposals'
-import { approvalIdFromReference } from '@/lib/shared/assistant/approvals'
+import { APPROVAL_STATUSES, approvalIdFromReference } from '@/lib/shared/assistant/approvals'
 import type { McpAuthContext } from '../../types'
 
 /** Every JSON object written into a piece of model-facing text. */
@@ -70,6 +70,11 @@ describe('model-facing tool examples', () => {
     )
     expect(proposals.length).toBeGreaterThan(0)
     for (const proposal of proposals) settingsProposalInputSchema.parse(proposal)
+  })
+
+  it('get_approval names every status an approval can be in', () => {
+    const tool = registered().find((candidate) => candidate.name === 'get_approval')!
+    for (const status of APPROVAL_STATUSES) expect(tool.description).toContain(status)
   })
 
   it('get_approval url examples are the form the Approvals page opens on', () => {

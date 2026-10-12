@@ -7,8 +7,9 @@ import { isValidTypeId } from '@quackback/ids'
 /**
  * The states an approval moves through, as clients read them. `pending` waits
  * for a person; `approved` and `rejected` are decisions; `applied` and
- * `failed` are how an approved change ran; `expired` timed out; `superseded`
- * was replaced by a newer request that combines it.
+ * `failed` are how an approved change ran, and `undone` is an applied change a
+ * person later reverted; `expired` timed out; `superseded` was replaced by a
+ * newer request that combines it.
  */
 export const APPROVAL_STATUSES = [
   'pending',
@@ -17,6 +18,7 @@ export const APPROVAL_STATUSES = [
   'expired',
   'superseded',
   'applied',
+  'undone',
   'failed',
 ] as const
 

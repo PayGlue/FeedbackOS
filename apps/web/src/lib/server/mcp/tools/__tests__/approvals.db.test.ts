@@ -35,6 +35,10 @@ vi.mock('@/lib/server/config', async (original) => ({
 import { registerSettingsTools } from '../settings'
 import { registerApprovalTools } from '../approvals'
 import { rejectApproval } from '@/lib/server/domains/assistant/approvals.service'
+import {
+  applyWorkspaceSettingsProposal,
+  undoWorkspaceSettingsProposal,
+} from '@/lib/server/domains/assistant/workspace-settings-actions.service'
 import type { McpAuthContext } from '../../types'
 
 type Handler = (args: Record<string, unknown>) => Promise<CallToolResult>
@@ -198,6 +202,7 @@ describe('get_approval', () => {
       decidedAt: null,
       decidedVia: null,
       reason: null,
+      undoneAt: null,
       url: filed.url,
     })
     const byUrl = json(await tools.get('get_approval')!({ approval: filed.url }))
@@ -220,6 +225,30 @@ describe('get_approval', () => {
       decidedVia: 'app',
       reason: 'Keep the current name',
     })
+  })
+
+  it('reads an applied change a person undid as undone, with when', async () => {
+    const tools = await keySession(owner)
+    const filed = await propose(tools, 'Acme team')
+    const { getPendingActionById } =
+      await import('@/lib/server/domains/assistant/pending-actions.service')
+    const row = await getPendingActionById(filed.approvalId as never)
+    await applyWorkspaceSettingsProposal(otherAdmin, row!.id, ['portal.displayName'], {
+      contentHash: row!.argsDigest!,
+    })
+    const applied = json(await tools.get('get_approval')!({ approval: filed.approvalId }))
+    expect(applied).toMatchObject({ status: 'applied', undoneAt: null })
+
+    await undoWorkspaceSettingsProposal(otherAdmin, row!.id)
+    const undone = json(await tools.get('get_approval')!({ approval: filed.approvalId }))
+    expect(undone).toMatchObject({ status: 'undone', decidedById: otherAdmin.principalId })
+    expect(new Date(undone.undoneAt as string).getTime()).toBeGreaterThan(0)
+
+    const listed = json(await tools.get('list_approvals')!({ status: 'undone' }))
+    expect((listed.approvals as Array<{ id: string }>).map((item) => item.id)).toEqual([
+      filed.approvalId,
+    ])
+    expect(json(await tools.get('list_approvals')!({ status: 'applied' })).approvals).toEqual([])
   })
 
   it("reads another key's request as not found", async () => {

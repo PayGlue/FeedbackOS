@@ -40,6 +40,7 @@ import { createWorkspaceThread } from '../workspace-threads.service'
 import {
   enqueueWorkspaceSettingsProposal,
   applyWorkspaceSettingsProposal,
+  undoWorkspaceSettingsProposal,
 } from '../workspace-settings-actions.service'
 import { proposePendingAction } from '../pending-actions.service'
 import { rejectApproval } from '../approvals.service'
@@ -321,6 +322,7 @@ describe('one approval', () => {
       decidedAt: null,
       decidedVia: null,
       reason: null,
+      undoneAt: null,
       url: `https://acme.example.com/admin/approvals?id=${filed.id}`,
     })
     expect(new Date(approval.expiresAt).getTime()).toBeGreaterThan(Date.now())
@@ -509,8 +511,10 @@ describe('the list', () => {
     )
     expect(reads.length).toBeGreaterThan(0)
     for (const statement of reads) {
-      for (const column of ['result', 'idempotency_key', 'execution_error', 'args_digest'])
+      for (const column of ['idempotency_key', 'execution_error', 'args_digest'])
         expect(statement, column).not.toContain(`"${column}"`)
+      // Of the stored result, only when it was undone.
+      expect(statement.replaceAll(`"result"->>'undoneAt'`, '')).not.toContain('"result"')
     }
   })
 
@@ -542,22 +546,35 @@ describe('the list', () => {
     await setRow(swept, { status: 'expired' })
     const superseded = await file('Superseded')
     await setRow(superseded, { status: 'expired', disposition: 'superseded:merged' })
+    const undone = await fileThrough(keyA, 'Undone')
+    await applyWorkspaceSettingsProposal(otherAdmin, undone.id, ['portal.displayName'], {
+      contentHash: undone.argsDigest!,
+    })
+    await undoWorkspaceSettingsProposal(otherAdmin, undone.id)
 
     const follower = await follow(keyA)
     expect(await idsOf(follower, 'pending')).toEqual([pending])
     expect(await idsOf(follower, 'rejected')).toEqual([rejected.id])
     expect(await idsOf(follower, 'applied')).toEqual([applied.id])
+    expect(await idsOf(follower, 'undone')).toEqual([undone.id])
     expect(await idsOf(follower, 'approved')).toEqual([approved])
     expect(await idsOf(follower, 'failed')).toEqual([failed])
     expect(await idsOf(follower, 'expired')).toEqual([swept, timedOut])
     expect(await idsOf(follower, 'superseded')).toEqual([superseded])
-    expect(await idsOf(follower)).toHaveLength(8)
+    expect(await idsOf(follower)).toHaveLength(9)
 
-    const statuses = (await listApprovalsForFollower(follower, {})).items.map(
-      (item) => `${item.id}:${item.status}`
-    )
+    const items = (await listApprovalsForFollower(follower, {})).items
+    const statuses = items.map((item) => `${item.id}:${item.status}`)
     expect(statuses).toEqual(
-      expect.arrayContaining([`${timedOut}:expired`, `${superseded}:superseded`])
+      expect.arrayContaining([
+        `${timedOut}:expired`,
+        `${superseded}:superseded`,
+        `${applied.id}:applied`,
+        `${undone.id}:undone`,
+      ])
     )
+    const byId = new Map(items.map((item) => [item.id, item]))
+    expect(byId.get(applied.id)!.undoneAt).toBeNull()
+    expect(new Date(byId.get(undone.id)!.undoneAt!).getTime()).toBeGreaterThan(0)
   })
 })

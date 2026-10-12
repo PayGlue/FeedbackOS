@@ -49,7 +49,7 @@ export const ApprovalSchema = z
     id: TypeIdSchema.meta({ example: 'assistant_action_01h455vb4pex5vsknk084sn02q' }),
     status: z.enum(APPROVAL_STATUSES).meta({
       description:
-        'pending waits for a person. approved and rejected are their decision. applied and failed say how an approved change ran. expired timed out before anyone decided. superseded was replaced by a newer request that combines it.',
+        'pending waits for a person. approved and rejected are their decision. applied and failed say how an approved change ran. undone is an applied change a person later reverted in the app (see undoneAt). expired timed out before anyone decided. superseded was replaced by a newer request that combines it.',
       example: 'pending',
     }),
     risk: z.enum(APPROVAL_RISKS).meta({
@@ -116,6 +116,9 @@ export const ApprovalSchema = z
     reason: z.string().nullable().meta({
       description: 'Why the person rejected it, when they said',
       example: null,
+    }),
+    undoneAt: NullableTimestampSchema.meta({
+      description: 'When a person undid the applied change, null unless status is undone',
     }),
     url: z.string().meta({
       description: 'The page in the app where a person reviews and decides this request',

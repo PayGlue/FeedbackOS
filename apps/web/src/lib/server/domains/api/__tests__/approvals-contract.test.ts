@@ -47,6 +47,7 @@ describe('approvals OpenAPI contract', () => {
       'decidedAt',
       'decidedVia',
       'reason',
+      'undoneAt',
       'url',
     ]) {
       expect(response, field).toContain(`"${field}"`)

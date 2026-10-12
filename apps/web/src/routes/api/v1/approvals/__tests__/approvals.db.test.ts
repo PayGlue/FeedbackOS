@@ -40,7 +40,11 @@ vi.mock('@/lib/server/config', async (original) => ({
 
 import { Route as ListRoute } from '../index'
 import { Route as GetRoute } from '../$approvalId'
-import { enqueueWorkspaceSettingsProposal } from '@/lib/server/domains/assistant/workspace-settings-actions.service'
+import {
+  enqueueWorkspaceSettingsProposal,
+  applyWorkspaceSettingsProposal,
+  undoWorkspaceSettingsProposal,
+} from '@/lib/server/domains/assistant/workspace-settings-actions.service'
 import { rejectApproval } from '@/lib/server/domains/assistant/approvals.service'
 
 type Handler = (args: { request: Request; params?: Record<string, string> }) => Promise<Response>
@@ -191,8 +195,32 @@ describe('GET /api/v1/approvals/:approvalId', () => {
       decidedById: null,
       decidedVia: null,
       reason: null,
+      undoneAt: null,
       url: `https://acme.example.com/admin/approvals?id=${filed.id}`,
     })
+  })
+
+  it('reads an applied change a person undid as undone, with when', async () => {
+    const key = await seedKey(owner)
+    const filed = await fileThrough(key, 'Acme team')
+    await applyWorkspaceSettingsProposal(otherAdmin, filed.id, ['portal.displayName'], {
+      contentHash: filed.argsDigest!,
+    })
+    as(key)
+    const applied = (await (await getOne(filed.id)).json()) as { data: Record<string, unknown> }
+    expect(applied.data).toMatchObject({ status: 'applied', undoneAt: null })
+
+    await undoWorkspaceSettingsProposal(otherAdmin, filed.id)
+    const res = await getOne(filed.id)
+    expect(res.status).toBe(200)
+    const undone = (await res.json()) as { data: Record<string, unknown> }
+    expect(undone.data).toMatchObject({ status: 'undone', decidedById: otherAdmin.principalId })
+    expect(new Date(undone.data.undoneAt as string).getTime()).toBeGreaterThan(0)
+
+    const listed = (await (await list('?status=undone')).json()) as ListBody
+    expect(listed.data.map((item) => [item.id, item.status])).toEqual([[filed.id, 'undone']])
+    const stillApplied = (await (await list('?status=applied')).json()) as ListBody
+    expect(stillApplied.data).toEqual([])
   })
 
   it("answers 404 for another key's request, exactly as for one that does not exist", async () => {

@@ -89,6 +89,8 @@ export interface PublicApproval {
   decidedVia: ApprovalDecisionChannel | null
   /** Why the person rejected it. */
   reason: string | null
+  /** When a person undid the applied change; null unless the status is `undone`. */
+  undoneAt: string | null
   /** The in-app page a person opens to decide it. */
   url: string
 }
@@ -136,6 +138,9 @@ const settingsContent =
     assistantPendingActions.args
   )
 
+/** When an applied change was undone, from its stored result; never the rest of the result. */
+const undoneAtOf = sql<string | null>`${assistantPendingActions.result}->>'undoneAt'`
+
 /** The columns a follower read needs. */
 const FOLLOW_COLUMNS = {
   id: assistantPendingActions.id,
@@ -159,11 +164,16 @@ const FOLLOW_COLUMNS = {
   decidedAt: assistantPendingActions.decidedAt,
   decidedVia: assistantPendingActions.decidedVia,
   decisionReason: assistantPendingActions.decisionReason,
+  undoneAt: undoneAtOf,
 }
 
 /** A request as a follower read holds it; `args` is empty unless it is a settings request. */
-type FollowRow = Pick<PendingActionRow, Exclude<keyof typeof FOLLOW_COLUMNS, 'args'>> & {
+type FollowRow = Pick<
+  PendingActionRow,
+  Exclude<keyof typeof FOLLOW_COLUMNS, 'args' | 'undoneAt'>
+> & {
   args: RequestContent
+  undoneAt: string | null
 }
 
 /** The disposition prefix of a request a newer, combined one replaced. */
@@ -176,7 +186,9 @@ export function approvalUrl(id: string): string {
 
 /** An approval's state as clients read it. */
 export function approvalStatusOf(
-  row: Pick<PendingActionRow, 'status' | 'expiresAt' | 'disposition'>,
+  row: Pick<PendingActionRow, 'status' | 'expiresAt' | 'disposition'> & {
+    undoneAt: string | null
+  },
   now: number = Date.now()
 ): ApprovalStatus {
   switch (row.status) {
@@ -185,7 +197,7 @@ export function approvalStatusOf(
     case 'expired':
       return row.disposition?.startsWith(SUPERSEDED) ? 'superseded' : 'expired'
     case 'executed':
-      return 'applied'
+      return row.undoneAt ? 'undone' : 'applied'
     case 'approved':
     case 'rejected':
     case 'failed':
@@ -212,7 +224,9 @@ function statusFilter(status: ApprovalStatus | undefined, now: Date) {
     case 'superseded':
       return and(eq(table.status, 'expired'), like(table.disposition, `${SUPERSEDED}%`))
     case 'applied':
-      return eq(table.status, 'executed')
+      return and(eq(table.status, 'executed'), sql`${undoneAtOf} IS NULL`)
+    case 'undone':
+      return and(eq(table.status, 'executed'), sql`${undoneAtOf} IS NOT NULL`)
     case 'approved':
     case 'rejected':
     case 'failed':
@@ -275,6 +289,7 @@ export async function toPublicApproval(row: FollowRow): Promise<PublicApproval> 
     decidedAt: row.decidedAt?.toISOString() ?? null,
     decidedVia: row.decidedVia,
     reason: row.decisionReason,
+    undoneAt: row.undoneAt,
     url: approvalUrl(row.id),
   }
 }
