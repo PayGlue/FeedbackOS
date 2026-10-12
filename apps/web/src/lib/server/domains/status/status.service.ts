@@ -321,11 +321,23 @@ export async function createIncident(
     )
   }
 
-  if (incident.notifySubscribers) {
+  // The publish event fires for every publication (webhooks and workflows
+  // hear about it either way); only the subscriber email depends on
+  // notify_subscribers. An emailing row is claimed through notified_at so the
+  // event fires once however many sweeps see it. A quiet row is stamped at
+  // create, so its single event is sent here, by the one call that made it.
+  // A backfill is a log of the past, not a publication, and sends nothing.
+  if (!incident.backfilled) {
     const actor = buildEventActor({ principalId: author.principalId })
-    notifyStatusIncidentPublished(incident.id, actor).catch((err) =>
-      log.error({ err, incident_id: incident.id }, 'failed to dispatch status publish event')
-    )
+    if (incident.notifySubscribers) {
+      notifyStatusIncidentPublished(incident.id, actor).catch((err) =>
+        log.error({ err, incident_id: incident.id }, 'failed to dispatch status publish event')
+      )
+    } else {
+      await dispatchStatusPublishEvent(incident, actor).catch((err) =>
+        log.error({ err, incident_id: incident.id }, 'failed to dispatch status publish event')
+      )
+    }
   }
 
   return getStatusIncidentById(incident.id)
@@ -908,6 +920,41 @@ export async function countStatusIncidentsSince(date: Date): Promise<number> {
 // ============================================================================
 
 /**
+ * Send the creation event for a published incident or maintenance window. The
+ * payload says whether subscribers are emailed, which is all the subscriber
+ * fan-out reads; webhooks and workflows get the event either way.
+ */
+async function dispatchStatusPublishEvent(
+  row: typeof statusIncidents.$inferSelect,
+  actor: EventActor,
+  opts?: { rethrow?: boolean }
+): Promise<void> {
+  const links = await db.query.statusIncidentComponents.findMany({
+    where: eq(statusIncidentComponents.incidentId, row.id),
+    columns: { componentId: true },
+  })
+  await dispatchStatusEvent(
+    row.kind === 'incident' ? 'status.incident_created' : 'status.maintenance_scheduled',
+    actor,
+    {
+      incident: {
+        id: row.id,
+        kind: row.kind,
+        title: row.title,
+        status: row.status,
+        impact: row.impact,
+        scheduledStartAt: row.scheduledStartAt?.toISOString() ?? null,
+        scheduledEndAt: row.scheduledEndAt?.toISOString() ?? null,
+        startedAt: row.startedAt.toISOString(),
+        componentIds: links.map((l) => l.componentId),
+        notifySubscribers: row.notifySubscribers,
+      },
+    },
+    opts
+  )
+}
+
+/**
  * Announce a published incident/maintenance exactly once. Atomically claims
  * via `notified_at`, gated on `backfilled = false` so a backfilled row can
  * never be claimed (Status Product Spec §2), and on `notify_subscribers` so a
@@ -937,30 +984,7 @@ export async function notifyStatusIncidentPublished(
   if (!claimed) return false
 
   try {
-    const links = await db.query.statusIncidentComponents.findMany({
-      where: eq(statusIncidentComponents.incidentId, id),
-      columns: { componentId: true },
-    })
-    const eventType =
-      claimed.kind === 'incident' ? 'status.incident_created' : 'status.maintenance_scheduled'
-    await dispatchStatusEvent(
-      eventType,
-      actor,
-      {
-        incident: {
-          id: claimed.id,
-          kind: claimed.kind,
-          title: claimed.title,
-          status: claimed.status,
-          impact: claimed.impact,
-          scheduledStartAt: claimed.scheduledStartAt?.toISOString() ?? null,
-          scheduledEndAt: claimed.scheduledEndAt?.toISOString() ?? null,
-          startedAt: claimed.startedAt.toISOString(),
-          componentIds: links.map((l) => l.componentId),
-        },
-      },
-      { rethrow: true }
-    )
+    await dispatchStatusPublishEvent(claimed, actor, { rethrow: true })
     return true
   } catch (err) {
     await db

@@ -572,8 +572,13 @@ describe('status lifecycle (Postgres)', () => {
         .returning({ id: statusIncidents.id })
       expect(await reconcileStatusNotifications()).toBe(1)
       expect((await getStatusIncidentById(pending.id)).notifiedAt).not.toBeNull()
+      // Only the row that asked for the email is announced to subscribers; the
+      // quiet one's event is flagged so the fan-out sends it no email.
       const published = mockProcessEvent.mock.calls.filter(
-        ([event]) => (event as { type: string }).type === 'status.incident_created'
+        ([event]) =>
+          (event as { type: string }).type === 'status.incident_created' &&
+          (event as { data: { incident: { notifySubscribers?: boolean } } }).data.incident
+            .notifySubscribers !== false
       )
       expect(published).toHaveLength(1)
 
@@ -591,6 +596,31 @@ describe('status lifecycle (Postgres)', () => {
           )
         )
       expect(releasedSweep).toEqual([])
+    })
+
+    it('still sends the creation event, once, flagged as not emailed', async () => {
+      const api = await service('API')
+      const quiet = await openIncident([{ componentId: api, componentStatus: 'major_outage' }])
+      const window = await scheduleWindow(new Date(Date.now() + HOUR), null)
+
+      const actor = { type: 'service' as const, displayName: 'test' }
+      expect(await notifyStatusIncidentPublished(quiet.id, actor)).toBe(false)
+      expect(await reconcileStatusNotifications()).toBe(0)
+
+      const sent = (type: string) =>
+        mockProcessEvent.mock.calls
+          .map(([event]) => event as { type: string; data: { incident: Record<string, unknown> } })
+          .filter((event) => event.type === type)
+      expect(sent('status.incident_created')).toHaveLength(1)
+      expect(sent('status.incident_created')[0].data.incident).toMatchObject({
+        id: quiet.id,
+        notifySubscribers: false,
+      })
+      expect(sent('status.maintenance_scheduled')).toHaveLength(1)
+      expect(sent('status.maintenance_scheduled')[0].data.incident).toMatchObject({
+        id: window.id,
+        notifySubscribers: false,
+      })
     })
 
     it('the sweep leaves a row just published to its own claim', async () => {

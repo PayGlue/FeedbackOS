@@ -1931,6 +1931,9 @@ export async function getStatusSubscriberTargets(
     return []
   }
   const incident = event.data.incident
+  // Published without emailing subscribers: the event still goes to webhooks
+  // and workflows, but no subscriber email or bell comes of it.
+  if ((incident as { notifySubscribers?: boolean }).notifySubscribers === false) return []
   const affectedComponentIds = incident.componentIds
 
   const {
