@@ -276,7 +276,7 @@ async function beginMaintenance(
       SCHEDULER_ACTOR,
       {
         incidentId,
-        title: incident.title,
+        title: claimed.title,
         componentIds: links.map((l) => l.componentId),
       },
       tx
@@ -328,7 +328,7 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
           lte(statusIncidents.scheduledEndAt, now)
         )
       )
-      .returning({ id: statusIncidents.id })
+      .returning({ id: statusIncidents.id, title: statusIncidents.title })
     if (!claimed) return null
 
     const links = await affectedComponentIds(incidentId, tx)
@@ -353,7 +353,7 @@ export async function handleMaintenanceComplete(incidentId: StatusIncidentId): P
       SCHEDULER_ACTOR,
       {
         incidentId,
-        title: incident.title,
+        title: claimed.title,
         componentIds: links.map((l) => l.componentId),
       },
       tx
@@ -388,11 +388,15 @@ export async function startMaintenanceNow(incidentId: StatusIncidentId): Promise
   if (!incident) throw new NotFoundError('STATUS_INCIDENT_NOT_FOUND', 'Maintenance not found')
   if (incident.kind !== 'maintenance' || incident.status !== 'scheduled') throw notStartable()
 
-  await cancelScheduledDispatch(startJobId(incident.id, scheduleHash(incident)))
-
   // Started (or completed, or deleted) by something else since the read.
   const started = await beginMaintenance(incident, { scheduler: false })
   if (!started) throw notStartable()
+
+  // Only once the start has committed: a failed start leaves the window
+  // scheduled with its job still queued.
+  await cancelScheduledDispatch(startJobId(incident.id, scheduleHash(incident))).catch((err) =>
+    log.error({ err, incident_id: incidentId }, 'failed to cancel start job after start-now')
+  )
 
   // Re-armed from the window as claimed, not as first read.
   await enqueueMaintenanceJobs(started).catch((err) =>
@@ -444,8 +448,12 @@ export async function reconcileMaintenanceWindows(): Promise<{
       incident.scheduledStartAt &&
       incident.scheduledStartAt <= now
     ) {
-      await handleMaintenanceStart(incident.id)
-      started++
+      try {
+        await handleMaintenanceStart(incident.id)
+        started++
+      } catch (err) {
+        log.error({ err, incident_id: incident.id }, 'maintenance sweep failed to start a window')
+      }
     }
     if (
       incident.status !== 'completed' &&
@@ -453,8 +461,15 @@ export async function reconcileMaintenanceWindows(): Promise<{
       incident.scheduledEndAt &&
       incident.scheduledEndAt <= now
     ) {
-      await handleMaintenanceComplete(incident.id)
-      completed++
+      try {
+        await handleMaintenanceComplete(incident.id)
+        completed++
+      } catch (err) {
+        log.error(
+          { err, incident_id: incident.id },
+          'maintenance sweep failed to complete a window'
+        )
+      }
     }
   }
   return { started, completed }

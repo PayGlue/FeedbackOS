@@ -22,6 +22,7 @@ import {
 } from '@/lib/server/db'
 import { ValidationError } from '@/lib/shared/errors'
 import { ANONYMOUS_ACTOR } from '@/lib/server/policy/types'
+import { cancelScheduledDispatch } from '@/lib/server/events/scheduler'
 
 vi.mock('@/lib/server/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/server/db')>()),
@@ -35,13 +36,13 @@ vi.mock('@/lib/server/events/process', () => ({
 
 // A quiet publication writes its event on the create transaction; this lets a
 // test make that write fail.
-const outbox = vi.hoisted(() => ({ fail: false }))
+const outbox = vi.hoisted(() => ({ fail: false, failNext: 0 }))
 vi.mock('@/lib/server/events/outbox-dispatch', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/server/events/outbox-dispatch')>()
   return {
     ...actual,
     writeEventToOutbox: async (...args: Parameters<typeof actual.writeEventToOutbox>) => {
-      if (outbox.fail) throw new Error('outbox unavailable')
+      if (outbox.fail || outbox.failNext-- > 0) throw new Error('outbox unavailable')
       return actual.writeEventToOutbox(...args)
     },
   }
@@ -70,6 +71,7 @@ import {
   handleMaintenanceComplete,
   handleMaintenanceStart,
   reconcileMaintenanceWindows,
+  startMaintenanceNow,
 } from '../status.maintenance'
 import { getStatusPageSnapshot } from '../status.public'
 import {
@@ -90,6 +92,7 @@ describe('status lifecycle (Postgres)', () => {
     expect(fixture.available).toBe(true)
     mockProcessEvent.mockReset().mockResolvedValue(undefined)
     outbox.fail = false
+    outbox.failNext = 0
     await beginTest()
   })
   afterEach(fixture.rollback)
@@ -884,6 +887,44 @@ describe('status lifecycle (Postgres)', () => {
         .from(statusComponentEvents)
         .where(eq(statusComponentEvents.componentId, api))
       expect(history).toEqual([])
+    })
+
+    it('the sweep carries on past a window whose event cannot be written', async () => {
+      const first = await scheduleWindow(new Date(Date.now() - HOUR), new Date(Date.now() + HOUR))
+      const second = await scheduleWindow(new Date(Date.now() - HOUR), new Date(Date.now() + HOUR))
+      outbox.failNext = 1
+      await expect(reconcileMaintenanceWindows()).resolves.toBeDefined()
+      const states = [await statusOfRow(first.id), await statusOfRow(second.id)].sort()
+      expect(states).toEqual(['in_progress', 'scheduled'])
+    })
+
+    it('start now keeps the start job until the start has succeeded', async () => {
+      const window = await scheduleWindow(
+        new Date(Date.now() + HOUR),
+        new Date(Date.now() + 2 * HOUR)
+      )
+      vi.mocked(cancelScheduledDispatch).mockClear()
+      outbox.fail = true
+      await expect(startMaintenanceNow(window.id)).rejects.toThrow('outbox unavailable')
+      expect(cancelScheduledDispatch).not.toHaveBeenCalled()
+      expect(await statusOfRow(window.id)).toBe('scheduled')
+      outbox.fail = false
+      await startMaintenanceNow(window.id)
+      expect(cancelScheduledDispatch).toHaveBeenCalled()
+      expect(await statusOfRow(window.id)).toBe('in_progress')
+    })
+
+    it('scheduler events carry the title of the row they claimed', async () => {
+      const window = await scheduleWindow(new Date(Date.now() - HOUR), new Date(Date.now() + HOUR))
+      await raceOnStaleRead(
+        () => handleMaintenanceStart(window.id),
+        async () => void (await updateIncident(window.id, { title: 'Renamed' }))
+      )
+      const [started] = await testDb
+        .select({ payload: events.payload })
+        .from(events)
+        .where(and(eq(events.type, 'status.maintenance_started'), eq(events.entityId, window.id)))
+      expect(started.payload).toMatchObject({ title: 'Renamed' })
     })
 
     it('a window created under way with subscriber email on writes scheduled before started', async () => {
