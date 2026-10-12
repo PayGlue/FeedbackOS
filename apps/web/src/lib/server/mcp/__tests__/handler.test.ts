@@ -26,6 +26,19 @@ vi.mock('better-auth/oauth2', () => ({
 }))
 
 const mockFindFirst = vi.fn()
+
+// The plan gate runs after auth and before any tool, so it sees what anything
+// recorded in that window would be attributed to.
+const entitlementGate = vi.hoisted(() => ({ seen: [] as unknown[] }))
+vi.mock('@/lib/server/domains/settings/cloud/entitlements', async (importOriginal) => {
+  const { getAuditAttribution } = await import('@/lib/server/audit/attribution')
+  return {
+    ...(await importOriginal<typeof import('@/lib/server/domains/settings/cloud/entitlements')>()),
+    requireEntitlement: async () => {
+      entitlementGate.seen.push(getAuditAttribution())
+    },
+  }
+})
 const mockAuditInsertValues = vi.fn(async () => undefined)
 
 // The key's authority (resolveApiKeyAuthority) is covered against real Postgres
@@ -2830,6 +2843,57 @@ describe('MCP HTTP Handler', () => {
       )
       expect(response.status).toBe(200)
       expect(mockAuditInsertValues).not.toHaveBeenCalled()
+    })
+
+    it('labels the request MCP from the start, so nothing in it reads as the REST API', async () => {
+      await setupValidAuth()
+      entitlementGate.seen.length = 0
+      const { runWithAuditAttribution } = await import('@/lib/server/audit/attribution')
+      const { handleMcpRequest } = await import('../handler')
+
+      // Inside the request middleware's own slot, as every request is.
+      const response = await runWithAuditAttribution(null, () =>
+        handleMcpRequest(mcpRequest(jsonRpcRequest('tools/list')))
+      )
+
+      expect(response.status).toBe(200)
+      expect(entitlementGate.seen).toEqual([
+        {
+          channel: 'mcp',
+          credentialKind: 'api_key',
+          credentialId: MOCK_API_KEY.id,
+          clientName: 'Test Key',
+          onBehalfOfPrincipalId: MOCK_API_KEY.createdById,
+        },
+      ])
+    })
+
+    it('labels an OAuth request as its client from the moment it is known', async () => {
+      const { verifyAccessTokenRequest } = await import('better-auth/oauth2')
+      vi.mocked(verifyAccessTokenRequest).mockResolvedValue({
+        sub: MOCK_USER_ID,
+        principalId: MOCK_MEMBER_ID,
+        scope: 'read:feedback',
+        client_id: 'client_desktop',
+      })
+      mockFindFirst.mockResolvedValue({ role: 'admin', clientName: 'Claude Desktop' })
+      entitlementGate.seen.length = 0
+      const { runWithAuditAttribution } = await import('@/lib/server/audit/attribution')
+      const { handleMcpRequest } = await import('../handler')
+
+      await runWithAuditAttribution(null, () =>
+        handleMcpRequest(oauthRequest(jsonRpcRequest('tools/list')))
+      )
+
+      expect(entitlementGate.seen).toEqual([
+        {
+          channel: 'mcp',
+          credentialKind: 'oauth_client',
+          credentialId: 'client_desktop',
+          clientName: 'Claude Desktop',
+          onBehalfOfPrincipalId: MOCK_MEMBER_ID,
+        },
+      ])
     })
 
     it('runs an API-key tool call as the key, on behalf of the teammate who created it', async () => {

@@ -23,7 +23,11 @@ import type { PrincipalId } from '@quackback/ids'
 import { isAdmin, type Role } from '@/lib/shared/roles'
 import { hasApiScope, scopeForPermission } from '@/lib/server/domains/api-keys/api-key-scopes'
 import type { PermissionKey } from '@/lib/shared/permissions'
-import { apiKeyAttribution, setAuditAttribution } from '@/lib/server/audit/attribution'
+import {
+  apiKeyAttribution,
+  getAuditAttribution,
+  setAuditAttribution,
+} from '@/lib/server/audit/attribution'
 import type { AuditActor, AuditActorType } from '@/lib/server/audit/log'
 
 export type MemberRole = Role
@@ -158,7 +162,9 @@ export async function withApiKeyAuth(
   // to the teammate who created it. Stated before the permission gates so a
   // refused write is attributed too.
   // An admin key's import is summarised per minute rather than row by row.
-  setAuditAttribution(apiKeyAttribution(auth.apiKey, 'api'), apiKeyAuditActor(auth), {
+  // A key used over MCP keeps the MCP label its boundary set before auth ran.
+  const channel = getAuditAttribution()?.channel === 'mcp' ? 'mcp' : 'api'
+  setAuditAttribution(apiKeyAttribution(auth.apiKey, channel), apiKeyAuditActor(auth), {
     importMode,
   })
 

@@ -33,8 +33,10 @@ import type { PermissionKey } from '@/lib/shared/permissions'
 import { config } from '@/lib/server/config'
 import {
   apiKeyAttribution,
+  MCP_ATTRIBUTION,
   oauthClientAttribution,
   runWithAuditAttribution,
+  setAuditAttribution,
 } from '@/lib/server/audit/attribution'
 import { createMcpServer } from './server'
 import { readOAuthPrincipal } from './oauth-principal'
@@ -263,8 +265,18 @@ async function oauthScopeStepUp(request: Request, auth: McpAuthContext): Promise
   return insufficientScopeChallenge(missing)
 }
 
-/** Create a stateless transport + server, handle the request, clean up */
-export async function handleMcpRequest(request: Request): Promise<Response> {
+/**
+ * Create a stateless transport + server, handle the request, clean up.
+ *
+ * The request is its own audit boundary from the first line, labelled MCP
+ * before any auth runs: key auth fills this boundary with the key and keeps
+ * the label, so nothing in an MCP request reads as the REST API.
+ */
+export function handleMcpRequest(request: Request): Promise<Response> {
+  return runWithAuditAttribution(MCP_ATTRIBUTION, () => handleMcpRequestInBoundary(request))
+}
+
+async function handleMcpRequestInBoundary(request: Request): Promise<Response> {
   const devConfig = await getDeveloperConfig()
   if (!devConfig.mcpEnabled) {
     return jsonRpcError(
@@ -278,6 +290,10 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
   // API key auth paths, and the API key path converts failures to Response
   // objects internally rather than throwing.
   if (auth instanceof Response) return auth
+
+  // From here on, everything in this request runs as the credential that
+  // made it.
+  if (auth.auditAttribution) setAuditAttribution(auth.auditAttribution)
 
   if (auth.authMethod === 'oauth') {
     const denied = await oauthScopeStepUp(request, auth)
@@ -303,9 +319,7 @@ export async function handleMcpRequest(request: Request): Promise<Response> {
     }
   }
 
-  // Every tool call in this request runs as the credential that made it.
-  const serve = () => serveMcpRequest(request, auth)
-  return auth.auditAttribution ? runWithAuditAttribution(auth.auditAttribution, serve) : serve()
+  return serveMcpRequest(request, auth)
 }
 
 async function serveMcpRequest(request: Request, auth: McpAuthContext): Promise<Response> {

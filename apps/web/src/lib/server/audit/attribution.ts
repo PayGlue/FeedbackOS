@@ -152,6 +152,8 @@ export function auditAttributionColumns(
 
 export const UI_ATTRIBUTION: AuditAttribution = Object.freeze({ channel: 'ui' })
 export const SYSTEM_ATTRIBUTION: AuditAttribution = Object.freeze({ channel: 'system' })
+/** An MCP request before its credential is known. */
+export const MCP_ATTRIBUTION: AuditAttribution = Object.freeze({ channel: 'mcp' })
 
 /** An API key acts for the teammate who created it. */
 export function apiKeyAttribution(

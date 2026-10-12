@@ -283,6 +283,20 @@ describe('API Auth', () => {
       })
     })
 
+    it('keeps the MCP label when the key authenticates an MCP request', async () => {
+      const { runWithAuditAttribution, getAuditAttribution, MCP_ATTRIBUTION } =
+        await import('@/lib/server/audit/attribution')
+      const { verifyApiKey } = await import('@/lib/server/domains/api-keys/api-key.service')
+      vi.mocked(verifyApiKey).mockResolvedValue(mockApiKey)
+      keyRole('admin')
+
+      const seen = await runWithAuditAttribution(MCP_ATTRIBUTION, async () => {
+        await withApiKeyAuth(bearer())
+        return getAuditAttribution()
+      })
+      expect(seen).toMatchObject({ channel: 'mcp', credentialId: mockApiKey.id })
+    })
+
     it('leaves the request attribution empty when the key does not authenticate', async () => {
       const { runWithAuditAttribution, getAuditAttribution } =
         await import('@/lib/server/audit/attribution')
