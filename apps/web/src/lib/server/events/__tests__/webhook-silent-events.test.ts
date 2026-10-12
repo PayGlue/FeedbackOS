@@ -17,10 +17,17 @@ function hook(events: string[], boardIds: string[] | null) {
 }
 
 let active: ReturnType<typeof hook>[] = []
+let postRow: { boardId: string } | undefined
 
 vi.mock('@/lib/server/db', () => ({
-  db: { query: { webhooks: { findMany: vi.fn(async () => active) } } },
+  db: {
+    query: {
+      webhooks: { findMany: vi.fn(async () => active) },
+      posts: { findFirst: vi.fn(async () => postRow) },
+    },
+  },
   webhooks: {},
+  posts: {},
   and: vi.fn(),
   eq: vi.fn(),
   isNull: vi.fn(),
@@ -120,6 +127,36 @@ describe('previously silent webhook events', () => {
     expect(boardIdsFromEvent(evt(type, p))).toEqual([])
     const targets = await webhookResolver.resolve(evt(type, p))
     expect(targets).toHaveLength(1)
+  })
+})
+
+describe('events queued before the payload carried a board', () => {
+  beforeEach(() => {
+    active = []
+    postRow = undefined
+  })
+  const legacy = (): DomainEvent => {
+    const { boardId: _boardId, ...payload } = SILENT_EVENTS[0][1]
+    return evt('post.mentioned', payload)
+  }
+
+  it('looks up the post board so a webhook filtered to another board is skipped', async () => {
+    postRow = { boardId: boardA }
+    const other = hook(['post.mentioned'], [boardB])
+    const same = hook(['post.mentioned'], [boardA])
+    const open = hook(['post.mentioned'], null)
+    active = [other, same, open]
+    const targets = await webhookResolver.resolve(legacy())
+    expect(targets.map((t) => t.config)).toEqual([{ webhookId: same.id }, { webhookId: open.id }])
+  })
+
+  it('with the post gone, reaches only webhooks that have no board filter', async () => {
+    postRow = undefined
+    const filtered = hook(['post.mentioned'], [boardA])
+    const open = hook(['post.mentioned'], null)
+    active = [filtered, open]
+    const targets = await webhookResolver.resolve(legacy())
+    expect(targets.map((t) => t.config)).toEqual([{ webhookId: open.id }])
   })
 })
 
