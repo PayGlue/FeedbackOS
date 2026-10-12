@@ -38,7 +38,9 @@ export function boardIdsFromEvent(event: DomainEvent): string[] {
     )
     return [...ids]
   }
-  const b = boardOf(p.post)
+  // Post-scoped events nest the post; the self-contained mention and owner
+  // events carry the board id at the top level.
+  const b = boardOf(p.post) ?? (typeof p.boardId === 'string' ? p.boardId : undefined)
   return b ? [b] : []
 }
 

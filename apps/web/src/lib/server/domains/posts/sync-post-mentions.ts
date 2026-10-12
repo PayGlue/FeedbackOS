@@ -17,12 +17,13 @@
 // NOT directly from @quackback/db.
 import { db, postMentions, principal, eq, and, inArray } from '@/lib/server/db'
 import { dispatchPostMentioned, type EventActor } from '../../events/dispatch'
-import type { PostId, PrincipalId } from '@quackback/ids'
+import type { BoardId, PostId, PrincipalId } from '@quackback/ids'
 
 export interface SyncPostMentionsInput {
   postId: PostId
   postTitle: string
   postUrl: string
+  boardId?: BoardId
   mentionedIds: Set<PrincipalId>
   /** Per-principal excerpt (paragraph text containing the mention) for email body. */
   excerptByPrincipalId: Map<PrincipalId, string>
@@ -30,7 +31,7 @@ export interface SyncPostMentionsInput {
 }
 
 export async function syncPostMentions(input: SyncPostMentionsInput): Promise<void> {
-  const { postId, postTitle, postUrl, mentionedIds, actor } = input
+  const { postId, postTitle, postUrl, boardId, mentionedIds, actor } = input
   const actorPrincipalId = actor.principalId as PrincipalId | undefined
 
   // Server-side eligibility validation (defense against tampered clients).
@@ -98,6 +99,7 @@ export async function syncPostMentions(input: SyncPostMentionsInput): Promise<vo
       postId,
       postTitle,
       postUrl,
+      boardId,
       mentionedPrincipalId: principalId,
       mentioningPrincipalId: actorPrincipalId as PrincipalId,
       excerpt: input.excerptByPrincipalId.get(principalId) ?? '',

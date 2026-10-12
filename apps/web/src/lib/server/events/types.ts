@@ -159,6 +159,8 @@ export interface EventPostMentionedData {
   postId: string
   postTitle: string
   postUrl: string
+  /** Board the post lives on; lets webhook board filters apply. */
+  boardId?: string
   mentionedPrincipalId: string
   mentioningPrincipalId: string
   /** Text of the paragraph containing the mention (≤200 chars), used as email body context. */
@@ -180,6 +182,8 @@ export interface PostOwnerAssignedPayload {
   postTitle: string
   boardSlug: string
   postUrl: string
+  /** Board the post lives on; lets webhook board filters apply. */
+  boardId?: string
   ownerPrincipalId: string
   previousOwnerPrincipalId: string | null
 }
