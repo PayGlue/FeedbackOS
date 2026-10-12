@@ -35,7 +35,7 @@ import type { JsonValue } from '@/lib/shared/json'
 import { settingsProposalSchema } from '@/lib/shared/assistant/settings-proposals'
 import { SETTINGS_PROPOSAL_TOOL } from './approval-policy'
 import {
-  approvalContentDigest,
+  digestForDisplay,
   approvalNotFound,
   approvalRiskOf,
   isDecidableApproval,
@@ -133,7 +133,8 @@ function mayDecide(row: PendingActionRow, actor: Actor, required: ReadonlySet<Pe
   )
 }
 
-function toView(row: PendingActionRow, canDecide: boolean): ApprovalView {
+/** A request as shown; showing one stores the digest a decision on it must name. */
+async function toView(row: PendingActionRow, canDecide: boolean): Promise<ApprovalView> {
   const risk = approvalRiskOf(row)
   return {
     id: row.id,
@@ -148,7 +149,7 @@ function toView(row: PendingActionRow, canDecide: boolean): ApprovalView {
     clientName: row.clientName,
     proposedAt: row.proposedAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
-    contentHash: row.argsDigest ?? approvalContentDigest(row.args),
+    contentHash: await digestForDisplay(row),
     needsFreshSignIn: risk === 'high',
     canDecide,
     decidedById: row.decidedById,
@@ -219,7 +220,7 @@ export async function listApprovalsForViewer(
     const key = row.toolName === SETTINGS_PROPOSAL_TOOL ? row.id : row.toolName
     if (!requirements.has(key)) requirements.set(key, requiredApprovalPermissions(row))
     const required = await requirements.get(key)!
-    if (required && mayDecide(row, actor, required)) views.push(toView(row, true))
+    if (required && mayDecide(row, actor, required)) views.push(await toView(row, true))
   }
   return views
 }

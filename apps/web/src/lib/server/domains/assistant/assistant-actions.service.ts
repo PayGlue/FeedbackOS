@@ -16,7 +16,7 @@ import {
   type AssistantPendingAction,
   type PendingActionDecisionOptions,
 } from './pending-actions.service'
-import { approvalContentDigest, rejectApproval } from './approvals.service'
+import { assertDecisionNamesContent, rejectApproval } from './approvals.service'
 import { SETTINGS_PROPOSAL_TOOL } from './approval-policy'
 import {
   getToolSpecByName,
@@ -75,15 +75,14 @@ export async function decideAssistantAction(
   decision: 'approved' | 'rejected',
   approverPrincipalId: PrincipalId,
   actor: Actor,
-  verifiedThreadKey?: string,
-  options: Pick<PendingActionDecisionOptions, 'via' | 'reason' | 'contentHash'> = {}
+  verifiedThreadKey: string | undefined,
+  options: Pick<PendingActionDecisionOptions, 'via' | 'reason' | 'contentHash'>
 ): Promise<AssistantPendingAction> {
   const pending = await getPendingActionById(pendingActionId)
   if (!pending) throw new NotFoundError('PENDING_ACTION_NOT_FOUND', 'Pending action not found')
-  // A decision names the content it was shown. A caller that does not send
-  // the digest binds to the content read here, which the compare-and-set
-  // decision below still refuses to land on anything else.
-  const contentHash = options.contentHash ?? approvalContentDigest(pending.args)
+  // A decision names the digest of the content the person was shown; every
+  // caller sends the one its card or message carried.
+  const { contentHash } = options
   const via = options.via ?? 'app'
   if (isHomeThreadKey(pending.workspaceThreadKey) && pending.toolName === SETTINGS_PROPOSAL_TOOL) {
     // A Home settings request is decided by any qualified person, under the
@@ -108,8 +107,7 @@ export async function decideAssistantAction(
       'APPROVAL_SELF_DECISION',
       'The requester cannot decide its own request.'
     )
-  if (contentHash !== approvalContentDigest(pending.args))
-    throw new ConflictError('APPROVAL_CONTENT_CHANGED', 'This request changed. Review it again.')
+  assertDecisionNamesContent(pending, contentHash)
   const decideOptions: PendingActionDecisionOptions = {
     via,
     reason: options.reason,
@@ -133,7 +131,7 @@ export async function decideAssistantAction(
       pendingActionId,
       decision,
       approverPrincipalId,
-      undefined,
+      db,
       decideOptions
     )
     if (!rejected) {
@@ -199,7 +197,7 @@ export async function decideAssistantAction(
     pendingActionId,
     decision,
     approverPrincipalId,
-    undefined,
+    db,
     decideOptions
   )
   if (!decided) {
@@ -255,7 +253,7 @@ async function allowHomeConnectorRead(
     pending.id,
     'approved',
     approverPrincipalId,
-    undefined,
+    db,
     decideOptions
   )
   if (!decided)

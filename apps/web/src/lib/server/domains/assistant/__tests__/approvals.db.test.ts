@@ -39,7 +39,12 @@ import {
   undoWorkspaceSettingsProposal,
 } from '../workspace-settings-actions.service'
 import { proposePendingAction } from '../pending-actions.service'
-import { listEligibleDeciders, rejectApproval } from '../approvals.service'
+import {
+  approvalFieldsForDisplay,
+  listEligibleDeciders,
+  rejectApproval,
+} from '../approvals.service'
+import { decideAssistantAction } from '../assistant-actions.service'
 import { getApprovalForViewer, listApprovalsForViewer } from '../approvals.queue'
 
 const fixture = await createDbTestFixture()
@@ -278,6 +283,68 @@ describe('what a decision binds to', () => {
     ).rejects.toMatchObject({ code: 'APPROVAL_CONTENT_CHANGED' })
     expect(await workspaceName()).toBe('Acme')
     expect((await rowOf(pending.id)).status).toBe('proposed')
+  })
+
+  it('binds a request filed before digests were kept to the content first shown', async () => {
+    const pending = await homeProposal()
+    await testDb
+      .update(assistantPendingActions)
+      .set({ argsDigest: null })
+      .where(eq(assistantPendingActions.id, pending.id))
+    // Never shown, so nothing names its content yet: no hash can decide it.
+    await expect(
+      rejectApproval(otherAdmin, pending.id, { contentHash: pending.argsDigest! })
+    ).rejects.toMatchObject({ code: 'APPROVAL_CONTENT_CHANGED' })
+
+    // Showing it stores the digest of exactly what is shown.
+    const shown = await approvalFieldsForDisplay(await rowOf(pending.id))
+    expect(shown.argsDigest).toBe(pending.argsDigest)
+    expect((await rowOf(pending.id)).argsDigest).toBe(pending.argsDigest)
+
+    // An edit after it was shown is refused, with the digest the person saw.
+    await testDb
+      .update(assistantPendingActions)
+      .set({ args: { ...pending.args, kind: 'settings', version: 1, edited: true } })
+      .where(eq(assistantPendingActions.id, pending.id))
+    await expect(
+      rejectApproval(otherAdmin, pending.id, { contentHash: shown.argsDigest })
+    ).rejects.toMatchObject({ code: 'APPROVAL_CONTENT_CHANGED' })
+    expect((await rowOf(pending.id)).status).toBe('proposed')
+  })
+
+  it('needs the digest the person was shown on the inbox path too', async () => {
+    const keyPrincipal = await seedServicePrincipal()
+    const [conversation] = await testDb
+      .insert(conversations)
+      .values({ visitorPrincipalId: keyPrincipal, channel: 'messenger', createdAt: new Date() })
+      .returning()
+    const pending = await proposePendingAction({
+      conversationId: conversation!.id,
+      toolName: 'end_conversation',
+      args: {},
+      summary: 'Close the conversation',
+    })
+    await expect(
+      decideAssistantAction(
+        pending.id,
+        'rejected',
+        otherAdmin.principalId!,
+        otherAdmin,
+        undefined,
+        {
+          contentHash: 'not-the-digest',
+        }
+      )
+    ).rejects.toMatchObject({ code: 'APPROVAL_CONTENT_CHANGED' })
+    const rejected = await decideAssistantAction(
+      pending.id,
+      'rejected',
+      otherAdmin.principalId!,
+      otherAdmin,
+      undefined,
+      { contentHash: pending.argsDigest!, reason: 'Not yet' }
+    )
+    expect(rejected).toMatchObject({ status: 'rejected', decisionReason: 'Not yet' })
   })
 
   it('never edits a pending request: a combined one replaces it', async () => {

@@ -10,11 +10,9 @@ import {
   db,
   eq,
   and,
-  or,
   lt,
   gt,
   desc,
-  isNull,
   assistantPendingActions,
   type ApprovalDecisionChannel,
   type ApprovalRisk,
@@ -243,11 +241,11 @@ export interface PendingActionDecisionOptions {
   /** Why, for a rejection. Ignored for an approval. */
   reason?: string | null
   /**
-   * The content digest the decision names. When set, the decision only lands
-   * on a row whose stored digest is that one (or a row filed before digests
-   * were kept), so it can never approve content it was not shown.
+   * The content digest the decision names. The decision only lands on a row
+   * whose stored digest is that one, so it can never approve content it was
+   * not shown.
    */
-  contentHash?: string
+  contentHash: string
 }
 
 /**
@@ -261,8 +259,8 @@ export async function decidePendingAction(
   id: AssistantPendingActionId,
   decision: 'approved' | 'rejected',
   decidedById: PrincipalId,
-  exec: Executor = db,
-  options: PendingActionDecisionOptions = {}
+  exec: Executor,
+  options: PendingActionDecisionOptions
 ): Promise<AssistantPendingAction | null> {
   return exec.transaction(async (tx) => {
     const [row] = await tx
@@ -279,12 +277,7 @@ export async function decidePendingAction(
           eq(assistantPendingActions.id, id),
           eq(assistantPendingActions.status, 'proposed'),
           gt(assistantPendingActions.expiresAt, new Date()),
-          options.contentHash === undefined
-            ? undefined
-            : or(
-                isNull(assistantPendingActions.argsDigest),
-                eq(assistantPendingActions.argsDigest, options.contentHash)
-              )
+          eq(assistantPendingActions.argsDigest, options.contentHash)
         )
       )
       .returning()

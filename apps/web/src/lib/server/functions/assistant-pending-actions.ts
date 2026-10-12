@@ -72,6 +72,9 @@ export const getAssistantPendingActionFn = createServerFn({ method: 'GET' })
     } else if (row.ticketId) {
       await assertTicketVisible(row.ticketId, actor)
     }
-    const { approvalFields } = await import('@/lib/server/domains/assistant/approvals.service')
-    return toDTO(row, approvalFields(row))
+    // Showing a request stores the digest of what is shown, which is the one
+    // a decision on it must name.
+    const { approvalFieldsForDisplay } =
+      await import('@/lib/server/domains/assistant/approvals.service')
+    return toDTO(row, await approvalFieldsForDisplay(row))
   })

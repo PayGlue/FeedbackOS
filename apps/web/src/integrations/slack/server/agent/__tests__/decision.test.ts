@@ -42,7 +42,7 @@ const payload = {
   user: { id: 'U' },
   channel: { id: 'C' },
   message: { ts: '2', thread_ts: '1', blocks: [] },
-  actions: [{ action_id: 'qb_action_approve', value: id }],
+  actions: [{ action_id: 'qb_action_approve', value: `${id}:digest-1` }],
 }
 const client = { chat: { postEphemeral: vi.fn(), update: vi.fn() } } as any
 beforeEach(() => {
@@ -74,7 +74,11 @@ it.each(['qb_action_approve', 'qb_action_reject'])(
   'enforces the acting member permission for %s',
   async (action_id) => {
     mocks.can.mockReturnValue(false)
-    await handleSlackDecision({ ...payload, actions: [{ action_id, value: id }] }, client, 'T')
+    await handleSlackDecision(
+      { ...payload, actions: [{ action_id, value: `${id}:digest-1` }] },
+      client,
+      'T'
+    )
     expect(mocks.decide).not.toHaveBeenCalled()
   }
 )
@@ -96,9 +100,20 @@ it('executes through the shared approval service with the member actor', async (
     member.id,
     actor,
     JSON.stringify(['T', 'C', '1']),
-    { via: 'slack' }
+    { via: 'slack', contentHash: 'digest-1' }
   )
   expect(client.chat.update).toHaveBeenCalled()
+})
+it('asks again instead of deciding a request whose button names no content', async () => {
+  await handleSlackDecision(
+    { ...payload, actions: [{ action_id: 'qb_action_approve', value: id }] },
+    client,
+    'T'
+  )
+  expect(mocks.decide).not.toHaveBeenCalled()
+  expect(client.chat.postEphemeral).toHaveBeenCalledWith(
+    expect.objectContaining({ text: expect.stringMatching(/ask again/i) })
+  )
 })
 it('retries a failed Slack update from the settled result without re-executing the write', async () => {
   const pending = await mocks.pending()

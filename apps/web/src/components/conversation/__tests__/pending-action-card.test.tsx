@@ -100,7 +100,8 @@ describe('<PendingActionCard>', () => {
 
     await waitFor(() =>
       expect(approveAssistantActionFn).toHaveBeenCalledWith({
-        data: { pendingActionId: 'assistant_action_1' },
+        // The digest of the request the card showed.
+        data: { pendingActionId: 'assistant_action_1', contentHash: 'digest-1' },
       })
     )
     expect(await screen.findByText('Approved and executed')).toBeInTheDocument()
@@ -116,7 +117,8 @@ describe('<PendingActionCard>', () => {
 
     await waitFor(() =>
       expect(rejectAssistantActionFn).toHaveBeenCalledWith({
-        data: { pendingActionId: 'assistant_action_1' },
+        // The digest of the request the card showed.
+        data: { pendingActionId: 'assistant_action_1', contentHash: 'digest-1' },
       })
     )
     expect(await screen.findByText('Rejected')).toBeInTheDocument()

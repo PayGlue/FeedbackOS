@@ -8,7 +8,7 @@ import type { JsonValue } from '@/lib/shared/json'
 const PendingActionInput = z.object({
   pendingActionId: z.string(),
   /** The digest of the request the person was shown; the decision binds to it. */
-  contentHash: z.string().min(1).max(128).optional(),
+  contentHash: z.string().min(1).max(128),
 })
 
 // createServerFn constrains returns to provably serializable types; the row's
@@ -82,8 +82,9 @@ export const approveAssistantActionFn = createServerFn({ method: 'POST' })
       undefined,
       { contentHash: data.contentHash, via: 'app' }
     )
-    const { approvalFields } = await import('@/lib/server/domains/assistant/approvals.service')
-    return toDTO(settled, approvalFields(settled))
+    const { approvalFieldsForDisplay } =
+      await import('@/lib/server/domains/assistant/approvals.service')
+    return toDTO(settled, await approvalFieldsForDisplay(settled))
   })
 
 export const rejectAssistantActionFn = createServerFn({ method: 'POST' })
@@ -102,6 +103,7 @@ export const rejectAssistantActionFn = createServerFn({ method: 'POST' })
       undefined,
       { contentHash: data.contentHash, via: 'app' }
     )
-    const { approvalFields } = await import('@/lib/server/domains/assistant/approvals.service')
-    return toDTO(settled, approvalFields(settled))
+    const { approvalFieldsForDisplay } =
+      await import('@/lib/server/domains/assistant/approvals.service')
+    return toDTO(settled, await approvalFieldsForDisplay(settled))
   })

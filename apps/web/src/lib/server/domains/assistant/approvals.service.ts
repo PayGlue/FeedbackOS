@@ -22,6 +22,7 @@ import {
   eq,
   and,
   inArray,
+  isNull,
   principal,
   assistantPendingActions,
   type ApprovalDecisionChannel,
@@ -110,12 +111,56 @@ export function approvalRiskOf(row: Pick<PendingActionRow, 'risk' | 'toolName' |
   return 'medium' satisfies ApprovalRisk
 }
 
+/**
+ * The digest a decision on this request must name, as shown to a person.
+ *
+ * Every request filed now carries one. A request filed before digests were
+ * kept gets one the first time it is shown, computed from the content being
+ * shown and stored only while none is stored, so the person decides what
+ * they saw and an edit after that is refused.
+ */
+export async function digestForDisplay(
+  row: PendingActionRow,
+  exec: Executor = db
+): Promise<string> {
+  if (row.argsDigest) return row.argsDigest
+  const digest = approvalContentDigest(row.args)
+  if (row.status !== 'proposed') return digest
+  const [stored] = await exec
+    .update(assistantPendingActions)
+    .set({ argsDigest: digest })
+    .where(and(eq(assistantPendingActions.id, row.id), isNull(assistantPendingActions.argsDigest)))
+    .returning({ argsDigest: assistantPendingActions.argsDigest })
+  if (stored?.argsDigest) return stored.argsDigest
+  // Another reader stored one first; that is the one a decision names.
+  const [current] = await exec
+    .select({ argsDigest: assistantPendingActions.argsDigest })
+    .from(assistantPendingActions)
+    .where(eq(assistantPendingActions.id, row.id))
+    .limit(1)
+  return current?.argsDigest ?? digest
+}
+
 /** The approval fields a card shows beside a request: the digest to decide on, and the risk. */
-export function approvalFields(row: PendingActionRow): { argsDigest: string; risk: ApprovalRisk } {
-  return {
-    argsDigest: row.argsDigest ?? approvalContentDigest(row.args),
-    risk: approvalRiskOf(row),
-  }
+export async function approvalFieldsForDisplay(
+  row: PendingActionRow,
+  exec: Executor = db
+): Promise<{ argsDigest: string; risk: ApprovalRisk }> {
+  return { argsDigest: await digestForDisplay(row, exec), risk: approvalRiskOf(row) }
+}
+
+/**
+ * Throw unless a decision names the content that was shown and is still
+ * stored. A request whose digest was never stored has not been shown, and a
+ * stored digest that no longer matches the content means it changed.
+ */
+export function assertDecisionNamesContent(row: PendingActionRow, contentHash: string): void {
+  if (
+    !row.argsDigest ||
+    contentHash !== row.argsDigest ||
+    row.argsDigest !== approvalContentDigest(row.args)
+  )
+    throw new ConflictError('APPROVAL_CONTENT_CHANGED', 'This request changed. Review it again.')
 }
 
 /**
@@ -196,9 +241,7 @@ export async function assertMayDecide(
     throw personRequired()
 
   // A decision names the content it approved.
-  const live = approvalContentDigest(row.args)
-  if (input.contentHash !== live || (row.argsDigest !== null && row.argsDigest !== live))
-    throw new ConflictError('APPROVAL_CONTENT_CHANGED', 'This request changed. Review it again.')
+  assertDecisionNamesContent(row, input.contentHash)
 
   const risk = approvalRiskOf(row)
   if (risk === 'critical')

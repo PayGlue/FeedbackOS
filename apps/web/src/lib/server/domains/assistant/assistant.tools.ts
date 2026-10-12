@@ -272,6 +272,7 @@ async function runWithPipeline(
       toolName: pending.toolName,
       summary: pending.summary,
       label: spec.label,
+      ...(pending.argsDigest ? { contentHash: pending.argsDigest } : {}),
     })
     ctx.ledger.toolOutcomes.push({ name: spec.name, outcome: 'proposed' })
     return {
@@ -329,6 +330,8 @@ async function runWithPipeline(
       toolName: spec.name,
       summary,
       label: spec.label,
+      // What a decision on it must name, for a surface that posts its own card.
+      ...(pending.argsDigest ? { contentHash: pending.argsDigest } : {}),
       ...(spec.connector
         ? {
             connector: spec.connector,

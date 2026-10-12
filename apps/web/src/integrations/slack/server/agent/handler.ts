@@ -32,6 +32,7 @@ import {
   escapeSlack,
   SlackReplyStream,
   isSlackStoppedByUser,
+  parseProposalButtonValue,
 } from './presentation'
 import { missingSlackScopes } from '../../scopes'
 import { can } from '@/lib/server/policy/authorize'
@@ -129,10 +130,11 @@ export async function handleSlackDecision(
   const action = payload.actions?.find((a: Payload) =>
     ['qb_action_approve', 'qb_action_reject'].includes(a.action_id)
   )
-  if (!action || !isTypeId(action.value, 'assistant_action')) return
+  const button = action ? parseProposalButtonValue(action.value) : null
+  if (!action || !button) return
   const { getPendingActionById } =
     await import('@/lib/server/domains/assistant/pending-actions.service')
-  const pending = await getPendingActionById(action.value as AssistantPendingActionId)
+  const pending = await getPendingActionById(button.id as AssistantPendingActionId)
   if (!pending || pending.originRole !== 'workspace_assistant' || !pending.workspaceThreadKey)
     return
   if (pending.workspaceThreadKey.startsWith('workspace:')) return
@@ -181,6 +183,12 @@ export async function handleSlackDecision(
   let result = pending
   if (!terminal) {
     if (!actor) return
+    // A decision names the request the message showed. A button posted before
+    // buttons carried that cannot, so the request is asked for again.
+    if (!button.contentHash) {
+      await ephemeral(client, channel, user, 'This request changed. Ask again to review it.')
+      return
+    }
     try {
       const { decideAssistantAction } =
         await import('@/lib/server/domains/assistant/assistant-actions.service')
@@ -190,7 +198,7 @@ export async function handleSlackDecision(
         person.id,
         actor,
         pending.workspaceThreadKey,
-        { via: 'slack' }
+        { via: 'slack', contentHash: button.contentHash }
       )
     } catch (error) {
       log.warn(
