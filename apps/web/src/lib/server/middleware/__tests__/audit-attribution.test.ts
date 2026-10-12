@@ -63,7 +63,7 @@ vi.mock('@/lib/server/logger', () => ({
   },
 }))
 
-const { handleRequestWithAuditAttribution } = await import('../audit-attribution')
+const { handleRequestWithAuditAttribution } = await import('@/lib/server/audit/request-boundary')
 const { recordAuditEvent } = await import('@/lib/server/audit/log')
 const { setAuditAttribution, getAuditAttribution } = await import('@/lib/server/audit/attribution')
 const { withApiKeyAuth } = await import('@/lib/server/domains/api/auth')
