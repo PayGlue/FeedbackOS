@@ -214,7 +214,7 @@ describe('ApprovalsPage', () => {
     expect(await screen.findByText('Nothing waiting.')).toBeInTheDocument()
   })
 
-  it('asks for a reason inline before rejecting, and says who was told', async () => {
+  it('asks inline for an optional reason before rejecting', async () => {
     state.waiting = [view()]
     state.reject.mockResolvedValue({
       ok: true,
@@ -223,8 +223,7 @@ describe('ApprovalsPage', () => {
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
     expect(state.reject).not.toHaveBeenCalled()
-    const reason = screen.getByLabelText('Reason, sent to James Morton')
-    expect(reason).toHaveAttribute('placeholder', 'Optional')
+    const reason = screen.getByLabelText('Reason (optional)')
     fireEvent.change(reason, { target: { value: 'Not now' } })
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
     await screen.findByText('Rejected.')
@@ -239,8 +238,9 @@ describe('ApprovalsPage', () => {
     state.waiting = [view()]
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByLabelText('Reason, sent to James Morton')).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
     expect(state.reject).not.toHaveBeenCalled()
   })
@@ -610,5 +610,25 @@ describe('ApprovalsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
     expect(await within(list).findByText('Close the conversation')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
+  })
+
+  it('says an action that can no longer run cannot be approved', async () => {
+    state.waiting = [
+      view({
+        toolName: 'end_conversation',
+        parent: { kind: 'conversation', id: 'conversation_1' },
+        diff: { kind: 'action', args: {} },
+      }),
+    ]
+    state.approve.mockResolvedValue({
+      ok: false,
+      code: 'ASSISTANT_TOOL_GONE',
+      message: 'The "end_conversation" action is no longer available.',
+    })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This action can no longer be approved.'
+    )
   })
 })

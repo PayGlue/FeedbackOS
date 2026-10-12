@@ -15,11 +15,6 @@ export function personOf(view: People): string | null {
   return person && person !== view.requestedByName ? person : null
 }
 
-/** Who hears about a decision: the person it was for, else whoever asked. */
-export function toldOf(view: People, intl: IntlShape): string {
-  return view.onBehalfOfName ?? requesterOf(view, intl)
-}
-
 /** "Claude Desktop for James Morton", or only who asked. */
 export function askedBy(view: People, intl: IntlShape): string {
   const requester = requesterOf(view, intl)

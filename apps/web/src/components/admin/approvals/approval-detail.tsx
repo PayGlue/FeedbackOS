@@ -22,7 +22,7 @@ import type { SettingsArea } from '@/lib/shared/assistant/settings-proposals'
 import { cn } from '@/lib/shared/utils'
 import { RECENT_SIGN_IN_REQUIRED } from '@/lib/shared/approval-refusal'
 import { approvalMessages, outcomeMessage, refusalMessage } from './approval-messages'
-import { personOf, requesterOf, toldOf } from './approval-people'
+import { personOf, requesterOf } from './approval-people'
 import { ApprovalRiskChip } from './approval-risk-chip'
 import { ApprovalChanges } from './approval-changes'
 
@@ -91,7 +91,6 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
   const stage = stageOf(approval, decidedHere, rejecting)
   const requester = requesterOf(approval, intl)
   const person = personOf(approval)
-  const told = toldOf(approval, intl)
 
   useEffect(() => {
     if (!focusOutcome || busy) return
@@ -283,14 +282,13 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
       {stage === 'rejecting' && (
         <div className="mt-5 max-w-lg space-y-2.5">
           <Label htmlFor={reasonId} className="text-sm font-normal text-muted-foreground">
-            {intl.formatMessage(approvalMessages.reasonLabel, { name: told })}
+            {intl.formatMessage(approvalMessages.reasonLabel)}
           </Label>
           <Textarea
             id={reasonId}
             value={reason}
             maxLength={500}
             autoFocus
-            placeholder={intl.formatMessage(approvalMessages.reasonPlaceholder)}
             onChange={(event) => setReason(event.target.value)}
           />
           <div className="flex flex-wrap gap-2">

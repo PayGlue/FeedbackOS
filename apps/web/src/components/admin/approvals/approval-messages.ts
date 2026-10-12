@@ -41,8 +41,7 @@ export const approvalMessages = defineMessages({
   reject: { id: 'admin.approvals.reject', defaultMessage: 'Reject' },
   cancel: { id: 'admin.approvals.cancel', defaultMessage: 'Cancel' },
   undo: { id: 'admin.approvals.undo', defaultMessage: 'Undo' },
-  reasonLabel: { id: 'admin.approvals.reason.label', defaultMessage: 'Reason, sent to {name}' },
-  reasonPlaceholder: { id: 'admin.approvals.reason.placeholder', defaultMessage: 'Optional' },
+  reasonLabel: { id: 'admin.approvals.reason.label', defaultMessage: 'Reason (optional)' },
   statusApplied: { id: 'admin.approvals.status.applied', defaultMessage: 'Applied' },
   statusApproved: { id: 'admin.approvals.status.approved', defaultMessage: 'Approved' },
   statusRejected: { id: 'admin.approvals.status.rejected', defaultMessage: 'Rejected' },
@@ -89,6 +88,10 @@ export const approvalMessages = defineMessages({
   errorGone: {
     id: 'admin.approvals.error.gone',
     defaultMessage: 'This request was already decided or has expired.',
+  },
+  errorActionGone: {
+    id: 'admin.approvals.error.actionGone',
+    defaultMessage: 'This action can no longer be approved.',
   },
   errorUnavailable: {
     id: 'admin.approvals.error.unavailable',
@@ -141,9 +144,11 @@ export function refusalMessage(code: string) {
     case 'APPROVAL_NOT_FOUND':
       return approvalMessages.errorGone
     case 'APPROVAL_NOT_AVAILABLE':
-    case 'ASSISTANT_ACTION_POLICY_CHANGED':
-    case 'ASSISTANT_TOOL_GONE':
       return approvalMessages.errorUnavailable
+    case 'ASSISTANT_TOOL_GONE':
+    case 'ASSISTANT_ACTION_POLICY_CHANGED':
+    case 'ASSISTANT_ACTION_INPUT_CHANGED':
+      return approvalMessages.errorActionGone
     case 'SETTINGS_UNDO_CONFLICT':
     case 'SETTINGS_UNDO_UNAVAILABLE':
     case 'INVALID_SETTINGS_UNDO':
