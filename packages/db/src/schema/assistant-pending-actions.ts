@@ -179,6 +179,12 @@ export const assistantPendingActions = pgTable(
     // FILTER'd counts inside one aggregate) — plain, not partial or
     // composite, since every row (regardless of status) is in scope.
     index('assistant_pending_actions_proposed_at_idx').on(table.proposedAt),
+    // The requests still waiting for a decision, newest first: what the
+    // approvals queue and its count read. NULLS FIRST is Postgres's own
+    // default for DESC, spelled out to match the migration.
+    index('assistant_pending_actions_waiting_idx')
+      .on(table.proposedAt.desc().nullsFirst())
+      .where(sql`${table.status} = 'proposed'`),
     // See the column comment above for why this is scoped to `status =
     // 'proposed'` rather than the key alone.
     uniqueIndex('assistant_pending_actions_idempotency_key_idx')

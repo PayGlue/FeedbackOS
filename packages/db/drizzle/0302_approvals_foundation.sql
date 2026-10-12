@@ -70,3 +70,7 @@ END $$;
 -- same row through an upsert instead of adding a second one. The type is new
 -- with this migration, so no existing rows can collide.
 CREATE UNIQUE INDEX IF NOT EXISTS "in_app_notifications_unread_approval_idx" ON "in_app_notifications" ("principal_id") WHERE "type" = 'approval_requested' AND "read_at" IS NULL AND "archived_at" IS NULL;
+--> statement-breakpoint
+-- The requests still waiting for a decision, newest first: what the approvals
+-- queue and its count read.
+CREATE INDEX IF NOT EXISTS "assistant_pending_actions_waiting_idx" ON "assistant_pending_actions" ("proposed_at" DESC) WHERE "status" = 'proposed';
