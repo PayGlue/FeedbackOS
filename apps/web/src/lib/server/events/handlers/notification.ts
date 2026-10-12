@@ -8,7 +8,10 @@
 
 import type { HookHandler, HookResult } from '../hook-types'
 import type { EventData, EventPostMentionedData } from '../types'
-import { createNotificationsBatch } from '@/lib/server/domains/notifications/notification.service'
+import {
+  createNotificationsBatch,
+  createOrBatchNotifications,
+} from '@/lib/server/domains/notifications/notification.service'
 import type { CreateNotificationInput, NotificationType } from '@/lib/server/domains/notifications'
 import type { PrincipalId, PostId, PostCommentId, ConversationMessageId } from '@quackback/ids'
 import { truncate, isRetryableError } from '../hook-utils'
@@ -72,6 +75,15 @@ export interface NotificationConfig {
   reference?: string | null
   externalStatus?: string
   transition?: 'closed' | 'reopened' | null
+  // approval.requested: the request's id and the client that filed it; the
+  // title is the server-written summary (`title` above).
+  approvalId?: string
+  clientName?: string | null
+}
+
+/** The bell line for several approval requests waiting on one person. */
+export function approvalBatchTitle(count: number): string {
+  return `${count} requests need your approval`
 }
 
 export const notificationHook: HookHandler = {
@@ -120,7 +132,11 @@ export const notificationHook: HookHandler = {
         return { success: true }
       }
 
-      const ids = await createNotificationsBatch(filtered)
+      // Approval requests are batched per person rather than one row each.
+      const ids =
+        event.type === 'approval.requested'
+          ? await createOrBatchNotifications(filtered, approvalBatchTitle)
+          : await createNotificationsBatch(filtered)
 
       // The notifiedAt watermark for an internal-note @-mention lives on the
       // conversation domain's own mention rows, not on the notification row
@@ -403,6 +419,19 @@ function buildNotifications(
       title: `New message from ${authorName}`,
       body: preview,
       metadata: { conversationId, actorName: authorName },
+    }))
+  }
+
+  if (event.type === 'approval.requested') {
+    const { approvalId, title, conversationId, ticketId, clientName } = config
+    // Recipients are always teammates who may decide (the target builder's
+    // eligibility rule). The title is the server's summary, never the agent's.
+    return principalIds.map((principalId) => ({
+      principalId,
+      type: 'approval_requested' as NotificationType,
+      title: truncate(`Approval needed: ${title ?? 'a change'}`, 255),
+      ...(clientName ? { body: `Requested by ${clientName}` } : {}),
+      metadata: { approvalId, conversationId, ticketId, count: 1, audience: 'admin' },
     }))
   }
 

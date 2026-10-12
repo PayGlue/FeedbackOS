@@ -210,6 +210,20 @@ describe('getNotificationTarget', () => {
     })
   })
 
+  it('routes approval_requested in a conversation or ticket to the inbox, else to Home', () => {
+    expect(
+      getNotificationTarget(
+        buildNotification({ type: 'approval_requested', conversationId: 'conversation_7' })
+      )
+    ).toEqual({ to: '/admin/inbox', search: { i: 'conversation_7' } })
+    expect(
+      getNotificationTarget(buildNotification({ type: 'approval_requested', ticketId: 'ticket_7' }))
+    ).toEqual({ to: '/admin/inbox', search: { i: 'ticket_7' } })
+    expect(getNotificationTarget(buildNotification({ type: 'approval_requested' }))).toEqual({
+      to: '/admin',
+    })
+  })
+
   it('routes changelog_published with a changelogId to the specific entry', () => {
     const notification = buildNotification({
       type: 'changelog_published',

@@ -10,6 +10,7 @@ import {
   InboxArrowDownIcon,
   SparklesIcon,
   LinkIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/solid'
 import type { NotificationType } from '@/lib/shared/types'
 
@@ -120,6 +121,11 @@ export const notificationTypeConfigs: Record<NotificationType, NotificationTypeC
     icon: SparklesIcon,
     iconClass: 'text-yellow-500',
     bgClass: 'bg-yellow-500/10',
+  },
+  approval_requested: {
+    icon: ShieldCheckIcon,
+    iconClass: 'text-emerald-600',
+    bgClass: 'bg-emerald-600/10',
   },
 }
 

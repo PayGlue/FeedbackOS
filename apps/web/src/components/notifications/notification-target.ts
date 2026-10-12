@@ -92,6 +92,13 @@ export function getNotificationTarget(
     return { to: '/admin/inbox', search: { i: notification.ticketId } }
   }
 
+  // An approval lives on its item when it has one; otherwise Home, where the
+  // requests waiting on a person are listed.
+  if (notification.type === 'approval_requested') {
+    const item = notification.conversationId ?? notification.ticketId
+    return item ? { to: '/admin/inbox', search: { i: item } } : { to: '/admin' }
+  }
+
   // Deep-link to the specific changelog entry when we have its id. Rows created
   // before changelogId was threaded through metadata fall back to the index.
   if (notification.type === 'changelog_published') {
