@@ -530,6 +530,12 @@ describe('notifications', () => {
     }
     const first = await homeProposal()
     expect((await notify(first.id)).success).toBe(true)
+    const [one] = await testDb
+      .select()
+      .from(inAppNotifications)
+      .where(eq(inAppNotifications.principalId, otherAdmin.principalId!))
+    // One request reads as one, with the server's summary of it.
+    expect(one).toMatchObject({ title: 'New approval request', body: 'Change the workspace name' })
     const second = await homeProposal({ displayName: 'Acme two' })
     expect((await notify(second.id)).success).toBe(true)
     const bells = await testDb
@@ -543,7 +549,7 @@ describe('notifications', () => {
       )
     expect(bells).toHaveLength(1)
     expect(bells[0]!.metadata).toMatchObject({ approvalId: second.id, count: 2 })
-    expect(bells[0]!.title).toMatch(/2/)
+    expect(bells[0]!.title).toBe('2 new approval requests')
     const ownerBells = await testDb
       .select()
       .from(inAppNotifications)

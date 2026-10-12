@@ -92,12 +92,8 @@ export function getNotificationTarget(
     return { to: '/admin/inbox', search: { i: notification.ticketId } }
   }
 
-  // An approval lives on its item when it has one; otherwise Home, where the
-  // requests waiting on a person are listed.
-  if (notification.type === 'approval_requested') {
-    const item = notification.conversationId ?? notification.ticketId
-    return item ? { to: '/admin/inbox', search: { i: item } } : { to: '/admin' }
-  }
+  // One approval bell counts every new request, so it opens the approvals queue.
+  if (notification.type === 'approval_requested') return { to: '/admin/approvals' }
 
   // Deep-link to the specific changelog entry when we have its id. Rows created
   // before changelogId was threaded through metadata fall back to the index.

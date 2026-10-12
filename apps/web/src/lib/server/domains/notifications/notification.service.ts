@@ -75,11 +75,21 @@ export async function createNotificationsBatch(
 }
 
 /** The bell line once several approval requests wait on one person. */
-const APPROVAL_BATCH_TITLE = ' requests need your approval'
+/** The wording of an approval bell that counts several new requests. */
+const APPROVAL_BELLS_TITLE = ' new approval requests'
+
+/**
+ * An approval bell's title: the requests that arrived since the person last
+ * read it. It counts arrivals, not what is still waiting; the queue shows that.
+ */
+export function approvalBellTitle(count: number): string {
+  return count === 1 ? 'New approval request' : `${count}${APPROVAL_BELLS_TITLE}`
+}
 
 /**
  * Ring the approval bell, batched per person: one unread row counts the
- * requests waiting on them, and moves to the top with each new one.
+ * requests that arrived since the person last read it, and moves to the top
+ * with each new one. A single request keeps its own summary as the body.
  *
  * One statement. A partial unique index allows one unread approval bell per
  * person, so an insert for someone who already has one becomes an increment
@@ -101,7 +111,7 @@ export async function ringApprovalBells(
         id: createId('notification'),
         principalId: input.principalId,
         type: 'approval_requested',
-        title: input.title,
+        title: approvalBellTitle(1),
         body: input.body ?? null,
         metadata: { ...input.metadata, count: 1 },
       }))
@@ -110,7 +120,7 @@ export async function ringApprovalBells(
       target: inAppNotifications.principalId,
       targetWhere: sql`type = 'approval_requested' AND read_at IS NULL AND archived_at IS NULL`,
       set: {
-        title: sql`(${count})::text || ${APPROVAL_BATCH_TITLE}`,
+        title: sql`(${count})::text || ${APPROVAL_BELLS_TITLE}`,
         body: null,
         metadata: sql`excluded.metadata || jsonb_build_object('count', ${count})`,
         createdAt: sql`now()`,
@@ -118,6 +128,28 @@ export async function ringApprovalBells(
     })
     .returning({ id: inAppNotifications.id })
   return rows.map((row) => row.id)
+}
+
+/**
+ * Read a person's unread approval bell, as opening the approvals queue does:
+ * the next request then starts a new count. Returns how many rows it read.
+ */
+export async function markApprovalBellsRead(
+  principalId: PrincipalId,
+  tx?: Transaction
+): Promise<number> {
+  const rows = await (tx ?? db)
+    .update(inAppNotifications)
+    .set({ readAt: new Date() })
+    .where(
+      and(
+        eq(inAppNotifications.principalId, principalId),
+        eq(inAppNotifications.type, 'approval_requested'),
+        isNull(inAppNotifications.readAt)
+      )
+    )
+    .returning({ id: inAppNotifications.id })
+  return rows.length
 }
 
 /**

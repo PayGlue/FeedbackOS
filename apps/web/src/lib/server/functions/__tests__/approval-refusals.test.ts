@@ -28,6 +28,7 @@ const hoisted = vi.hoisted(() => ({
   apply: vi.fn(),
   undo: vi.fn(),
   reject: vi.fn(),
+  markRead: vi.fn(),
 }))
 
 vi.mock('@/lib/server/functions/auth-helpers', () => ({
@@ -50,12 +51,15 @@ vi.mock('@/lib/server/domains/assistant/workspace-settings-actions.service', () 
 vi.mock('@/lib/server/domains/assistant/approvals.service', () => ({
   rejectApproval: hoisted.reject,
 }))
+vi.mock('@/lib/server/domains/notifications/notification.service', () => ({
+  markApprovalBellsRead: hoisted.markRead,
+}))
 
 import {
   applyWorkspaceSettingsProposalFn,
   undoWorkspaceSettingsProposalFn,
 } from '../workspace-copilot'
-import { rejectApprovalFn } from '../approvals'
+import { markApprovalBellReadFn, rejectApprovalFn } from '../approvals'
 
 const apply = () =>
   applyWorkspaceSettingsProposalFn({
@@ -142,5 +146,13 @@ describe('approval decisions return refusals as values', () => {
     await expect(apply()).rejects.toThrow('connection reset')
     hoisted.reject.mockRejectedValue(new Error('connection reset'))
     await expect(reject()).rejects.toThrow('connection reset')
+  })
+})
+
+describe('opening the approvals queue', () => {
+  it('reads the caller own approval bell and says how many it read', async () => {
+    hoisted.markRead.mockResolvedValue(1)
+    await expect(markApprovalBellReadFn()).resolves.toEqual({ marked: 1 })
+    expect(hoisted.markRead).toHaveBeenCalledWith('principal_1')
   })
 })

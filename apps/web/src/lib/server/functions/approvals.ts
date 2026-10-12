@@ -1,6 +1,6 @@
 /**
  * Approvals: the queue of requests a person may decide, one request with its
- * diff, and turning one down with a reason.
+ * diff, turning one down with a reason, and reading the approval bell.
  *
  * The base gate is a signed-in session; who may see or decide each request is
  * per row (the item's visibility and every permission the operation needs),
@@ -65,3 +65,17 @@ export const rejectApprovalFn = createServerFn({ method: 'POST' })
       throw error
     }
   })
+
+/**
+ * Read the caller's own unread approval bell, for the approvals queue to call
+ * when it opens: the bell counts requests since it was last read, and the
+ * next one starts a new count. Acts only on the caller's own notifications.
+ */
+export const markApprovalBellReadFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<{ marked: number }> => {
+    const auth = await requireAuth()
+    const { markApprovalBellsRead } =
+      await import('@/lib/server/domains/notifications/notification.service')
+    return { marked: await markApprovalBellsRead(auth.principal.id) }
+  }
+)

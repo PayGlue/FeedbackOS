@@ -192,6 +192,9 @@ export const BARE_GATE_CLASSIFICATIONS: Record<string, Classification> = {
     APPROVAL_PERMISSIONS,
     'caller may decide the request, or it was filed on their behalf; the item must be visible'
   ),
+  'lib/server/functions/approvals.ts::markApprovalBellReadFn': END_USER(
+    'reads only the caller own approval bell; the principal comes from the session'
+  ),
   'lib/server/functions/approvals.ts::rejectApprovalFn': DYNAMIC_PERMISSION(
     APPROVAL_PERMISSIONS,
     'a person, never the requesting credential, who sees the item and holds every permission the operation needs'

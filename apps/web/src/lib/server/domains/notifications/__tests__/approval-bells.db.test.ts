@@ -36,7 +36,11 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
 // oxlint-disable-next-line no-restricted-imports
 import { createDbFromSql } from '@quackback/db/client'
 import { db, and, eq, isNull, inAppNotifications } from '@/lib/server/db'
-import { ringApprovalBells } from '../notification.service'
+import {
+  approvalBellTitle,
+  markApprovalBellsRead,
+  ringApprovalBells,
+} from '../notification.service'
 
 let admin: postgres.Sql | null = null
 let pool: postgres.Sql | null = null
@@ -65,7 +69,8 @@ afterAll(async () => {
 const bell = (principalId: PrincipalId, approvalId: string) => ({
   principalId,
   type: 'approval_requested' as const,
-  title: `Approval needed: ${approvalId}`,
+  title: approvalBellTitle(1),
+  body: `Summary of ${approvalId}`,
   metadata: { approvalId, count: 1 },
 })
 
@@ -91,20 +96,35 @@ describe.skipIf(!available)('approval bells under concurrent requests', () => {
     const rows = await unreadBells(principalId)
     expect(rows).toHaveLength(1)
     expect(rows[0]!.metadata).toMatchObject({ count: calls })
-    expect(rows[0]!.title).toBe(`${calls} requests need your approval`)
+    expect(rows[0]!.title).toBe(`${calls} new approval requests`)
+    // Several requests have no one summary to show.
+    expect(rows[0]!.body).toBeNull()
   })
 
-  it('starts a new bell once the person has read the last one', async () => {
+  it('words one new request and many', () => {
+    expect(approvalBellTitle(1)).toBe('New approval request')
+    expect(approvalBellTitle(2)).toBe('2 new approval requests')
+    expect(approvalBellTitle(12)).toBe('12 new approval requests')
+  })
+
+  it('counts only requests since the person last read it', async () => {
     const principalId = createId('principal') as PrincipalId
-    await ringApprovalBells([bell(principalId, 'first')])
-    await db
-      .update(inAppNotifications)
-      .set({ readAt: new Date() })
-      .where(eq(inAppNotifications.principalId, principalId))
+    const other = createId('principal') as PrincipalId
+    await ringApprovalBells([bell(principalId, 'first'), bell(other, 'first')])
     await ringApprovalBells([bell(principalId, 'second')])
+    expect((await unreadBells(principalId))[0]!.title).toBe('2 new approval requests')
+
+    // Opening the queue reads the bell: only this person's, only this type.
+    expect(await markApprovalBellsRead(principalId)).toBe(1)
+    expect(await unreadBells(principalId)).toHaveLength(0)
+    expect(await unreadBells(other)).toHaveLength(1)
+    expect(await markApprovalBellsRead(principalId)).toBe(0)
+
+    await ringApprovalBells([bell(principalId, 'third')])
     const rows = await unreadBells(principalId)
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.metadata).toMatchObject({ approvalId: 'second', count: 1 })
-    expect(rows[0]!.title).toBe('Approval needed: second')
+    expect(rows[0]!.metadata).toMatchObject({ approvalId: 'third', count: 1 })
+    expect(rows[0]!.title).toBe('New approval request')
+    expect(rows[0]!.body).toBe('Summary of third')
   })
 })

@@ -11,6 +11,7 @@ import type { EventData, EventPostMentionedData } from '../types'
 import {
   createNotificationsBatch,
   ringApprovalBells,
+  approvalBellTitle,
 } from '@/lib/server/domains/notifications/notification.service'
 import type { CreateNotificationInput, NotificationType } from '@/lib/server/domains/notifications'
 import type { PrincipalId, PostId, PostCommentId, ConversationMessageId } from '@quackback/ids'
@@ -75,10 +76,9 @@ export interface NotificationConfig {
   reference?: string | null
   externalStatus?: string
   transition?: 'closed' | 'reopened' | null
-  // approval.requested: the request's id and the client that filed it; the
-  // title is the server-written summary (`title` above).
+  // approval.requested: the request's id; its server-written summary is
+  // `title` above.
   approvalId?: string
-  clientName?: string | null
 }
 
 export const notificationHook: HookHandler = {
@@ -418,15 +418,16 @@ function buildNotifications(
   }
 
   if (event.type === 'approval.requested') {
-    const { approvalId, title, conversationId, ticketId, clientName } = config
+    const { approvalId, title } = config
     // Recipients are always teammates who may decide (the target builder's
-    // eligibility rule). The title is the server's summary, never the agent's.
+    // eligibility rule). The bell counts new requests and opens the queue; a
+    // single one shows the server's summary of it, never the agent's text.
     return principalIds.map((principalId) => ({
       principalId,
       type: 'approval_requested' as NotificationType,
-      title: truncate(`Approval needed: ${title ?? 'a change'}`, 255),
-      ...(clientName ? { body: `Requested by ${clientName}` } : {}),
-      metadata: { approvalId, conversationId, ticketId, count: 1, audience: 'admin' },
+      title: approvalBellTitle(1),
+      ...(title ? { body: truncate(title, 255) } : {}),
+      metadata: { approvalId, count: 1, audience: 'admin' },
     }))
   }
 

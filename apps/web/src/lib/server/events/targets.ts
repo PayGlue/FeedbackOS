@@ -827,13 +827,7 @@ export async function getApprovalRequestedTargets(event: EventData): Promise<Hoo
   return {
     type: 'notification',
     target: { principalIds },
-    config: {
-      approvalId: row.id,
-      title: row.summary,
-      conversationId: row.conversationId ?? undefined,
-      ticketId: row.ticketId ?? undefined,
-      clientName: row.clientName,
-    },
+    config: { approvalId: row.id, title: row.summary },
   }
 }
 
