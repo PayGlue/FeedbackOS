@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { createId, type PrincipalId } from '@quackback/ids'
 import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
-import { principal, user, settings, apiKeys } from '@/lib/server/db'
+import { eq, principal, user, settings, apiKeys, assistantPendingActions } from '@/lib/server/db'
 import { ALL_PERMISSIONS } from '@/lib/shared/permissions'
 import type { Actor } from '@/lib/server/policy/types'
 import type { ApiKeyScope } from '@/lib/shared/api-key-scopes'
@@ -94,12 +94,13 @@ function oauthSession(person: Person, scopes: ApiKeyScope[]): Map<string, Handle
 /** A key's MCP session, the way the handler resolves one. */
 async function keySession(
   creator: Actor,
-  scopes: ApiKeyScope[] = ['read:settings', 'write:settings']
+  scopes: ApiKeyScope[] = ['read:settings', 'write:settings'],
+  keyRole: 'admin' | 'member' = 'admin'
 ): Promise<Map<string, Handler>> {
   const principalId = createId('principal') as PrincipalId
   await testDb.insert(principal).values({
     id: principalId,
-    role: 'admin',
+    role: keyRole,
     type: 'service',
     displayName: 'Deploy bot',
     createdAt: new Date(),
@@ -118,7 +119,7 @@ async function keySession(
   const auth: McpAuthContext = {
     principalId,
     name: 'Deploy bot',
-    role: 'admin',
+    role: keyRole,
     authMethod: 'api-key',
     credentialId: key!.id,
     clientName: 'Deploy bot',
@@ -266,6 +267,34 @@ describe('list_approvals', () => {
 
     const rejected = json(await tools.get('list_approvals')!({ status: 'rejected' }))
     expect(rejected.approvals).toEqual([])
+  })
+})
+
+describe('a key whose creator is promoted', () => {
+  it("keeps a member's role, so a high-risk request stays out of reach", async () => {
+    const scopes: ApiKeyScope[] = ['read:settings', 'write:settings', 'write:changelog']
+    const member = await seedPerson('member')
+    const memberKey = await keySession(member, scopes, 'member')
+    const filed = json(
+      await (await keySession(otherAdmin, scopes)).get('propose_settings_change')!({
+        changes: [{ area: 'changelog', patch: { autoSubscribe: false } }],
+      })
+    )
+    const idsFor = async () =>
+      (json(await memberKey.get('list_approvals')!({})).approvals as Array<{ id: string }>).map(
+        (item) => item.id
+      )
+    expect(await idsFor()).toContain(filed.approvalId)
+
+    await testDb
+      .update(assistantPendingActions)
+      .set({ risk: 'high' })
+      .where(eq(assistantPendingActions.id, filed.approvalId as never))
+    await testDb
+      .update(principal)
+      .set({ role: 'admin' })
+      .where(eq(principal.id, member.principalId!))
+    expect(await idsFor()).not.toContain(filed.approvalId)
   })
 })
 

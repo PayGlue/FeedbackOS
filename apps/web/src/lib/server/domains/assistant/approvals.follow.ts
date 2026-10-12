@@ -229,10 +229,21 @@ export async function toPublicApproval(row: PendingActionRow): Promise<PublicApp
   }
 }
 
-/** A person's permissions narrowed to a credential's scopes; null scopes hold them all. */
-export function narrowToScopes(actor: Actor, scopes: readonly ApiKeyScope[] | null): Actor {
+/**
+ * A person narrowed to what a credential may do: its scopes (null holds them
+ * all), and the stricter of the person's role and the credential's own, so a
+ * member's credential never reaches what only an admin may decide.
+ */
+export function narrowToCredential(
+  actor: Actor,
+  credential: { scopes: readonly ApiKeyScope[] | null; role: Actor['role'] }
+): Actor {
   const held = actor.permissions ?? resolveActorPermissions(actor.role)
-  return { ...actor, permissions: permissionsWithinScopes(held, new Set(scopes ?? API_KEY_SCOPES)) }
+  return {
+    ...actor,
+    role: actor.role === 'admin' && credential.role === 'admin' ? 'admin' : 'member',
+    permissions: permissionsWithinScopes(held, new Set(credential.scopes ?? API_KEY_SCOPES)),
+  }
 }
 
 /**
@@ -271,7 +282,7 @@ async function keyCreatorActor(key: {
     permissionsForPrincipal(creator.id, creator.role),
     permissionsForPrincipal(holder.id, holder.role),
   ])
-  return narrowToScopes(
+  return narrowToCredential(
     {
       principalId: creator.id,
       role: creator.role,
@@ -279,7 +290,7 @@ async function keyCreatorActor(key: {
       segmentIds: new Set(),
       permissions: new Set([...creatorHolds].filter((permission) => keyHolds.has(permission))),
     },
-    key.scopes
+    { scopes: key.scopes, role: holder.role }
   )
 }
 

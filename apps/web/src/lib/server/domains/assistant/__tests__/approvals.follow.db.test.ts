@@ -234,6 +234,33 @@ describe('who follows what', () => {
     expect(await idsOf(await follow(await seedKey(owner)))).toContain(theirs.id)
   })
 
+  it("a member's key never reads a high-risk request, even once its creator is an admin", async () => {
+    const scopes: ApiKeyScope[] = ['read:settings', 'write:settings', 'write:changelog']
+    const memberKey = await seedKey(member, scopes)
+    const thread = (await createWorkspaceThread(otherAdmin)).key
+    const request = await enqueueWorkspaceSettingsProposal(
+      otherAdmin,
+      [{ area: 'changelog', patch: { autoSubscribe: false } }],
+      thread,
+      'turn-1'
+    )
+    // A member may decide changelog settings, so the key reads the request.
+    expect(await idsOf(await follow(memberKey))).toContain(request.id)
+
+    await testDb
+      .update(assistantPendingActions)
+      .set({ risk: 'high' })
+      .where(eq(assistantPendingActions.id, request.id))
+    await testDb
+      .update(principal)
+      .set({ role: 'admin' })
+      .where(eq(principal.id, member.principalId!))
+
+    // High risk needs an admin; the key still has a member's role.
+    expect(await idsOf(await follow(memberKey))).not.toContain(request.id)
+    expect(await idsOf(await follow(await seedKey(owner, scopes)))).toContain(request.id)
+  })
+
   it('a client many people sign in through shows each person only what they filed', async () => {
     const asClient = (
       person: Actor,

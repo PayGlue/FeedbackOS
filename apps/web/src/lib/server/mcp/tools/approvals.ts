@@ -21,13 +21,17 @@ import { registerTool, jsonResult, compactJsonResult, READ_ONLY } from './helper
 /**
  * What this session follows: the requests its credential filed (for an
  * assistant client, only those of the person signed in), and those the person
- * it acts for could decide with this session's scopes.
+ * it acts for could decide with this session's scopes and role. A key's role
+ * is its own, which stays a member's when its creator is later made an admin.
  */
 async function followerFor(auth: McpAuthContext): Promise<ApprovalFollower> {
-  const { narrowToScopes } = await import('@/lib/server/domains/assistant/approvals.follow')
+  const { narrowToCredential } = await import('@/lib/server/domains/assistant/approvals.follow')
   let decider: Actor | null = null
   try {
-    decider = narrowToScopes(await resolveMcpActor(auth, 'read:settings'), auth.scopes)
+    decider = narrowToCredential(await resolveMcpActor(auth, 'read:settings'), {
+      scopes: auth.scopes,
+      role: auth.role,
+    })
   } catch (err) {
     // A key whose creator left the team still follows what it filed.
     if (!(err instanceof ForbiddenError)) throw err
