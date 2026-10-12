@@ -29,6 +29,7 @@ const hoisted = vi.hoisted(() => ({
   approveApproval: vi.fn(),
   rejectApproval: vi.fn(),
   getApprovalForViewer: vi.fn(),
+  approvalViewOf: vi.fn(),
   waitingApprovalsSummary: vi.fn(),
   listApprovalsForViewer: vi.fn(),
   listDecidedApprovalsForViewer: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock('@/lib/server/domains/assistant/approvals.service', () => ({
 }))
 vi.mock('@/lib/server/domains/assistant/approvals.queue', () => ({
   getApprovalForViewer: hoisted.getApprovalForViewer,
+  approvalViewOf: hoisted.approvalViewOf,
   waitingApprovalsSummary: hoisted.waitingApprovalsSummary,
   listApprovalsForViewer: hoisted.listApprovalsForViewer,
   listDecidedApprovalsForViewer: hoisted.listDecidedApprovalsForViewer,
@@ -63,6 +65,10 @@ beforeEach(() => {
   hoisted.requireAuth.mockResolvedValue({ principal: { id: 'principal_ada' } })
   hoisted.policyActorFromAuth.mockResolvedValue(actor)
   hoisted.getApprovalForViewer.mockResolvedValue({ id: 'assistant_action_1', status: 'executed' })
+  hoisted.approvalViewOf.mockImplementation(async (row: { id: string; status: string }) => ({
+    ...row,
+    shown: true,
+  }))
 })
 
 describe('approveApprovalFn', () => {
@@ -78,7 +84,23 @@ describe('approveApprovalFn', () => {
     })
     expect(result).toEqual({
       ok: true,
-      approval: { id: 'assistant_action_1', status: 'executed' },
+      approval: { id: 'assistant_action_1', status: 'executed', shown: true },
+    })
+  })
+
+  it('answers from the settled request, even when the viewer can no longer read it', async () => {
+    // The change moved the item out of this teammate's view; it still ran.
+    hoisted.approveApproval.mockResolvedValue({ id: 'assistant_action_1', status: 'executed' })
+    hoisted.getApprovalForViewer.mockRejectedValue(new Error('This request was not found.'))
+    await expect(
+      approveApprovalFn({ data: { approvalId: 'assistant_action_1', contentHash: 'digest' } })
+    ).resolves.toEqual({
+      ok: true,
+      approval: { id: 'assistant_action_1', status: 'executed', shown: true },
+    })
+    expect(hoisted.approvalViewOf).toHaveBeenCalledWith({
+      id: 'assistant_action_1',
+      status: 'executed',
     })
   })
 
@@ -138,8 +160,9 @@ describe('rejectApprovalFn', () => {
     })
     expect(result).toEqual({
       ok: true,
-      approval: { id: 'assistant_action_1', status: 'rejected' },
+      approval: { id: 'assistant_action_1', status: 'rejected', shown: true },
     })
+    expect(hoisted.getApprovalForViewer).not.toHaveBeenCalled()
   })
 
   it('returns a refusal as its code', async () => {

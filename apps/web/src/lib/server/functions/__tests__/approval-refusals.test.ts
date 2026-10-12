@@ -56,7 +56,7 @@ vi.mock('@/lib/server/domains/notifications/notification.service', () => ({
   markApprovalBellsRead: hoisted.markRead,
 }))
 vi.mock('@/lib/server/domains/assistant/approvals.queue', () => ({
-  getApprovalForViewer: hoisted.view,
+  approvalViewOf: hoisted.view,
 }))
 
 import {
@@ -145,6 +145,11 @@ describe('approval decisions return refusals as values', () => {
     const shown = { id: 'assistant_action_1', status: 'rejected', decisionReason: 'Not now' }
     hoisted.view.mockResolvedValue(shown)
     await expect(reject()).resolves.toEqual({ ok: true, approval: shown })
+    expect(hoisted.view).toHaveBeenCalledWith({
+      id: 'assistant_action_1',
+      status: 'rejected',
+      decisionReason: 'Not now',
+    })
   })
 
   it('still throws a failure nobody can act on', async () => {

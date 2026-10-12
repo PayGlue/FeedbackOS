@@ -39,6 +39,7 @@ import {
   settingsProposalSchema,
   type MessengerEffect,
 } from '@/lib/shared/assistant/settings-proposals'
+import { logger } from '@/lib/server/logger'
 import { SETTINGS_PROPOSAL_TOOL } from './approval-policy'
 import { isHomeThreadKey } from './workspace-safety'
 import {
@@ -50,6 +51,8 @@ import {
 } from './approvals.service'
 
 type PendingActionRow = typeof assistantPendingActions.$inferSelect
+
+const log = logger.child({ component: 'approvals-queue' })
 
 /** What changes, as the person deciding reads it. */
 export type ApprovalDiff =
@@ -405,6 +408,20 @@ export async function listDecidedApprovalsForViewer(
     if (involved || (required && holdsAll(actor, required))) shown.push(row)
   }
   return toViews(shown, () => false)
+}
+
+/**
+ * A request just decided, as its decider sees the outcome. Built from the
+ * settled row rather than read again: the change may have moved its item out
+ * of the decider's view, and the decision stands either way.
+ */
+export async function approvalViewOf(row: PendingActionRow): Promise<ApprovalView> {
+  // Names only label the outcome; a failed read of them never undoes it.
+  const names = await namesFor([row]).catch((err: unknown) => {
+    log.warn({ err, approvalId: row.id }, 'approval names unavailable')
+    return new Map<string, string>()
+  })
+  return toView(row, false, names, await digestForDisplay(row))
 }
 
 /**

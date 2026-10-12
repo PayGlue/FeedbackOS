@@ -73,20 +73,22 @@ export const approveApprovalFn = createServerFn({ method: 'POST' })
     const actor = await policyActorFromAuth(auth)
     const id = data.approvalId as AssistantPendingActionId
     const { approveApproval } = await import('@/lib/server/domains/assistant/approvals.service')
-    const { getApprovalForViewer } = await import('@/lib/server/domains/assistant/approvals.queue')
+    const { approvalViewOf } = await import('@/lib/server/domains/assistant/approvals.queue')
+    let settled
     try {
-      await approveApproval(actor, id, {
+      settled = await approveApproval(actor, id, {
         contentHash: data.contentHash,
         via: 'app',
         freshSignIn: await hasRecentSignIn(auth),
       })
-      return { ok: true, approval: await getApprovalForViewer(actor, id) }
     } catch (error) {
       // A refusal the page branches on travels as a value; see approvalRefusal.
       const refused = approvalRefusal(error)
       if (refused) return refused
       throw error
     }
+    // The answer is the request as the decision left it; see approvalViewOf.
+    return { ok: true, approval: await approvalViewOf(settled) }
   })
 
 export const rejectApprovalFn = createServerFn({ method: 'POST' })
@@ -96,19 +98,20 @@ export const rejectApprovalFn = createServerFn({ method: 'POST' })
     const actor = await policyActorFromAuth(auth)
     const id = data.approvalId as AssistantPendingActionId
     const { rejectApproval } = await import('@/lib/server/domains/assistant/approvals.service')
-    const { getApprovalForViewer } = await import('@/lib/server/domains/assistant/approvals.queue')
+    const { approvalViewOf } = await import('@/lib/server/domains/assistant/approvals.queue')
+    let settled
     try {
-      await rejectApproval(actor, id, {
+      settled = await rejectApproval(actor, id, {
         contentHash: data.contentHash,
         reason: data.reason,
         via: 'app',
       })
-      return { ok: true, approval: await getApprovalForViewer(actor, id) }
     } catch (error) {
       const refused = approvalRefusal(error)
       if (refused) return refused
       throw error
     }
+    return { ok: true, approval: await approvalViewOf(settled) }
   })
 
 /**
