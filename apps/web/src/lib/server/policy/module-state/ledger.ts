@@ -713,10 +713,10 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
     name: 'reportedCreatorless',
     category: 'process-lifetime',
     reason:
-      'A log-once set of API key ids found with no recorded creator. Ids are TypeIDs over UUIDs, so ' +
-      'there is no cross-workspace collision to have; the only shared effect would be suppressing a ' +
-      'duplicate diagnostic. It never decides authority, and it grows only with keys whose creator ' +
-      'column is empty.',
+      'A log-once set of API key ids refused for having no recorded creator. Ids are TypeIDs over ' +
+      'UUIDs, so there is no cross-workspace collision to have; the only shared effect would be ' +
+      'suppressing a duplicate diagnostic. It never decides authority (the empty creator column ' +
+      'does), and it grows only with keys whose creator column is empty.',
   },
   {
     file: 'apps/web/src/lib/server/domains/conversation/conversation.email-imap-queue.ts',

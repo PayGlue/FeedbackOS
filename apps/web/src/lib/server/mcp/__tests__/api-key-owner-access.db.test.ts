@@ -157,6 +157,23 @@ describe.skipIf(!fixture.available)(
       expect(response.headers.get('www-authenticate')).toContain('resource_metadata=')
     })
 
+    it('answers 401 for a key with no recorded creator and refuses it on the settings path', async () => {
+      const { token } = await seedAdminKey()
+      const auth = await authFor(token)
+      // Deleting the creator's principal clears created_by_id (ON DELETE SET NULL).
+      await testDb
+        .update(apiKeys)
+        .set({ createdById: null })
+        .where(eq(apiKeys.principalId, auth.principalId))
+
+      const result = await resolveAuthContext(mcpRequest(token))
+      expect(result).toBeInstanceOf(Response)
+      expect((result as Response).status).toBe(401)
+      await expect(resolveMcpActor(auth, 'read:settings')).rejects.toThrow(
+        'A current workspace owner must review this request.'
+      )
+    })
+
     it('refuses a permission missing from the creator custom role on every MCP path', async () => {
       const { creator, manager, token } = await seedAdminKey()
       const narrow = await seedCustomRole([PERMISSIONS.POST_VIEW_PRIVATE])

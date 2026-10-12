@@ -6,7 +6,9 @@
  * permission set, resolved exactly as a signed-in session resolves it (custom
  * roles included). Key scopes narrow it further at each gate. A key whose
  * creator is gone, is no longer on the team, or is blocked carries no
- * authority and is refused like an unknown key.
+ * authority and is refused like an unknown key. Every key records its creator
+ * when it is made, and deleting that person clears the column, so a key with
+ * no recorded creator is a deleted person's key and is refused too.
  *
  * The REST API (`domains/api/auth.ts`) and the MCP endpoint
  * (`mcp/handler.ts`, `mcp/resolve-actor.ts`) both resolve keys here, so the
@@ -27,8 +29,8 @@ export type ApiKeyPrincipal = Principal & { user: typeof user.$inferSelect | nul
 export interface ApiKeyAuthority {
   /** The key's own principal (with any linked user), or null when it is missing. */
   principal: ApiKeyPrincipal | null
-  /** The creator the key acts for; null only for a key with no recorded creator. */
-  owner: ApiKeyPrincipal | null
+  /** The creator the key acts for. */
+  owner: ApiKeyPrincipal
   /** The key's role, capped at its creator's current role. */
   role: Role
   /** The key's role preset intersected with its creator's current permissions. */
@@ -49,6 +51,15 @@ function isActiveTeammate(row: Principal | undefined): row is ApiKeyPrincipal {
 /** Keys already reported as having no recorded creator, so each warns once per process. */
 const reportedCreatorless = new Set<string>()
 
+function reportCreatorless(keyId: string): void {
+  if (reportedCreatorless.has(keyId)) return
+  reportedCreatorless.add(keyId)
+  log.warn(
+    { api_key_id: keyId },
+    'Refused an API key whose owner no longer exists. Revoke it and create a replacement from a current teammate.'
+  )
+}
+
 /**
  * Resolve a verified key's authority, or null when the key must be refused.
  * Reads the key's principal and its creator in one query, then the creator's
@@ -57,33 +68,22 @@ const reportedCreatorless = new Set<string>()
 export async function resolveApiKeyAuthority(
   key: Pick<ApiKey, 'id' | 'principalId' | 'createdById'>
 ): Promise<ApiKeyAuthority | null> {
+  if (!key.createdById) {
+    reportCreatorless(key.id)
+    return null
+  }
+
   const ids = [key.principalId]
-  if (key.createdById && key.createdById !== key.principalId) ids.push(key.createdById)
+  if (key.createdById !== key.principalId) ids.push(key.createdById)
   const rows = await db.query.principal.findMany({
     where: inArray(principal.id, ids),
     with: { user: true },
   })
-  const keyPrincipal = rows.find((row) => row.id === key.principalId) ?? null
-  const keyRole = (keyPrincipal?.role as Role | undefined) ?? 'user'
-
-  if (!key.createdById) {
-    if (!reportedCreatorless.has(key.id)) {
-      reportedCreatorless.add(key.id)
-      log.warn(
-        { api_key_id: key.id },
-        'API key has no recorded creator, so it keeps the authority of its own role. Replace it with a key created by a current teammate.'
-      )
-    }
-    return {
-      principal: keyPrincipal,
-      owner: null,
-      role: keyRole,
-      permissions: resolveActorPermissions(keyRole),
-    }
-  }
-
   const owner = rows.find((row) => row.id === key.createdById)
   if (!isActiveTeammate(owner)) return null
+
+  const keyPrincipal = rows.find((row) => row.id === key.principalId) ?? null
+  const keyRole = (keyPrincipal?.role as Role | undefined) ?? 'user'
 
   const ownerRole = owner.role as Role
   const preset = resolveActorPermissions(keyRole)

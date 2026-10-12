@@ -62,6 +62,6 @@ export async function resolveMcpActor(
   )
     throw ownerRequired()
   const authority = await resolveApiKeyAuthority(key)
-  if (!authority?.owner) throw ownerRequired()
+  if (!authority) throw ownerRequired()
   return actor(authority.owner.id, authority.role, authority.permissions)
 }

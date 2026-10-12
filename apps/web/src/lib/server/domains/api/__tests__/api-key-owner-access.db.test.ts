@@ -245,19 +245,23 @@ describe.skipIf(!fixture.available)('API key authority follows its creator (real
     expect(auth.role).toBe('admin')
   })
 
-  it('leaves a key with no recorded creator on its own role and warns once per key', async () => {
+  it('refuses a key with no recorded creator like an unknown key and warns once per key', async () => {
     const { token, apiKey } = await seedAdminKey()
+    // Deleting the creator's principal clears created_by_id (ON DELETE SET NULL).
     await testDb.update(apiKeys).set({ createdById: null }).where(eq(apiKeys.id, apiKey.id))
 
-    const first = await withApiKeyAuth(bearer(token), { permission: PERMISSIONS.MEMBER_MANAGE })
-    const second = await withApiKeyAuth(bearer(token), { permission: PERMISSIONS.MEMBER_MANAGE })
+    expect(await requireApiKey(bearer(token))).toBeNull()
+    await expect(withApiKeyAuth(bearer(token))).rejects.toThrow(UnauthorizedError)
+    await expect(
+      withApiKeyAuth(bearer(token), { permission: PERMISSIONS.POST_CREATE })
+    ).rejects.toThrow('Invalid or missing API key')
 
-    expect(first.role).toBe('admin')
-    expect(second.permissions.has(PERMISSIONS.BILLING_MANAGE)).toBe(true)
     const warnings = logs.warn.mock.calls.filter(
       ([fields]) => (fields as { api_key_id?: string })?.api_key_id === apiKey.id
     )
     expect(warnings).toHaveLength(1)
+    expect(JSON.stringify(warnings)).not.toContain(token)
+    expect(JSON.stringify(warnings)).not.toContain(apiKey.keyPrefix)
   })
 
   it('resolves the key, its principal and creator, and the creator grants in three reads', async () => {
