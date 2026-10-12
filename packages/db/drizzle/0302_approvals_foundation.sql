@@ -84,3 +84,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "in_app_notifications_unread_approval_idx" ON 
 -- The requests still waiting for a decision, newest first: what the approvals
 -- queue and its count read.
 CREATE INDEX IF NOT EXISTS "assistant_pending_actions_waiting_idx" ON "assistant_pending_actions" ("proposed_at" DESC) WHERE "status" = 'proposed';
+--> statement-breakpoint
+-- The requests already decided, most recent first: what the approvals
+-- queue's Decided tab reads.
+CREATE INDEX IF NOT EXISTS "assistant_pending_actions_decided_idx" ON "assistant_pending_actions" ("decided_at" DESC) WHERE "decided_at" IS NOT NULL;

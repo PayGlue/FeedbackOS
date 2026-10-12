@@ -185,6 +185,11 @@ export const assistantPendingActions = pgTable(
     index('assistant_pending_actions_waiting_idx')
       .on(table.proposedAt.desc().nullsFirst())
       .where(sql`${table.status} = 'proposed'`),
+    // The requests already decided, most recent first: what the approvals
+    // queue's Decided tab reads.
+    index('assistant_pending_actions_decided_idx')
+      .on(table.decidedAt.desc().nullsFirst())
+      .where(sql`${table.decidedAt} IS NOT NULL`),
     // See the column comment above for why this is scoped to `status =
     // 'proposed'` rather than the key alone.
     uniqueIndex('assistant_pending_actions_idempotency_key_idx')
