@@ -28,6 +28,7 @@ import { logger } from '@/lib/server/logger'
 
 export interface AssistantReplyOptions {
   waiting: boolean
+  emitCreated?: boolean
   citations?: ConversationMessageCitation[]
   contentJson?: TiptapContent | null
   metadata?: ConversationMessageMetadata | null
@@ -36,6 +37,7 @@ export interface AssistantReplyOptions {
 }
 
 export interface StoredAssistantReply {
+  eventRecorded?: boolean
   conversation: Conversation
   message: ConversationMessage
 }
@@ -88,7 +90,11 @@ export async function persistAssistantReply(
     })
     .where(eq(conversations.id, conversationId))
     .returning()
-  return { conversation, message }
+  if (opts.emitCreated) {
+    const { emitMessageCreatedInTransaction } = await import('./conversation.webhooks')
+    await emitMessageCreatedInTransaction(tx, author, message, conversation)
+  }
+  return { conversation, message, eventRecorded: opts.emitCreated }
 }
 
 /** Publish after commit. A transport failure cannot undo the stored answer or reopen its turn. */
@@ -115,18 +121,19 @@ export async function publishAssistantReply(
       },
       { conversationUpdated: true }
     )
-    await emitMessageCreated(
-      {
-        principalId: author.principalId,
-        role: 'member',
-        principalType: 'service',
-        segmentIds: new Set(),
-      },
-      author,
-      stored.message,
-      stored.conversation,
-      false
-    )
+    if (!stored.eventRecorded)
+      await emitMessageCreated(
+        {
+          principalId: author.principalId,
+          role: 'member',
+          principalType: 'service',
+          segmentIds: new Set(),
+        },
+        author,
+        stored.message,
+        stored.conversation,
+        false
+      )
   } catch (err) {
     logger.warn(
       { err, conversation_id: stored.conversation.id, message_id: stored.message.id },

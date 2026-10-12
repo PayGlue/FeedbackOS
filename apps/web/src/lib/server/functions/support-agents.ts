@@ -20,7 +20,7 @@ import { getAnswering, updateAnswering } from '@/lib/server/domains/settings/set
 
 const fields = z.object({
   name: z.string().trim().min(1).max(80),
-  endpointUrl: z.string().trim().url(),
+  endpointUrl: z.string().trim().url().nullable(),
   replyDeadlineSeconds: z.number().int().min(5).max(120),
   fallback: z.enum(['team', 'quackback_ai']),
 })
@@ -105,6 +105,13 @@ export const updateAnsweringFn = createServerFn({ method: 'POST' })
     const auth = await requireAuth({ permission: PERMISSIONS.SETTINGS_MANAGE })
     if (!isAdmin(auth.principal.role))
       throw new ForbiddenError('ADMIN_REQUIRED', 'An admin must choose who answers')
+    try {
+      await requireRecentSignIn(auth)
+    } catch (error) {
+      const refusal = toRecentSignInRefusal(error)
+      if (refusal) return refusal
+      throw error
+    }
     await assertOwnAgentAvailable()
     if (data.mode === 'own_agent') {
       const agent = await getExternalSupportAgent()

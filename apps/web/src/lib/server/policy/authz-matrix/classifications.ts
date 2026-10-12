@@ -99,6 +99,10 @@ const SETTINGS_REGISTRY_PERMISSIONS = [
 ]
 
 export const BARE_GATE_CLASSIFICATIONS: Record<string, Classification> = {
+  'routes/api/v1/agent/turns.ts::GET': {
+    intent: 'AGENT_CONTROLLER',
+    why: 'An own-agent credential pulls only unexpired turns on conversations it currently controls; internal notes are excluded.',
+  },
   'routes/api/v1/agent/conversations/$conversationId.ts::GET': {
     intent: 'AGENT_CONTROLLER',
     why: 'An own-agent credential is scoped to the live conversation controller; every operation rechecks ownership.',

@@ -7,7 +7,7 @@ import {
 } from '@/lib/server/domains/api/responses'
 import { parseTypeId } from '@/lib/server/domains/api/validation'
 import { agentResolveBodySchema } from '@/lib/server/domains/support-agents/agent-api.schemas'
-import type { ConversationId } from '@quackback/ids'
+import type { ConversationId, SupportAgentTurnId } from '@quackback/ids'
 
 export const Route = createFileRoute('/api/v1/agent/conversations/$conversationId/resolve')({
   server: {
@@ -33,6 +33,7 @@ export const Route = createFileRoute('/api/v1/agent/conversations/$conversationI
           const result = await resolveAsAgent({
             agent,
             conversationId,
+            turnId: parsed.data.turnId as SupportAgentTurnId,
             confirmed: parsed.data.confirmed,
             summary: parsed.data.summary,
           })

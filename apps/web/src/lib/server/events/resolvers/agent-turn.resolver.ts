@@ -13,6 +13,11 @@ export const agentTurnResolver: SinkResolver = {
   },
   async resolve(event: DomainEvent): Promise<HookTarget[]> {
     const p = event.payload as { turnId: string; agentId: string; conversationId: string }
+    const { getSupportAgent } =
+      await import('@/lib/server/domains/support-agents/support-agents.service')
+    const agent = await getSupportAgent(p.agentId as import('@quackback/ids').SupportAgentId)
+    // A local agent polls its turn feed instead of receiving a webhook.
+    if (agent && !agent.endpointUrl) return []
     return [
       {
         type: 'agent_turn',

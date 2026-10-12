@@ -109,6 +109,12 @@ export const ENTITLEMENTS = {
     chokepoint:
       'lib/server/domains/assistant/assistant.orchestrator.ts (previewAssistantTurnForConversation, runAssistantTurnForConversation)',
   },
+  ownAgent: {
+    friendly: 'Your AI agent',
+    plural: false,
+    tierFeature: null,
+    chokepoint: 'lib/server/domains/support-agents/availability.ts (assertOwnAgentAvailable)',
+  },
   /**
    * Post summaries and sentiment. Deliberately *not* the drafting half of the
    * AI feature set: see {@link ENTITLEMENTS.aiDrafts}, which is included a
@@ -244,6 +250,7 @@ export const PLAN_CATALOGUE: Record<PlanId, PlanDefinition> = {
     grants: [
       'customDomain',
       'aiAssistant',
+      'ownAgent',
       'aiDrafts',
       'aiInsights',
       'apiAccess',
@@ -259,6 +266,7 @@ export const PLAN_CATALOGUE: Record<PlanId, PlanDefinition> = {
     grants: [
       'customDomain',
       'aiAssistant',
+      'ownAgent',
       'aiDrafts',
       'aiInsights',
       'apiAccess',
@@ -275,6 +283,7 @@ export const PLAN_CATALOGUE: Record<PlanId, PlanDefinition> = {
     grants: [
       'customDomain',
       'aiAssistant',
+      'ownAgent',
       'aiDrafts',
       'aiInsights',
       'apiAccess',

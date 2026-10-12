@@ -6,11 +6,12 @@
  * results, the document carries an `untrusted` descriptor listing the JSON
  * paths of text written outside the team, and no value is rewritten.
  */
-import type { ConversationId } from '@quackback/ids'
+import type { ConversationId, SupportAgentTurnId } from '@quackback/ids'
 import type { ConversationDTO, ConversationMessageDTO } from '@/lib/shared/conversation/types'
 import { realEmail } from '@/lib/shared/anonymous-email'
 import { UNTRUSTED_NOTE } from '@/lib/server/mcp/untrusted'
-import { NotFoundError } from '@/lib/shared/errors'
+import { ConflictError, NotFoundError } from '@/lib/shared/errors'
+import type { SupportAgent } from './support-agents.service'
 
 /** How many recent messages an agent is given. */
 export const AGENT_CONTEXT_MESSAGE_LIMIT = 40
@@ -114,4 +115,35 @@ export async function loadAgentContext(
     }),
   ])
   return buildAgentContext(dto, page.messages)
+}
+
+/** Recheck the lease after reading the thread, before releasing customer data. */
+export async function loadControlledAgentContext(
+  agent: SupportAgent,
+  conversationId: ConversationId
+): Promise<AgentConversationContext> {
+  const { assertAgentControls } = await import('./agent-actions.service')
+  await assertAgentControls(agent, conversationId)
+  const context = await loadAgentContext(conversationId)
+  await assertAgentControls(agent, conversationId)
+  return context
+}
+
+/** Polling and push delivery share the same live-turn fence. */
+export async function loadRequestedAgentTurnContext(
+  agent: SupportAgent,
+  turn: { id: SupportAgentTurnId; conversationId: ConversationId }
+): Promise<AgentConversationContext> {
+  const context = await loadControlledAgentContext(agent, turn.conversationId)
+  const { getTurn } = await import('./turns.service')
+  const live = await getTurn(turn.id)
+  if (
+    !live ||
+    live.agentId !== agent.id ||
+    live.conversationId !== turn.conversationId ||
+    live.status !== 'requested' ||
+    live.deadlineAt <= new Date()
+  )
+    throw new ConflictError('TURN_NOT_OPEN', 'This turn is no longer open')
+  return context
 }

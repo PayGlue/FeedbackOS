@@ -1226,7 +1226,10 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
 }
 
 /** Flags that are Labs switches rather than products (Settings › Labs). */
-export const LABS_FEATURE_FLAGS = ['copilotHome', 'ownAgent'] as const satisfies readonly (keyof FeatureFlags)[]
+export const LABS_FEATURE_FLAGS = [
+  'copilotHome',
+  'ownAgent',
+] as const satisfies readonly (keyof FeatureFlags)[]
 
 /** Flags a workspace is created with: the defaults plus Copilot on Home. */
 export const NEW_WORKSPACE_FEATURE_FLAGS: FeatureFlags = {

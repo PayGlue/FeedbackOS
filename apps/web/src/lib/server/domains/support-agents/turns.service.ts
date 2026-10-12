@@ -58,7 +58,7 @@ export async function requestAgentTurn(input: {
       .from(conversations)
       .where(eq(conversations.id, conversationId))
       .for('update')
-    if (!conversation || conversation.channel !== 'messenger' || conversation.status === 'closed')
+    if (!conversation || conversation.channel !== 'messenger' || conversation.status !== 'open')
       return null
     const [live] = await tx.select().from(supportAgents).where(eq(supportAgents.id, agent.id))
     if (!live || live.deletedAt || live.status !== 'active') return null

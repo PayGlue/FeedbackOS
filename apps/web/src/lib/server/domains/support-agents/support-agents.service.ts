@@ -18,6 +18,7 @@ import {
   type SupportAgentFallback,
 } from '@/lib/server/db'
 import type { PrincipalId, SupportAgentId } from '@quackback/ids'
+import { resetAiPrincipalIds } from '@/lib/server/messages/assistant-principal'
 import { encrypt, decrypt } from '@/lib/server/encryption'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { isValidWebhookUrl } from '@/lib/server/events/integrations/webhook/constants'
@@ -113,7 +114,7 @@ export async function getSupportAgent(id: SupportAgentId): Promise<SupportAgent 
 
 export interface ExternalAgentInput {
   name: string
-  endpointUrl: string
+  endpointUrl: string | null
   replyDeadlineSeconds?: number
   fallback?: SupportAgentFallback
 }
@@ -125,7 +126,7 @@ function validateInput(input: Partial<ExternalAgentInput>): void {
       throw new ValidationError('VALIDATION_ERROR', 'Agent name must be 1 to 80 characters')
     }
   }
-  if (input.endpointUrl !== undefined && !isValidWebhookUrl(input.endpointUrl.trim())) {
+  if (input.endpointUrl != null && !isValidWebhookUrl(input.endpointUrl.trim())) {
     throw new ValidationError(
       'VALIDATION_ERROR',
       'Invalid endpoint URL: must be HTTPS and cannot target private networks'
@@ -172,7 +173,7 @@ export async function registerExternalAgent(input: ExternalAgentInput): Promise<
       .values({
         kind: 'external',
         name: input.name.trim(),
-        endpointUrl: input.endpointUrl.trim(),
+        endpointUrl: input.endpointUrl?.trim() || null,
         signingSecretEnc: encrypt(signingSecret, SECRETS_PURPOSE),
         credentialHash: hashCredential(credential),
         credentialPrefix: credential.slice(0, 12),
@@ -181,7 +182,6 @@ export async function registerExternalAgent(input: ExternalAgentInput): Promise<
         fallback: input.fallback ?? 'team',
       })
       .returning()
-    const { resetAiPrincipalIds } = await import('@/lib/server/messages/assistant-principal')
     resetAiPrincipalIds()
     log.info({ agent_id: agent.id }, 'external support agent registered')
     return { agent, credential, signingSecret }
@@ -204,7 +204,9 @@ export async function updateExternalAgent(
     .update(supportAgents)
     .set({
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
-      ...(patch.endpointUrl !== undefined ? { endpointUrl: patch.endpointUrl.trim() } : {}),
+      ...(patch.endpointUrl !== undefined
+        ? { endpointUrl: patch.endpointUrl?.trim() || null }
+        : {}),
       ...(patch.replyDeadlineSeconds !== undefined
         ? { replyDeadlineSeconds: patch.replyDeadlineSeconds }
         : {}),
@@ -280,7 +282,6 @@ export async function deleteExternalAgent(id: SupportAgentId): Promise<void> {
       })
       .where(eq(supportAgents.id, id))
   })
-  const { resetAiPrincipalIds } = await import('@/lib/server/messages/assistant-principal')
   resetAiPrincipalIds()
   log.info({ agent_id: id }, 'external support agent removed')
 }

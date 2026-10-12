@@ -62,8 +62,7 @@ export async function decideRoute(conversationId: ConversationId): Promise<Answe
     .limit(1)
   if (conversation?.controllerAgentId) {
     const owner = await getSupportAgent(conversation.controllerAgentId)
-    if (owner?.status === 'active' && owner.endpointUrl && owner.principalId)
-      return { kind: 'external', agent: owner }
+    if (owner?.status === 'active' && owner.principalId) return { kind: 'external', agent: owner }
     await releaseAgentControl(conversationId)
     return owner?.fallback === 'quackback_ai' ? { kind: 'quackback_ai' } : { kind: 'team' }
   }
@@ -81,7 +80,7 @@ export async function decideRoute(conversationId: ConversationId): Promise<Answe
   }
 
   const agent = await getExternalSupportAgent()
-  if (!agent || agent.status !== 'active' || !agent.endpointUrl || !agent.principalId) {
+  if (!agent || agent.status !== 'active' || !agent.principalId) {
     return agent?.fallback === 'quackback_ai' ? { kind: 'quackback_ai' } : { kind: 'team' }
   }
   if (!(await aiMayAnswer(conversationId, agent.principalId))) return { kind: 'team' }

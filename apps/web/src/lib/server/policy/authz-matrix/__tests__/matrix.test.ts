@@ -260,7 +260,7 @@ describe('own-agent credential boundary', () => {
   const agent = PRINCIPAL_CLASSES.find((c) => c.id === 'own_agent')!
   const agentSurfaces = surfaces.filter((s) => s.channel === 'agent-api')
   it('records every current agent callback behind the controller credential', () => {
-    expect(agentSurfaces).toHaveLength(6)
+    expect(agentSurfaces).toHaveLength(7)
     for (const surface of agentSurfaces) {
       expect(surface.authz).toEqual({ type: 'agent_controller' })
       expect(evaluate(agent, surface)).toBe('allow')

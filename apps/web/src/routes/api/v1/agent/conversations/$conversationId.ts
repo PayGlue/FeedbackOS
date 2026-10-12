@@ -16,12 +16,9 @@ export const Route = createFileRoute('/api/v1/agent/conversations/$conversationI
             'conversation',
             'conversation ID'
           )
-          const { assertAgentControls } =
-            await import('@/lib/server/domains/support-agents/agent-actions.service')
-          const { loadAgentContext } =
+          const { loadControlledAgentContext } =
             await import('@/lib/server/domains/support-agents/agent-context')
-          await assertAgentControls(agent, conversationId)
-          return successResponse(await loadAgentContext(conversationId))
+          return successResponse(await loadControlledAgentContext(agent, conversationId))
         } catch (error) {
           return handleDomainError(error)
         }

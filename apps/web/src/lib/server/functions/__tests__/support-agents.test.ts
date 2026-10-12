@@ -120,6 +120,14 @@ describe('own-agent management boundaries', () => {
     })
     expect(state.saveMode).not.toHaveBeenCalled()
   })
+  it('does not change who receives customer conversations from a stale session', async () => {
+    state.recent.mockRejectedValue(new RecentSignInRequiredError())
+    expect(await updateAnsweringFn({ data: { mode: 'own_agent' } })).toMatchObject({
+      ok: false,
+      code: 'RECENT_SIGN_IN_REQUIRED',
+    })
+    expect(state.saveMode).not.toHaveBeenCalled()
+  })
   it('allows a workspace admin to choose the human team explicitly', async () => {
     await updateAnsweringFn({ data: { mode: 'team' } })
     expect(state.auth).toHaveBeenCalledWith({ permission: PERMISSIONS.SETTINGS_MANAGE })

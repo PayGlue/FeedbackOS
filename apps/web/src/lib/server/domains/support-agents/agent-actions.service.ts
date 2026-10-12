@@ -87,6 +87,10 @@ export async function assertAgentControls(
   conversationId: ConversationId
 ): Promise<Conversation> {
   const conversation = await loadConversation(conversationId)
+  if (conversation.status === 'closed')
+    throw new ConflictError('CONVERSATION_CLOSED', 'This conversation is closed')
+  if (conversation.status !== 'open')
+    throw new ConflictError('CONVERSATION_PAUSED', 'This conversation is paused')
   if (conversation.controllerAgentId !== agent.id) {
     const controller = await currentControllerOf(conversation)
     throw new ConflictError(
@@ -94,6 +98,14 @@ export async function assertAgentControls(
       `This conversation is not controlled by this agent. Current controller: ${controller}`
     )
   }
+  const [live] = await db.select().from(supportAgents).where(eq(supportAgents.id, agent.id))
+  if (
+    !live ||
+    live.deletedAt ||
+    live.status !== 'active' ||
+    live.credentialHash !== agent.credentialHash
+  )
+    throw new ConflictError('AGENT_UNAVAILABLE', 'The agent is no longer available')
   return conversation
 }
 
@@ -181,8 +193,21 @@ export async function postAgentReply(input: AgentReplyInput): Promise<AgentReply
         .select()
         .from(conversationMessages)
         .where(eq(conversationMessages.id, turn.replyMessageId))
-      if (message) return { replayed: true as const, message }
+      if (message) {
+        const citationsOf = (citations: ConversationMessageCitation[] | null | undefined) =>
+          JSON.stringify((citations ?? []).map((c) => [c.type, c.id, c.title, c.url]))
+        if (
+          message.content !== content ||
+          citationsOf(message.citations) !== citationsOf(input.citations)
+        )
+          throw new ConflictError('IDEMPOTENCY_KEY_REUSED', 'This key already names another reply')
+        return { replayed: true as const, message }
+      }
     }
+    if (conversation.status === 'closed')
+      throw new ConflictError('CONVERSATION_CLOSED', 'This conversation is closed')
+    if (conversation.status !== 'open')
+      throw new ConflictError('CONVERSATION_PAUSED', 'This conversation is paused')
     if (conversation.controllerAgentId !== agent.id)
       throw new ConflictError('NOT_CONTROLLER', 'The conversation has another controller')
     const [live] = await tx.select().from(supportAgents).where(eq(supportAgents.id, agent.id))
@@ -204,6 +229,7 @@ export async function postAgentReply(input: AgentReplyInput): Promise<AgentReply
     }))
     const stored = await persistAssistantReply(tx, conversationId, content, authorOf(agent), {
       waiting: false,
+      emitCreated: true,
       citations,
       contentJson: input.contentJson ?? null,
       controllerAgentId: agent.id,
@@ -322,6 +348,28 @@ async function lockController(
   return conversation
 }
 
+async function assertCurrentTurn(
+  tx: Transaction,
+  agent: SupportAgent,
+  conversationId: ConversationId,
+  id: SupportAgentTurnId
+) {
+  const [latest] = await tx
+    .select()
+    .from(supportAgentTurns)
+    .where(eq(supportAgentTurns.conversationId, conversationId))
+    .orderBy(desc(supportAgentTurns.createdAt), desc(supportAgentTurns.id))
+    .limit(1)
+  if (
+    !latest ||
+    latest.id !== id ||
+    latest.agentId !== agent.id ||
+    !['requested', 'replied'].includes(latest.status) ||
+    (latest.status === 'requested' && latest.deadlineAt.getTime() <= Date.now())
+  )
+    throw new ConflictError('STALE_TURN', 'This turn is no longer current')
+}
+
 async function closeTurns(
   tx: Transaction,
   conversationId: ConversationId,
@@ -338,7 +386,7 @@ async function closeTurns(
     )
 }
 
-async function finishHandoff(
+export async function finishHandoff(
   tx: Transaction,
   agent: SupportAgent | null,
   conversationId: ConversationId,
@@ -354,7 +402,14 @@ async function finishHandoff(
   await closeTurns(tx, conversationId, 'handed_off')
   const [conversation] = await tx
     .update(conversations)
-    .set({ controllerAgentId: null, status: 'open', updatedAt: new Date() })
+    .set({
+      controllerAgentId: null,
+      status: 'open',
+      waitingSince: new Date(),
+      resolvedAt: null,
+      snoozedUntil: null,
+      updatedAt: new Date(),
+    })
     .where(eq(conversations.id, conversationId))
     .returning()
   const messages = await tx
@@ -409,6 +464,7 @@ async function publishHandoff(result: Awaited<ReturnType<typeof finishHandoff>>)
 
 /** Ownership, outcome, notices and event commit together before broadcasting. */
 export async function handOffToTeam(input: {
+  turnId: SupportAgentTurnId
   agent: SupportAgent
   conversationId: ConversationId
   reason: AssistantHandoffReason
@@ -416,6 +472,7 @@ export async function handOffToTeam(input: {
 }): Promise<void> {
   const result = await db.transaction(async (tx) => {
     await lockController(tx, input.agent, input.conversationId)
+    await assertCurrentTurn(tx, input.agent, input.conversationId, input.turnId)
     return finishHandoff(tx, input.agent, input.conversationId, input.reason, input.note)
   })
   await publishHandoff(result).catch((err) =>
@@ -427,6 +484,7 @@ export async function handOffToTeam(input: {
 }
 
 export async function resolveAsAgent(input: {
+  turnId: SupportAgentTurnId
   agent: SupportAgent
   conversationId: ConversationId
   confirmed: boolean
@@ -435,6 +493,7 @@ export async function resolveAsAgent(input: {
   const outcome = input.confirmed ? ('resolved_confirmed' as const) : ('resolved_assumed' as const)
   const result = await db.transaction(async (tx) => {
     await lockController(tx, input.agent, input.conversationId)
+    await assertCurrentTurn(tx, input.agent, input.conversationId, input.turnId)
     const [active] = await tx
       .update(assistantInvolvements)
       .set({ status: outcome, endedAt: new Date() })
@@ -517,7 +576,7 @@ export async function applyTurnFallback(
       .limit(1)
     if (
       latest?.id !== turn.id ||
-      conversation.status === 'closed' ||
+      conversation.status !== 'open' ||
       conversation.controllerAgentId !== turn.agentId
     ) {
       await tx

@@ -4,6 +4,7 @@ import {
   AgentPauseControl,
   useAgentStatusLine,
 } from '@/components/admin/automation/assistant-deployment-card'
+import { AnsweringModeCard } from './agents/answering-mode-card'
 import { WhoRepliesFirstCard } from '@/components/admin/automation/who-replies-first-card'
 import { ConversationRoutingCard } from '@/components/admin/settings/conversation-routing-card'
 import { SettingRow, SettingRows } from '@/components/admin/settings/setting-row'
@@ -38,6 +39,7 @@ export function WhoAnswersPage() {
 
   return (
     <SettingsPage page="/admin/settings/who-answers">
+      {canRoute && flags?.ownAgent && <AnsweringModeCard />}
       {canAi && (
         <SettingsCard>
           <SettingRows>

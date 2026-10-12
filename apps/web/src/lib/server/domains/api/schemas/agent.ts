@@ -49,7 +49,9 @@ const AgentContextSchema = z
           createdAt: TimestampSchema,
         })
       )
-      .meta({ description: 'The recent public thread, oldest first. Internal notes are never included.' }),
+      .meta({
+        description: 'The recent public thread, oldest first. Internal notes are never included.',
+      }),
     untrusted: z.object({
       note: z.string(),
       fields: z.array(z.string()).meta({ example: ['customer.name', 'messages[0].content'] }),
@@ -78,17 +80,25 @@ const ActivityBodySchema = createRequestBodySchema({
 })
 
 const HandoffBodySchema = createRequestBodySchema({
+  turnId: TypeIdSchema,
   reason: z.enum(ASSISTANT_MODEL_HANDOFF_REASONS).meta({ example: 'capability_limit' }),
   note: z.string().max(2000).optional().meta({
-    description: 'What the customer needs and what was tried. Teammates read it as an internal note.',
+    description:
+      'What the customer needs and what was tried. Teammates read it as an internal note.',
   }),
 })
 
 const ResolveBodySchema = createRequestBodySchema({
+  turnId: TypeIdSchema,
   confirmed: z.boolean().meta({
-    description: 'True when the customer affirmed the answer, false when the agent judges it resolved',
+    description:
+      'True when the customer affirmed the answer, false when the agent judges it resolved',
   }),
-  summary: z.string().max(2000).optional().meta({ description: 'Shown to teammates as an internal note' }),
+  summary: z
+    .string()
+    .max(2000)
+    .optional()
+    .meta({ description: 'Shown to teammates as an internal note' }),
 })
 
 const ConflictSchema = z
@@ -117,7 +127,10 @@ const errors = {
     description: 'Missing or invalid agent credential',
     content: { 'application/json': { schema: UnauthorizedErrorSchema } },
   },
-  409: { description: 'Not the controller, or a stale turn', content: { 'application/json': { schema: ConflictSchema } } },
+  409: {
+    description: 'Not the controller, or a stale turn',
+    content: { 'application/json': { schema: ConflictSchema } },
+  },
 }
 
 registerPath('/agent/conversations/{conversationId}', {
@@ -218,7 +231,9 @@ registerPath('/agent/conversations/{conversationId}/reply', {
                 messageId: TypeIdSchema,
                 turnId: TypeIdSchema,
                 createdAt: TimestampSchema,
-                replayed: z.boolean().meta({ description: 'True when the idempotency key was already used' }),
+                replayed: z
+                  .boolean()
+                  .meta({ description: 'True when the idempotency key was already used' }),
               }),
               'Posted reply'
             ),
@@ -274,6 +289,37 @@ registerPath('/agent/conversations/{conversationId}/resolve', {
             schema: createItemResponseSchema(
               z.object({ outcome: z.enum(['resolved_confirmed', 'resolved_assumed']) }),
               'Outcome'
+            ),
+          },
+        },
+      },
+      ...errors,
+    },
+  },
+})
+
+registerPath('/agent/turns', {
+  get: {
+    summary: 'Pull current agent turns',
+    description:
+      'Local agents poll with their qba_ credential without exposing an inbound URL. Only unexpired turns on conversations they control are returned; internal notes are excluded.',
+    tags: [TAG],
+    responses: {
+      200: {
+        description: 'Current turns',
+        content: {
+          'application/json': {
+            schema: createItemResponseSchema(
+              z.object({
+                turns: z.array(
+                  z.object({
+                    turnId: TypeIdSchema,
+                    deadlineAt: TimestampSchema,
+                    context: AgentContextSchema,
+                  })
+                ),
+              }),
+              'Agent turns'
             ),
           },
         },

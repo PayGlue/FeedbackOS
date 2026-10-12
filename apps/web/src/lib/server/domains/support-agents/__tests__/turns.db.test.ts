@@ -8,6 +8,7 @@ import {
   conversationMessages,
   supportAgents,
   supportAgentTurns,
+  events,
   eq,
   and,
 } from '@/lib/server/db'
@@ -24,6 +25,16 @@ import {
   resolveAsAgent,
 } from '../agent-actions.service'
 import * as assistant from '@/lib/server/domains/assistant'
+import * as queries from '@/lib/server/domains/conversation/conversation.query'
+import { loadRequestedAgentTurnContext } from '../agent-context'
+
+vi.mock('@/lib/server/db', async (original) => {
+  const actual = await original<typeof import('@/lib/server/db')>()
+  const { createDb } = await import('@quackback/db/client')
+  // An independent real pool lets transactions compete while keeping this
+  // concurrency suite separate from process-global clients in other tests.
+  return { ...actual, db: createDb(process.env.DATABASE_URL!, { max: 4 }) }
+})
 
 let registered: RegisteredAgent
 let conversationId: ConversationId
@@ -34,7 +45,10 @@ beforeAll(() => {
   vi.stubEnv('BASE_URL', 'http://localhost:3199')
   vi.stubEnv('SECRET_KEY', 'agent-turns-test-secret-local-and-ci-000000')
 })
-afterAll(() => vi.unstubAllEnvs())
+afterAll(async () => {
+  await (db as typeof db & { $client: import('postgres').Sql }).$client.end()
+  vi.unstubAllEnvs()
+})
 
 beforeEach(async () => {
   customerUserId = createId('user')
@@ -109,6 +123,47 @@ const replies = () =>
     )
 
 describe('agent turns against PostgreSQL', () => {
+  it('does not release context when a teammate takes over during the read', async () => {
+    const turn = await newTurn()
+    const listMessages = queries.listMessages
+    vi.spyOn(queries, 'listMessages').mockImplementationOnce(async (...args) => {
+      const page = await listMessages(...args)
+      await releaseAgentControl(conversationId)
+      return page
+    })
+    await expect(loadRequestedAgentTurnContext(registered.agent, turn)).rejects.toMatchObject({
+      code: 'NOT_CONTROLLER',
+    })
+  })
+
+  it('does not deliver a turn that expired while loading its context', async () => {
+    const turn = await newTurn()
+    await db
+      .update(supportAgentTurns)
+      .set({ deadlineAt: new Date(Date.now() - 1000) })
+      .where(eq(supportAgentTurns.id, turn.id))
+    await expect(loadRequestedAgentTurnContext(registered.agent, turn)).rejects.toMatchObject({
+      code: 'TURN_NOT_OPEN',
+    })
+  })
+
+  it('excludes internal notes from requested-turn context', async () => {
+    const turn = await newTurn()
+    await db.insert(conversationMessages).values({
+      conversationId,
+      principalId: registered.agent.principalId!,
+      senderType: 'agent',
+      content: 'Private team instructions',
+      isInternal: true,
+    })
+    const context = await loadRequestedAgentTurnContext(registered.agent, turn)
+    expect(context.messages.map((message) => message.content)).toContain('Help me')
+    expect(context.messages.map((message) => message.content)).not.toContain(
+      'Private team instructions'
+    )
+    expect(context.untrusted.fields).toContain('messages[0].content')
+  })
+
   it('uses the agent credential rather than a teammate key', async () => {
     expect(registered.credential.startsWith('qba_')).toBe(true)
     expect((await verifyAgentCredential(registered.credential))?.id).toBe(registered.agent.id)
@@ -148,6 +203,12 @@ describe('agent turns against PostgreSQL', () => {
     expect(results[0].messageId).toBe(results[1].messageId)
     expect(results.map((r) => r.replayed).sort()).toEqual([false, true])
     expect(await replies()).toHaveLength(1)
+    expect(
+      await db
+        .select()
+        .from(events)
+        .where(and(eq(events.type, 'message.created'), eq(events.entityId, results[0].messageId)))
+    ).toHaveLength(1)
     expect(await getTurn(turn.id)).toMatchObject({
       status: 'replied',
       replyKey: 'reply-1',
@@ -276,14 +337,56 @@ describe('agent turns against PostgreSQL', () => {
   })
 
   it('refuses handoff and resolution after human takeover', async () => {
-    await newTurn()
+    const turn = await newTurn()
     await releaseAgentControl(conversationId)
     await expect(
-      handOffToTeam({ agent: registered.agent, conversationId, reason: 'system_error' })
+      handOffToTeam({
+        agent: registered.agent,
+        conversationId,
+        turnId: turn.id,
+        reason: 'system_error',
+      })
     ).rejects.toMatchObject({ code: 'NOT_CONTROLLER' })
     await expect(
-      resolveAsAgent({ agent: registered.agent, conversationId, confirmed: true })
+      resolveAsAgent({ agent: registered.agent, conversationId, turnId: turn.id, confirmed: true })
     ).rejects.toMatchObject({ code: 'NOT_CONTROLLER' })
+    expect(await replies()).toHaveLength(0)
+  })
+  it('refuses another payload under a reply key that already succeeded', async () => {
+    const turn = await newTurn()
+    await postAgentReply({
+      agent: registered.agent,
+      conversationId,
+      turnId: turn.id,
+      content: 'First answer',
+      idempotencyKey: 'one-key',
+    })
+    await expect(
+      postAgentReply({
+        agent: registered.agent,
+        conversationId,
+        turnId: turn.id,
+        content: 'Changed answer',
+        idempotencyKey: 'one-key',
+      })
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' })
+    expect(await replies()).toHaveLength(1)
+  })
+  it('does not reopen a conversation a teammate closed during a turn', async () => {
+    const turn = await newTurn()
+    await db
+      .update(conversations)
+      .set({ status: 'closed' })
+      .where(eq(conversations.id, conversationId))
+    await expect(
+      postAgentReply({
+        agent: registered.agent,
+        conversationId,
+        turnId: turn.id,
+        content: 'Late answer',
+        idempotencyKey: 'late',
+      })
+    ).rejects.toMatchObject({ code: 'CONVERSATION_CLOSED' })
     expect(await replies()).toHaveLength(0)
   })
 })

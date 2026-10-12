@@ -29,7 +29,10 @@ import {
   recordDeliveryResult,
 } from '@/lib/server/domains/support-agents/support-agents.service'
 import { expireTurn, getTurn } from '@/lib/server/domains/support-agents/turns.service'
-import { loadAgentContext } from '@/lib/server/domains/support-agents/agent-context'
+import { loadRequestedAgentTurnContext } from '@/lib/server/domains/support-agents/agent-context'
+import { assertOwnAgentAvailable } from '@/lib/server/domains/support-agents/availability'
+import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/shared/errors'
+import { EntitlementRequiredError } from '@/lib/server/errors/entitlement-error'
 
 const log = logger.child({ component: 'agent-turn' })
 
@@ -83,8 +86,9 @@ export const agentTurnHook: HookHandler = {
     let secret: string
     let body: string
     try {
+      await assertOwnAgentAvailable()
       secret = decryptAgentSigningSecret(agent)
-      const context = await loadAgentContext(conversationId)
+      const context = await loadRequestedAgentTurnContext(agent, { id: turnId, conversationId })
       body = JSON.stringify({
         id: event.id,
         type: 'agent.turn_requested',
@@ -98,13 +102,25 @@ export const agentTurnHook: HookHandler = {
         },
       })
     } catch (error) {
+      if (error instanceof ConflictError || error instanceof NotFoundError) {
+        await completeHookDelivery(ctx?.jobId)
+        return { success: true }
+      }
+      if (error instanceof ForbiddenError || error instanceof EntitlementRequiredError) {
+        await failHookDelivery(ctx?.jobId)
+        await expireTurn(turnId, { force: true })
+        return { success: false, error: 'Agent access disabled', shouldRetry: false }
+      }
       log.error({ err: error, turn_id: turnId }, 'failed to build the agent turn request')
       await releaseHookDelivery(ctx?.jobId)
       return { success: false, error: 'Failed to build the turn request', shouldRetry: true }
     }
 
     const timestamp = Math.floor(Date.now() / 1000)
-    const signature = crypto.createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')
+    const signature = crypto
+      .createHmac('sha256', secret)
+      .update(`${timestamp}.${body}`)
+      .digest('hex')
 
     const giveUp = async (error: string): Promise<HookResult> => {
       await failHookDelivery(ctx?.jobId)

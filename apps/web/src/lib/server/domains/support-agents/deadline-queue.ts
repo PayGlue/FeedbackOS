@@ -15,6 +15,24 @@ export async function runTurnDeadline(job: ClaimedJob): Promise<void> {
     const { getTurn } = await import('./turns.service')
     const turn = await getTurn(turnId as SupportAgentTurnId)
     if (!turn || turn.status !== 'expired' || !turn.fallbackAppliedAt) return
+    const { db, supportAgentTurns, conversations, eq, desc } = await import('@/lib/server/db')
+    const [latest] = await db
+      .select({ id: supportAgentTurns.id })
+      .from(supportAgentTurns)
+      .where(eq(supportAgentTurns.conversationId, turn.conversationId))
+      .orderBy(desc(supportAgentTurns.createdAt), desc(supportAgentTurns.id))
+      .limit(1)
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, turn.conversationId))
+    if (
+      latest?.id !== turn.id ||
+      !conversation ||
+      conversation.controllerAgentId ||
+      conversation.status === 'closed'
+    )
+      return
     const { runAssistantTurnForConversation } =
       await import('@/lib/server/domains/assistant/assistant.orchestrator')
     await runAssistantTurnForConversation(turn.conversationId)
