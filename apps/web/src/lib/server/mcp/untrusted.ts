@@ -225,7 +225,11 @@ const THREAD_MESSAGES: UntrustedSpec = [
 ]
 
 /** An article's author, as articleResult returns it. */
-const ARTICLE_AUTHOR: UntrustedObjectRule = { at: 'author', where: authorOffTeam, fields: ['name'] }
+const ARTICLE_AUTHOR: UntrustedObjectRule = {
+  at: 'author',
+  where: authorOffTeam,
+  fields: ['name', 'avatarUrl'],
+}
 
 /**
  * Every registered tool's outside-authored result paths. Board, tag, status,
@@ -427,7 +431,10 @@ const itemFacts = new WeakMap<CallToolResult, ItemFacts>()
  * so a rule that relies on them marks it.
  */
 export function withItemFacts(result: CallToolResult, facts: ItemFacts): CallToolResult {
-  itemFacts.set(result, facts)
+  // Merge per path, so facts from separate sources about one object all stay.
+  const merged: Record<string, JsonObject> = { ...itemFacts.get(result) }
+  for (const [path, fact] of Object.entries(facts)) merged[path] = { ...merged[path], ...fact }
+  itemFacts.set(result, merged)
   return result
 }
 

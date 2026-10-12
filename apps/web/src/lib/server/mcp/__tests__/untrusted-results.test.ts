@@ -973,6 +973,19 @@ describe('author names of teammates who have left the team', () => {
       articleBody(articleId, janeAuthor)
     )
   })
+
+  it('get_details marks the avatar link of an author who left', async () => {
+    const articleId = generateId('article')
+    const withAvatar = article(articleId, { id: FORMER.principalId, name: FORMER.displayName })
+    mocks.getArticleById.mockResolvedValue({
+      ...withAvatar,
+      author: { ...withAvatar.author, avatarUrl: 'https://example.com/a.png' },
+    })
+
+    const text = await callText('get_details', { id: articleId })
+
+    expect(JSON.parse(text).untrusted?.fields).toEqual(['author.name', 'author.avatarUrl'])
+  })
 })
 
 describe('get_conversation', () => {

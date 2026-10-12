@@ -191,6 +191,21 @@ describe('item facts', () => {
     expect(JSON.stringify(markUntrusted(result, spec))).not.toContain('onTeam')
   })
 
+  it('keeps facts from every source about one object', () => {
+    const spec: UntrustedSpec = [
+      {
+        at: 'author',
+        where: (_o, facts) => facts?.onTeam !== true || facts?.verified !== true,
+        fields: ['name'],
+      },
+    ]
+    const result = textResult(JSON.stringify({ author: { name: 'Jane' } }))
+    withItemFacts(result, { author: { onTeam: true } })
+    withItemFacts(result, { author: { verified: true } })
+
+    expect(fieldsOf(result, spec)).toBeUndefined()
+  })
+
   it('applies an object rule to the result itself or to an object inside it', () => {
     const spec: UntrustedSpec = [
       { at: '', where: offTeam, fields: ['authorName'] },

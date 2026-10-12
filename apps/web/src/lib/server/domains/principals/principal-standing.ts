@@ -9,7 +9,7 @@ import type { PrincipalId } from '@quackback/ids'
 import { isTeamMember } from '@/lib/shared/roles'
 
 /**
- * An admin or member (Cloud support staff included), or a service principal
+ * An admin or member (support staff included), or a service principal
  * (integrations, API keys, the assistant), whose name the team or this app
  * sets. Portal users, visitors and former teammates choose their own.
  */
