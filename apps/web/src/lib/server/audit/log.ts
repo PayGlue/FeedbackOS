@@ -26,6 +26,7 @@ import { getClientIp } from '@/lib/server/domains/api/rate-limit'
 import type { AuthContext } from '@/lib/server/functions/auth-helpers'
 import { logger } from '@/lib/server/logger'
 import type { JsonValue } from '@/lib/shared/json'
+import { auditAttributionColumns } from './attribution'
 
 const log = logger.child({ component: 'audit' })
 
@@ -257,6 +258,9 @@ function auditInsertValues(input: RecordAuditEventInput): typeof auditLog.$infer
     beforeValue: input.before ?? null,
     afterValue: input.after ?? null,
     metadata: input.metadata ?? null,
+    // How the change arrived, from the boundary the caller runs under (see
+    // attribution.ts), so no call site has to pass it.
+    ...auditAttributionColumns(),
   }
 }
 
