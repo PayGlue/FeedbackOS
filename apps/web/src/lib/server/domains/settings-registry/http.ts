@@ -10,7 +10,8 @@ import { SETTINGS_AREA_META } from '@/lib/shared/settings-registry'
 import { ForbiddenError } from '@/lib/shared/errors'
 import { hasApiScope } from '@/lib/server/domains/api-keys/api-key-scopes'
 import type { SettingsCaller } from './service'
-import type { ChangeSettingsResult, UndoSettingsOutcome } from './service'
+import type { ChangeSettingsResult } from './service'
+import type { UndoSettingsOutcome } from './undo'
 import { successResponse } from '@/lib/server/domains/api/responses'
 
 /**

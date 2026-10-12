@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   calls: [] as unknown[],
   result: null as unknown,
   error: null as Error | null,
+  undo: { status: 'undone', result: { id: 'audit_1', undone: true } } as unknown,
 }))
 
 vi.mock('@/lib/server/domains/api/auth', () => ({
@@ -29,7 +30,12 @@ vi.mock('@/lib/server/domains/settings-registry/service', () => ({
   },
   readSettingsArea: async (_actor: unknown, area: string) => ({ id: area, revision: 'rev1' }),
   listSettingsAreas: async () => [],
-  undoSettingsReceipt: async (_caller: unknown, id: string) => ({ id, undone: true }),
+}))
+vi.mock('@/lib/server/domains/settings-registry/undo', () => ({
+  undoSettingsReceipt: async (caller: unknown, id: string) => {
+    state.calls.push({ undo: id, caller })
+    return state.undo
+  },
 }))
 
 import { Route as AreaRoute } from '../$area'
@@ -57,6 +63,18 @@ beforeEach(() => {
   state.calls = []
   state.error = null
   state.result = { status: 'noop', revision: 'rev1' }
+  state.undo = { status: 'undone', result: { id: 'audit_1', undone: true } }
+})
+
+describe('the caller the routes build', () => {
+  it("acts as the key's creator with exactly the key's permissions", async () => {
+    await patch({ 'if-match': 'rev1' })
+    const { caller } = state.calls[0] as {
+      caller: { actor: { principalId: string; permissions: Set<string> } }
+    }
+    expect(caller.actor.principalId).toBe('principal_owner')
+    expect([...caller.actor.permissions]).toEqual(['settings.manage'])
+  })
 })
 
 describe('PATCH /settings/:area', () => {
@@ -172,5 +190,18 @@ describe('POST /settings/receipts/:id/undo', () => {
     expect((await undo.POST({ request: request(), params: { receiptId: 'audit_1' } })).status).toBe(
       403
     )
+  })
+
+  it('answers 202 when the undo was filed as an approval', async () => {
+    state.undo = {
+      status: 'approval_required',
+      approval: { proposed: true, approvalId: 'assistant_action_2', status: 'pending' },
+    }
+    const response = await undo.POST({
+      request: new Request('http://localhost/x', { method: 'POST' }),
+      params: { receiptId: 'assistant_action_1' },
+    })
+    expect(response.status).toBe(202)
+    expect((await response.json()).data).toMatchObject({ approvalId: 'assistant_action_2' })
   })
 })

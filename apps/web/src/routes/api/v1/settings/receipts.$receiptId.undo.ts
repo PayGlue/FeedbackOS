@@ -19,7 +19,7 @@ export const Route = createFileRoute('/api/v1/settings/receipts/$receiptId/undo'
           const auth = await withApiKeyAuth(request)
           assertSettingsScope(auth, 'write:settings')
           const { undoSettingsReceipt } =
-            await import('@/lib/server/domains/settings-registry/service')
+            await import('@/lib/server/domains/settings-registry/undo')
           return undoResponse(
             await undoSettingsReceipt(settingsCallerFromApiAuth(auth), params.receiptId)
           )
