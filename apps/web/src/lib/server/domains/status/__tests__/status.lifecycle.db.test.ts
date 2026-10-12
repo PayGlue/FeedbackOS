@@ -14,6 +14,7 @@ import { testDb } from '@/lib/server/__tests__/db-test-fixture'
 import {
   and,
   eq,
+  events,
   isNull,
   statusComponentEvents,
   statusIncidentComponents,
@@ -31,6 +32,20 @@ const mockProcessEvent = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/server/events/process', () => ({
   processEvent: (...args: unknown[]) => mockProcessEvent(...args),
 }))
+
+// A quiet publication writes its event on the create transaction; this lets a
+// test make that write fail.
+const outbox = vi.hoisted(() => ({ fail: false }))
+vi.mock('@/lib/server/events/outbox-dispatch', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/server/events/outbox-dispatch')>()
+  return {
+    ...actual,
+    writeEventToOutbox: async (...args: Parameters<typeof actual.writeEventToOutbox>) => {
+      if (outbox.fail) throw new Error('outbox unavailable')
+      return actual.writeEventToOutbox(...args)
+    },
+  }
+})
 
 vi.mock('@/lib/server/events/scheduler', () => ({
   scheduleDispatch: vi.fn().mockResolvedValue(undefined),
@@ -74,6 +89,7 @@ describe('status lifecycle (Postgres)', () => {
   beforeEach(async () => {
     expect(fixture.available).toBe(true)
     mockProcessEvent.mockReset().mockResolvedValue(undefined)
+    outbox.fail = false
     await beginTest()
   })
   afterEach(fixture.rollback)
@@ -607,20 +623,46 @@ describe('status lifecycle (Postgres)', () => {
       expect(await notifyStatusIncidentPublished(quiet.id, actor)).toBe(false)
       expect(await reconcileStatusNotifications()).toBe(0)
 
-      const sent = (type: string) =>
-        mockProcessEvent.mock.calls
-          .map(([event]) => event as { type: string; data: { incident: Record<string, unknown> } })
-          .filter((event) => event.type === type)
-      expect(sent('status.incident_created')).toHaveLength(1)
-      expect(sent('status.incident_created')[0].data.incident).toMatchObject({
-        id: quiet.id,
-        notifySubscribers: false,
-      })
-      expect(sent('status.maintenance_scheduled')).toHaveLength(1)
-      expect(sent('status.maintenance_scheduled')[0].data.incident).toMatchObject({
-        id: window.id,
-        notifySubscribers: false,
-      })
+      // Nothing goes through the after-commit path; the events are in the
+      // outbox, written with the rows themselves.
+      expect(mockProcessEvent).not.toHaveBeenCalled()
+      const sent = async (type: string, entityId: string) =>
+        (
+          await testDb
+            .select({ payload: events.payload })
+            .from(events)
+            .where(and(eq(events.type, type), eq(events.entityId, entityId)))
+        ).map((row) => (row.payload as { incident: Record<string, unknown> }).incident)
+      const created = await sent('status.incident_created', quiet.id)
+      expect(created).toHaveLength(1)
+      expect(created[0]).toMatchObject({ id: quiet.id, notifySubscribers: false })
+      const scheduled = await sent('status.maintenance_scheduled', window.id)
+      expect(scheduled).toHaveLength(1)
+      expect(scheduled[0]).toMatchObject({ id: window.id, notifySubscribers: false })
+    })
+
+    it('creates nothing when its creation event cannot be written', async () => {
+      const api = await service('API')
+      outbox.fail = true
+      await expect(
+        createIncident(
+          {
+            kind: 'incident',
+            title: 'Quiet and unrecorded',
+            status: 'investigating',
+            body: 'Looking into it.',
+            affectedComponents: [{ componentId: api, componentStatus: 'major_outage' }],
+            notifySubscribers: false,
+          },
+          { principalId: author }
+        )
+      ).rejects.toThrow('outbox unavailable')
+      const rows = await testDb
+        .select({ id: statusIncidents.id })
+        .from(statusIncidents)
+        .where(eq(statusIncidents.title, 'Quiet and unrecorded'))
+      expect(rows).toEqual([])
+      expect(await statusOf(api)).toBe('operational')
     })
 
     it('the sweep leaves a row just published to its own claim', async () => {
