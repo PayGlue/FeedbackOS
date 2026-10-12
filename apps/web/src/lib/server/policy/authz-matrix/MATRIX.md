@@ -101,7 +101,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 2. Surfaces and their enforced authorization
 
-### Server functions (`requireAuth`) — 752 surfaces
+### Server functions (`requireAuth`) — 750 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -208,10 +208,8 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/api-keys.ts`::updateApiKeyFn | api_key.manage |
 | `lib/server/functions/api-keys.ts`::rotateApiKeyFn | api_key.manage |
 | `lib/server/functions/api-keys.ts`::revokeApiKeyFn | api_key.manage |
-| `lib/server/functions/approval-counts.ts`::getRailCountsFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | ai.teammate.manage) |
 | `lib/server/functions/approvals.ts`::listApprovalsFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | ai.teammate.manage) |
 | `lib/server/functions/approvals.ts`::getApprovalFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | ai.teammate.manage) |
-| `lib/server/functions/approvals.ts`::approveApprovalFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | ai.teammate.manage) |
 | `lib/server/functions/approvals.ts`::rejectApprovalFn | DYNAMIC (conversation.view | ticket.view | settings.manage | settings.branding | office_hours.manage | changelog.manage | conversation.set_attributes | conversation.set_status | conversation.reply | ticket.create | post.create | post.vote_on_behalf | ai.teammate.manage) |
 | `lib/server/functions/approvals.ts`::markApprovalBellReadFn | END_USER (any authenticated) |
 | `lib/server/functions/ask-search.ts`::searchAskEntitiesFn | DYNAMIC (post.view_private | help_center.manage | changelog.view_draft | changelog.manage | conversation.view | ticket.view) |
@@ -858,7 +856,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/workspace-copilot.ts`::undoWorkspaceSettingsProposalFn | DYNAMIC (copilot.use | settings.manage | settings.branding | office_hours.manage | changelog.manage) |
 | `lib/server/functions/workspace-wipe.ts`::wipeCloudWorkspaceFn | END_USER (any authenticated) |
 
-### Public REST API (`withApiKeyAuth`) — 129 surfaces
+### Public REST API (`withApiKeyAuth`) — 133 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -948,6 +946,10 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `routes/api/v1/roadmaps/index.ts`::POST | roadmap.manage |
 | `routes/api/v1/segments/$slug.members.ts`::POST | segment.manage |
 | `routes/api/v1/segments/$slug.members.ts`::DELETE | segment.manage |
+| `routes/api/v1/settings/$area.ts`::GET | DYNAMIC (settings.manage | settings.branding | office_hours.manage | changelog.manage) |
+| `routes/api/v1/settings/$area.ts`::PATCH | DYNAMIC (settings.manage | settings.branding | office_hours.manage | changelog.manage) |
+| `routes/api/v1/settings/index.ts`::GET | DYNAMIC (settings.manage | settings.branding | office_hours.manage | changelog.manage) |
+| `routes/api/v1/settings/receipts.$receiptId.undo.ts`::POST | DYNAMIC (settings.manage | settings.branding | office_hours.manage | changelog.manage) |
 | `routes/api/v1/status/-service-handlers.ts`::listStatusComponentsHandler | PUBLIC (any valid key) |
 | `routes/api/v1/status/-service-handlers.ts`::createStatusComponentHandler | status_page.manage |
 | `routes/api/v1/status/-service-handlers.ts`::getStatusComponentHandler | PUBLIC (any valid key) |
@@ -1013,7 +1015,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 3. MCP tools
 
-45 tools. "Team" = requires an admin/member role in addition to the scope.
+46 tools. "Team" = requires an admin/member role in addition to the scope.
 
 | Tool | Scope(s) | Team |
 | --- | --- | :---: |
@@ -1059,6 +1061,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | update_article | write:article | ✓ |
 | update_changelog | write:changelog | ✓ |
 | update_comment | write:feedback | · |
+| update_settings | write:settings | ✓ |
 | upload_file | write:chat | ✓ |
 | vote_post | write:feedback | · |
 | widget_install_status | read:feedback | ✓ |
@@ -1075,7 +1078,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-227 of 1093 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+227 of 1095 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 

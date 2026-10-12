@@ -80,18 +80,21 @@ beforeEach(() => {
 })
 
 describe('settings MCP tools follow Copilot on Home', () => {
-  it('refuse to read or propose while the flag is off', async () => {
+  it('refuses to propose while the flag is off, but reads and updates need no flag', async () => {
     const tools = collect()
-    const read = await tools.get('get_settings')!({ area: 'branding' })
     const propose = await tools.get('propose_settings_change')!({
       changes: [{ area: 'messenger', patch: { enabled: true } }],
     })
-    for (const result of [read, propose]) {
-      expect(result.isError).toBe(true)
-      expect(text(result)).toContain('Settings → Labs')
-    }
-    expect(state.reads).toEqual([])
+    expect(propose.isError).toBe(true)
+    expect(text(propose)).toContain('Settings → Labs')
     expect(state.proposals).toEqual([])
+    expect((await tools.get('get_settings')!({ area: 'branding' })).isError).not.toBe(true)
+    const update = await tools.get('update_settings')!({
+      area: 'portal',
+      patch: { displayName: 'Acme' },
+      dry_run: true,
+    })
+    expect(update.isError).not.toBe(true)
   })
 
   it('work once the flag is on', async () => {
@@ -148,7 +151,13 @@ describe('settings MCP tools follow Copilot on Home', () => {
     state.flags = { copilotHome: true }
     state.change = {
       status: 'approval_required',
-      approval: { proposed: true, pendingActionId: 'assistant_action_1', proposal: { kind: 'x' } },
+      approval: {
+        proposed: true,
+        approvalId: 'assistant_action_1',
+        pendingActionId: 'assistant_action_1',
+        status: 'pending',
+        proposal: { kind: 'x' },
+      },
     }
     const result = await collect().get('update_settings')!({
       area: 'messenger',
@@ -157,6 +166,8 @@ describe('settings MCP tools follow Copilot on Home', () => {
     })
     expect(JSON.parse(text(result))).toMatchObject({
       proposed: true,
+      approvalId: 'assistant_action_1',
+      status: 'pending',
       pendingActionId: 'assistant_action_1',
       proposal: { kind: 'x' },
     })

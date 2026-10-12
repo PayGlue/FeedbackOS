@@ -59,7 +59,7 @@ export function etag(revision: string): string {
 export function changeResponse(result: ChangeSettingsResult): Response {
   switch (result.status) {
     case 'approval_required':
-      return successResponse({ status: result.status, ...result.approval }, { status: 202 })
+      return successResponse(result.approval, { status: 202 })
     case 'applied':
       return withEtag(
         successResponse({ status: result.status, receipt: result.receipt }),

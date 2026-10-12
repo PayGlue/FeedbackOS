@@ -82,9 +82,15 @@ const ChangeResultSchema = z
 
 const ApprovalFiledSchema = z
   .object({
-    status: z.literal('approval_required'),
     proposed: z.literal(true),
-    pendingActionId: z.string().meta({ example: 'assistant_action_01h455vb4pex5vsknk084sn02q' }),
+    approvalId: z.string().meta({ example: 'assistant_action_01h455vb4pex5vsknk084sn02q' }),
+    status: z.literal('pending'),
+    url: z.string().meta({ description: 'The in-app page where a person decides it.' }),
+    next: z.string(),
+    pendingActionId: z.string().meta({
+      description: 'The same id as approvalId, kept for earlier clients.',
+      example: 'assistant_action_01h455vb4pex5vsknk084sn02q',
+    }),
     proposal: z.unknown(),
     reviewHref: z.string().optional(),
   })

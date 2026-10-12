@@ -90,13 +90,22 @@ describe('PATCH /settings/:area', () => {
   it('answers 202 with the approval in the propose_settings_change shape', async () => {
     state.result = {
       status: 'approval_required',
-      approval: { proposed: true, pendingActionId: 'assistant_action_1', proposal: {} },
+      approval: {
+        proposed: true,
+        approvalId: 'assistant_action_1',
+        pendingActionId: 'assistant_action_1',
+        status: 'pending',
+        url: 'http://localhost/admin/approvals?id=assistant_action_1',
+        proposal: {},
+      },
     }
     const response = await patch({ 'if-match': 'rev1' })
     expect(response.status).toBe(202)
     expect((await response.json()).data).toMatchObject({
       proposed: true,
-      pendingActionId: 'assistant_action_1',
+      approvalId: 'assistant_action_1',
+      status: 'pending',
+      url: expect.stringContaining('/admin/approvals?id='),
     })
   })
 

@@ -43,6 +43,7 @@ import {
   SETTINGS_REGISTRY,
   type SettingsAreaEntry,
 } from './registry'
+import { approvalUrl } from '@/lib/server/domains/assistant/approvals.follow'
 
 /** Who is asking and how the request arrived. */
 export interface SettingsCaller {
@@ -152,7 +153,13 @@ export interface SettingsPreview {
 /** The approval a medium-risk change was filed as. */
 export interface FiledApproval {
   proposed: true
+  approvalId: string
+  /** The same id, under the name earlier clients read. */
   pendingActionId: string
+  status: 'pending'
+  /** The in-app page where a person decides it. */
+  url: string
+  next: string
   proposal: unknown
   preparationNotes?: unknown
   reviewHref?: string
@@ -287,7 +294,11 @@ export async function changeSettingsArea(
       status: 'approval_required',
       approval: {
         proposed: true,
+        approvalId: action.id,
         pendingActionId: action.id,
+        status: 'pending',
+        url: approvalUrl(action.id),
+        next: 'Nothing changes until a person approves this in the app, at url. Check its progress with get_approval.',
         proposal: action.args,
         ...(action.preparationNotes ? { preparationNotes: action.preparationNotes } : {}),
         ...(action.reviewHref ? { reviewHref: action.reviewHref } : {}),

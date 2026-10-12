@@ -45,7 +45,6 @@ export function registerSettingsTools(server: McpServer, auth: McpAuthContext) {
     annotations: READ_ONLY,
     scope: 'read:settings',
     teamOnly: true,
-    feature: 'copilotHome',
     handler: async ({ area }) => {
       const actor = await resolveMcpActor(auth, 'read:settings')
       if (!area)
@@ -82,7 +81,6 @@ Examples:
     annotations: WRITE,
     scope: 'write:settings',
     teamOnly: true,
-    feature: 'copilotHome',
     handler: async ({ area, patch, expected_revision, dry_run }) => {
       if (!dry_run && !expected_revision?.trim())
         throw new PreconditionRequiredError(
