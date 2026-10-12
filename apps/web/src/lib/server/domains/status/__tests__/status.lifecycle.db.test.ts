@@ -36,12 +36,13 @@ vi.mock('@/lib/server/events/process', () => ({
 
 // A quiet publication writes its event on the create transaction; this lets a
 // test make that write fail.
-const outbox = vi.hoisted(() => ({ fail: false, failNext: 0 }))
+const outbox = vi.hoisted(() => ({ fail: false, failNext: 0, okFirst: 0 }))
 vi.mock('@/lib/server/events/outbox-dispatch', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/server/events/outbox-dispatch')>()
   return {
     ...actual,
     writeEventToOutbox: async (...args: Parameters<typeof actual.writeEventToOutbox>) => {
+      if (outbox.okFirst-- > 0) return actual.writeEventToOutbox(...args)
       if (outbox.fail || outbox.failNext-- > 0) throw new Error('outbox unavailable')
       return actual.writeEventToOutbox(...args)
     },
@@ -93,6 +94,7 @@ describe('status lifecycle (Postgres)', () => {
     mockProcessEvent.mockReset().mockResolvedValue(undefined)
     outbox.fail = false
     outbox.failNext = 0
+    outbox.okFirst = 0
     await beginTest()
   })
   afterEach(fixture.rollback)
@@ -925,6 +927,35 @@ describe('status lifecycle (Postgres)', () => {
         .from(events)
         .where(and(eq(events.type, 'status.maintenance_started'), eq(events.entityId, window.id)))
       expect(started.payload).toMatchObject({ title: 'Renamed' })
+    })
+
+    it('a window whose transition event alone cannot be written is not created', async () => {
+      const db = await service('Database')
+      // The publish event is written first and succeeds; the transition event
+      // fails, and the whole create rolls back with it.
+      outbox.okFirst = 1
+      outbox.fail = true
+      await expect(
+        createIncident(
+          {
+            kind: 'maintenance',
+            title: 'Rolled back',
+            status: 'in_progress',
+            body: 'Already running.',
+            affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+            scheduledStartAt: new Date(Date.now() - HOUR),
+            scheduledEndAt: new Date(Date.now() + HOUR),
+          },
+          { principalId: author }
+        )
+      ).rejects.toThrow('outbox unavailable')
+      expect(
+        await testDb.select().from(statusIncidents).where(eq(statusIncidents.title, 'Rolled back'))
+      ).toEqual([])
+      expect(await statusOf(db)).toBe('operational')
+      expect(
+        await testDb.select().from(events).where(eq(events.type, 'status.maintenance_scheduled'))
+      ).toEqual([])
     })
 
     it('a window created under way with subscriber email on writes scheduled before started', async () => {

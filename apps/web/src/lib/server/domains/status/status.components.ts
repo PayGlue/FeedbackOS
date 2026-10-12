@@ -22,7 +22,6 @@ import type { Database, Transaction } from '@/lib/server/db'
 import type { StatusComponentId, StatusComponentGroupId, StatusIncidentId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { assertTrimmedName, nextPosition, positionCaseSql } from '@/lib/server/utils'
-import { logger } from '@/lib/server/logger'
 import type { EventActor } from '@/lib/server/events/dispatch'
 import type { EventData } from '@/lib/server/events/types'
 import type {
@@ -35,8 +34,6 @@ import type {
   StatusComponentGroupWithComponents,
   StatusComponentRow,
 } from './status.types'
-
-const log = logger.child({ component: 'status-components' })
 
 /** The global handle, or a transaction a lifecycle write is running in. */
 type Executor = Database | Transaction
