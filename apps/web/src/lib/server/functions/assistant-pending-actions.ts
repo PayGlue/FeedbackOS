@@ -31,7 +31,10 @@ const PendingActionInput = z.object({ pendingActionId: z.string() })
 // owned by another approval-flow change and shouldn't gain new exports for
 // this) — the reshape is a few fields, so a local copy is cheaper than
 // coupling the two files.
-function toDTO(row: AssistantPendingAction): AssistantPendingActionDTO {
+function toDTO(
+  row: AssistantPendingAction,
+  approval: Pick<AssistantPendingActionDTO, 'argsDigest' | 'risk'>
+): AssistantPendingActionDTO {
   return {
     id: row.id,
     conversationId: row.conversationId,
@@ -49,6 +52,7 @@ function toDTO(row: AssistantPendingAction): AssistantPendingActionDTO {
     decidedAt: row.decidedAt?.toISOString() ?? null,
     executedAt: row.executedAt?.toISOString() ?? null,
     result: (row.result as AssistantPendingActionDTO['result']) ?? null,
+    ...approval,
   }
 }
 
@@ -68,5 +72,6 @@ export const getAssistantPendingActionFn = createServerFn({ method: 'GET' })
     } else if (row.ticketId) {
       await assertTicketVisible(row.ticketId, actor)
     }
-    return toDTO(row)
+    const { approvalFields } = await import('@/lib/server/domains/assistant/approvals.service')
+    return toDTO(row, approvalFields(row))
   })

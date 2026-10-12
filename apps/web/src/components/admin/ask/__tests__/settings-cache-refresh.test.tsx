@@ -117,6 +117,7 @@ async function mount(selected: SettingsChange[]) {
       id: data.pendingActionId,
       status: receipt ? 'executed' : 'proposed',
       args: proposed,
+      argsDigest: 'digest-1',
       result: receipt,
     }
   })
@@ -125,6 +126,7 @@ async function mount(selected: SettingsChange[]) {
       expect(data).toEqual({
         pendingActionId: 'pending-settings',
         selectedChangeIds: selected.map((change) => change.id),
+        contentHash: 'digest-1',
       })
       stage = 'applied'
       receipt = {
@@ -180,6 +182,7 @@ describe('settings proposal cache refresh', () => {
         expect(data).toEqual({
           pendingActionId: 'pending-settings',
           selectedChangeIds: selected.map((change) => change.id),
+          contentHash: 'digest-1',
         })
         throw { code: 'SETTINGS_NAME_MANAGED' }
       }

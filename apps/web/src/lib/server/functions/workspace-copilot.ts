@@ -45,7 +45,12 @@ export const getWorkspaceCopilotThreadFn = createServerFn({ method: 'GET' })
 
 export const applyWorkspaceSettingsProposalFn = createServerFn({ method: 'POST' })
   .validator(
-    z.object({ pendingActionId: z.string(), selectedChangeIds: z.array(z.string()).min(1).max(80) })
+    z.object({
+      pendingActionId: z.string(),
+      selectedChangeIds: z.array(z.string()).min(1).max(80),
+      /** The digest of the request the person was shown; the decision binds to it. */
+      contentHash: z.string().min(1).max(128),
+    })
   )
   .handler(async ({ data }) => {
     const auth = await requireAuth(),
@@ -55,7 +60,8 @@ export const applyWorkspaceSettingsProposalFn = createServerFn({ method: 'POST' 
     const row = await applyWorkspaceSettingsProposal(
       actor,
       data.pendingActionId as import('@quackback/ids').AssistantPendingActionId,
-      data.selectedChangeIds
+      data.selectedChangeIds,
+      { contentHash: data.contentHash, via: 'app' }
     )
     return {
       id: row.id,

@@ -84,6 +84,7 @@ Edges (132):
 - assistant -> post-tags
 - assistant -> posts
 - assistant -> principals
+- assistant -> segments
 - assistant -> settings
 - assistant -> status
 - assistant -> statuses

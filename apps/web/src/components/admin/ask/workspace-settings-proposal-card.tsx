@@ -361,6 +361,14 @@ export function WorkspaceSettingsProposalCard({ action }: { action: CopilotPropo
         id: 'ask.settings.changed',
         defaultMessage: 'These settings changed. Ask again.',
       },
+      APPROVAL_CONTENT_CHANGED: {
+        id: 'ask.settings.changed',
+        defaultMessage: 'These settings changed. Ask Copilot again.',
+      },
+      APPROVAL_PERMISSION_REQUIRED: {
+        id: 'ask.settings.permissionRequired',
+        defaultMessage: 'Ask a workspace owner to make this change.',
+      },
       SETTINGS_UNDO_CONFLICT: {
         id: 'ask.settings.undoConflict',
         defaultMessage: 'These settings changed since Apply. Undo is unavailable.',
@@ -398,7 +406,14 @@ export function WorkspaceSettingsProposalCard({ action }: { action: CopilotPropo
   }
   const apply = useMutation({
     mutationFn: (selectedChangeIds: string[]) =>
-      applyWorkspaceSettingsProposalFn({ data: { pendingActionId: action.id, selectedChangeIds } }),
+      applyWorkspaceSettingsProposalFn({
+        data: {
+          pendingActionId: action.id,
+          selectedChangeIds,
+          // The decision names the exact request this card shows.
+          contentHash: detail.data?.argsDigest ?? '',
+        },
+      }),
     onError,
     onSuccess,
   })

@@ -222,7 +222,9 @@ describe('approveAssistantActionFn', () => {
     expect(hoisted.decidePendingAction).toHaveBeenCalledWith(
       'assistant_action_1',
       'approved',
-      'principal_agent1'
+      'principal_agent1',
+      undefined,
+      expect.objectContaining({ via: 'app', contentHash: expect.any(String) })
     )
     expect(hoisted.executeApprovedPendingAction).toHaveBeenCalledWith(
       CLOSE_SPEC,
@@ -463,7 +465,9 @@ describe('rejectAssistantActionFn', () => {
     expect(hoisted.decidePendingAction).toHaveBeenCalledWith(
       'assistant_action_1',
       'rejected',
-      'principal_agent1'
+      'principal_agent1',
+      undefined,
+      expect.objectContaining({ via: 'app', contentHash: expect.any(String) })
     )
     expect(hoisted.requireAuth).toHaveBeenCalledWith()
     expect(hoisted.resolveToolSpecs).not.toHaveBeenCalled()

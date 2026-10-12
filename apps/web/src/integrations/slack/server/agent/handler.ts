@@ -189,7 +189,8 @@ export async function handleSlackDecision(
         action.action_id === 'qb_action_approve' ? 'approved' : 'rejected',
         person.id,
         actor,
-        pending.workspaceThreadKey
+        pending.workspaceThreadKey,
+        { via: 'slack' }
       )
     } catch (error) {
       log.warn(

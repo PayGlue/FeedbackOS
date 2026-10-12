@@ -47,6 +47,8 @@ function pendingRow(overrides: Partial<AssistantPendingActionDTO> = {}): Assista
     decidedAt: null,
     executedAt: null,
     result: null,
+    argsDigest: 'digest-1',
+    risk: 'medium',
     ...overrides,
   }
 }

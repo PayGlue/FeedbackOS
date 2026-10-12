@@ -95,7 +95,8 @@ it('executes through the shared approval service with the member actor', async (
     'approved',
     member.id,
     actor,
-    JSON.stringify(['T', 'C', '1'])
+    JSON.stringify(['T', 'C', '1']),
+    { via: 'slack' }
   )
   expect(client.chat.update).toHaveBeenCalled()
 })
