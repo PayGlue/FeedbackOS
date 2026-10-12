@@ -15,7 +15,7 @@ export function ApprovalConfirmPage() {
   const intl = useIntl()
   const queryClient = useQueryClient()
   const [decidedId, setDecidedId] = useState<string | null>(null)
-  const { id, d } = route.useSearch()
+  const { id, d, source } = route.useSearch()
   const query = useQuery({ ...approvalQueries.detail(id ?? ''), enabled: !!id && !!d })
   const approval = query.data
   return (
@@ -43,7 +43,7 @@ export function ApprovalConfirmPage() {
       ) : (
         <ApprovalDetail
           approval={approval}
-          source="email"
+          source={source}
           decidedHere={decidedId === approval.id}
           onChange={(next, decided) => {
             queryClient.setQueryData(approvalKeys.detail(next.id), next)

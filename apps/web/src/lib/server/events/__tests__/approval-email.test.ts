@@ -68,7 +68,8 @@ describe('approval email recipients', () => {
       target: { email: 'one@acme.test' },
       config: {
         summary: 'Change branding',
-        reviewUrl: 'https://acme.test/admin/approvals/confirm?id=assistant_action_1&d=digest',
+        reviewUrl:
+          'https://acme.test/admin/approvals/confirm?id=assistant_action_1&d=digest&source=email',
       },
       deliveryKey: 'approval:assistant_action_1:principal_1:email',
     })

@@ -27,7 +27,7 @@ export async function getApprovalEmailTargets(
     batchGetNotificationPreferences(ids),
     digestForDisplay(row),
   ])
-  const query = new URLSearchParams({ id: row.id, d: digest })
+  const query = new URLSearchParams({ id: row.id, d: digest, source: 'email' })
   return ids.flatMap((id) => {
     const address = addresses.get(id)
     const prefs = preferences.get(id)

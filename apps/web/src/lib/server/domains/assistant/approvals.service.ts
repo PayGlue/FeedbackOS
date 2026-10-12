@@ -438,6 +438,7 @@ export async function approveApproval(
   return decideAssistantAction(id, 'approved', actor.principalId!, actor, undefined, {
     contentHash: decision.contentHash,
     via: decision.via,
+    freshSignIn: decision.freshSignIn,
   })
 }
 
