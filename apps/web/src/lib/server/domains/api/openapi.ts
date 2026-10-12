@@ -166,8 +166,16 @@ Example: \`post_01h455vb4pex5vsknk084sn02q\`
         sessionCookie: {
           type: 'apiKey',
           in: 'cookie',
+          name: '__Secure-better-auth.session_token',
+          description:
+            'Signed-in browser session on an HTTPS deployment. Used by the mention lookup endpoints.',
+        },
+        sessionCookieHttp: {
+          type: 'apiKey',
+          in: 'cookie',
           name: 'better-auth.session_token',
-          description: 'Signed-in browser session. Used by the mention lookup endpoints.',
+          description:
+            'Signed-in browser session on a plain HTTP deployment, such as local development.',
         },
         adminToken: {
           type: 'http',

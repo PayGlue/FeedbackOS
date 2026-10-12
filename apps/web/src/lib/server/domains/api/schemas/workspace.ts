@@ -10,7 +10,11 @@ import { z } from 'zod'
 import { registerPath, TypeIdSchema } from '../openapi'
 import { TimestampSchema } from './common'
 
-const sessionSecurity = [{ sessionCookie: [] }]
+// Either cookie name, depending on whether the deployment serves HTTPS.
+const sessionSecurity: Array<Record<string, string[]>> = [
+  { sessionCookie: [] },
+  { sessionCookieHttp: [] },
+]
 
 const MentionSuggestionSchema = z.object({
   principalId: TypeIdSchema,
