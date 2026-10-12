@@ -38,10 +38,6 @@ function stageOf(approval: ApprovalView, decidedHere: boolean, rejecting: boolea
   return approval.undone ? 'undone' : 'applied'
 }
 
-function refusalCode(error: unknown): string {
-  return error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
-}
-
 /** The area a request acts on: the settings it changes, or its conversation or ticket. */
 function useAreaLabel(approval: ApprovalView): string | null {
   const intl = useIntl()
@@ -96,18 +92,24 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
     onChange(fresh, false)
   }
 
-  /** What changed elsewhere once a request was decided: the rail, Home and the decided list. */
+  /**
+   * Show the outcome, then refresh what it changed elsewhere: the rail, Home,
+   * the decided list and any settings it wrote. The decision already stands,
+   * so a refresh that fails is left to the next read.
+   */
   const settle = async (settled: ApprovalView) => {
     onChange(settled, true)
-    const areas = settingsAreasOf(settled)
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: approvalKeys.waiting() }),
-      queryClient.invalidateQueries({ queryKey: approvalKeys.list('decided') }),
-      settled.status === 'executed' && areas.length > 0
-        ? refreshSettingsAreaQueries(queryClient, areas)
-        : null,
-    ])
-    if (settled.status === 'executed' && areas.length > 0) await router.invalidate()
+    const areas = settled.status === 'executed' ? settingsAreasOf(settled) : []
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: approvalKeys.waiting() }),
+        queryClient.invalidateQueries({ queryKey: approvalKeys.list('decided') }),
+        areas.length > 0 ? refreshSettingsAreaQueries(queryClient, areas) : null,
+      ])
+      if (areas.length > 0) await router.invalidate()
+    } catch {
+      // Left to the next read.
+    }
   }
 
   /**
@@ -167,8 +169,8 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
         staleTime: 0,
       })
       await settle(fresh)
-    } catch (failure) {
-      setError(intl.formatMessage(refusalMessage(refusalCode(failure))))
+    } catch {
+      setError(intl.formatMessage(approvalMessages.errorFailed))
     } finally {
       setBusy(false)
     }
