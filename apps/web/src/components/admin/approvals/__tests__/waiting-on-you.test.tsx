@@ -95,4 +95,15 @@ describe('WaitingOnYou', () => {
     expect(first).toHaveTextContent('Zapier key for James Morton · 4m')
     expect(within(rows[1]!).getByRole('link')).toHaveTextContent('Zapier key · 4m')
   })
+
+  it('gives a phone row to the title, with who asked on a line below it', () => {
+    renderHome({ count: 1, latest: [waitingRequest('assistant_action_1')] })
+    const title = screen.getByText('Request assistant_action_1')
+    const meta = screen.getByText('Zapier key for James Morton · 4m')
+    // Stacked below the small breakpoint, side by side from it.
+    expect(title.parentElement).toBe(meta.parentElement)
+    expect(title.parentElement!.className.split(' ')).toContain('sm:flex')
+    expect(meta.className.split(' ')).toContain('block')
+    expect(meta.className).not.toMatch(/(^| )max-w-/)
+  })
 })

@@ -39,12 +39,15 @@ export function WaitingOnYou() {
             <Link
               to="/admin/approvals"
               search={{ id: approval.id }}
-              className="-mx-2.5 flex h-[42px] items-center gap-3 rounded-lg px-2.5 text-sm text-foreground/90 transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="-mx-2.5 flex min-h-[42px] items-center gap-3 rounded-lg px-2.5 py-1.5 text-sm text-foreground/90 transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ApprovalRiskChip risk={approval.risk} />
-              <span className="min-w-0 flex-1 truncate">{approval.summary}</span>
-              <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">
-                {askedBy(approval, intl)} · {getShortTimeAgo(approval.proposedAt, intl.locale)}
+              {/* The title comes first: on a phone who asked moves to a line below it. */}
+              <span className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-3">
+                <span className="block truncate sm:min-w-0 sm:flex-1">{approval.summary}</span>
+                <span className="block truncate text-xs text-muted-foreground sm:max-w-[40%] sm:shrink-0">
+                  {askedBy(approval, intl)} · {getShortTimeAgo(approval.proposedAt, intl.locale)}
+                </span>
               </span>
             </Link>
           </li>
