@@ -15,8 +15,10 @@ import {
   conversations,
   assistantPendingActions,
   inAppNotifications,
+  roles,
+  principalRoleAssignments,
 } from '@/lib/server/db'
-import { ALL_PERMISSIONS, PERMISSIONS } from '@/lib/shared/permissions'
+import { ALL_PERMISSIONS, PERMISSIONS, SYSTEM_ROLE_PERMISSIONS } from '@/lib/shared/permissions'
 import { permissionsForLegacyRole } from '@/lib/server/policy/permissions'
 import type { Actor } from '@/lib/server/policy/types'
 
@@ -520,6 +522,38 @@ describe('notifications', () => {
 })
 
 describe('the approvals queue', () => {
+  it('lists a conversation request for everyone it notifies, assigned or not', async () => {
+    // A teammate who may see every conversation (conversation.view) but has
+    // none assigned: the rule a decision checks for one conversation.
+    const contributor = await seedPerson('member')
+    const [role] = await testDb.select().from(roles).where(eq(roles.key, 'contributor'))
+    await testDb
+      .insert(principalRoleAssignments)
+      .values({ principalId: contributor.principalId!, roleId: role!.id })
+    const scoped: Actor = {
+      ...contributor,
+      permissions: new Set(SYSTEM_ROLE_PERMISSIONS.contributor),
+    }
+    expect(scoped.permissions!.has(PERMISSIONS.CONVERSATION_VIEW_ALL)).toBe(false)
+    const keyPrincipal = await seedServicePrincipal()
+    const [conversation] = await testDb
+      .insert(conversations)
+      .values({ visitorPrincipalId: keyPrincipal, channel: 'messenger', createdAt: new Date() })
+      .returning()
+    const pending = await proposePendingAction({
+      conversationId: conversation!.id,
+      toolName: 'end_conversation',
+      args: {},
+      summary: 'Close the conversation',
+    })
+    expect(await listEligibleDeciders(await rowOf(pending.id))).toContain(contributor.principalId)
+    expect((await listApprovalsForViewer(scoped)).map((row) => row.id)).toContain(pending.id)
+    expect(await getApprovalForViewer(scoped, pending.id)).toMatchObject({
+      id: pending.id,
+      canDecide: true,
+    })
+  })
+
   it('lists only what the viewer may decide, across parents', async () => {
     const home = await homeProposal()
     const keyPrincipal = await seedServicePrincipal()

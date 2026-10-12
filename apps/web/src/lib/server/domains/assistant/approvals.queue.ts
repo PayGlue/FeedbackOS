@@ -4,8 +4,8 @@
  * request with its diff. The reads behind the Approvals page and the REST and
  * MCP approval reads.
  *
- * The parent each row hangs off is scoped in SQL with the same filters every
- * inbox read uses; whether the viewer holds every permission the operation
+ * The parent each row hangs off is scoped in SQL by the same rule a decision
+ * checks for that one item; whether the viewer holds every permission the operation
  * needs is read per row from the operation itself. A decision checks all of
  * it again, so the queue only decides what is shown, never what is allowed.
  */
@@ -18,7 +18,7 @@ import {
   desc,
   exists,
   isNull,
-  conversations,
+  isNotNull,
   tickets,
   assistantPendingActions,
   type ApprovalDecisionChannel,
@@ -26,11 +26,10 @@ import {
   type ApprovalRisk,
 } from '@/lib/server/db'
 import type { AssistantPendingActionId } from '@quackback/ids'
-import { conversationFilter } from '@/lib/server/policy/conversations'
 import { ticketFilter } from '@/lib/server/policy/tickets'
 import { can } from '@/lib/server/policy/authorize'
 import { isTeamActor, type Actor } from '@/lib/server/policy/types'
-import type { PermissionKey } from '@/lib/shared/permissions'
+import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
 import type { JsonValue } from '@/lib/shared/json'
 import { settingsProposalSchema } from '@/lib/shared/assistant/settings-proposals'
 import { SETTINGS_PROPOSAL_TOOL } from './approval-policy'
@@ -160,21 +159,20 @@ async function toView(row: PendingActionRow, canDecide: boolean): Promise<Approv
   }
 }
 
-/** Rows whose parent this viewer may see; a request with no item is open to the permission check. */
+/**
+ * Rows whose parent this viewer may see, by the same rule a decision checks
+ * for one item, so everyone a request is brought to can find it here. A
+ * conversation is visible to any teammate who may view conversations
+ * (`canViewConversation`), assigned or not; a ticket by `ticketFilter`, as
+ * `assertTicketVisible` reads it. A request with no item is left to the
+ * permission check.
+ */
 function parentVisible(actor: Actor) {
   return or(
     and(isNull(assistantPendingActions.conversationId), isNull(assistantPendingActions.ticketId)),
-    exists(
-      db
-        .select({ id: conversations.id })
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.id, assistantPendingActions.conversationId),
-            conversationFilter(actor)
-          )
-        )
-    ),
+    can(actor, PERMISSIONS.CONVERSATION_VIEW)
+      ? isNotNull(assistantPendingActions.conversationId)
+      : undefined,
     exists(
       db
         .select({ id: tickets.id })
