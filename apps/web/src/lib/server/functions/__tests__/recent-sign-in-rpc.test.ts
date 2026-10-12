@@ -105,6 +105,10 @@ describe('recent sign-in through the client path', () => {
     expect(isRecentSignInRequired(result)).toBe(true)
   })
 
+  it('refuses to start the harness a second time in one process', async () => {
+    await expect(createServerFnRpc()).rejects.toThrow(/once per process/)
+  })
+
   it('loses the code when the gate error is thrown instead of returned', async () => {
     hoisted.session.mockResolvedValue(signedIn(minutesAgo(11)))
     const error = await approveThrowing({ data: { changeId: 'change_1' } }).then(

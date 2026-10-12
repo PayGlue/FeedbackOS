@@ -5,11 +5,11 @@
  * browser keeps `.handler(createClientRpc(id))`, which posts to
  * `/_serverFn/<id>`, and the server keeps
  * `.handler(createServerRpc(meta, ...), impl)`, which the Start request
- * handler looks up by id. `define` builds both halves the same way, and `call`
- * runs the browser half with its fetch pointed at the real
- * `createStartHandler`, so a result crosses the real request middleware
- * (`start.ts`: request context, workspace, CSRF), the real function middleware,
- * the real serializer and the real client fetcher before the test sees it.
+ * handler looks up by id. `define` builds both halves the same way and returns
+ * the browser half, whose fetch goes to the real `createStartHandler`, so a
+ * result crosses the real request middleware (`start.ts`: request context,
+ * workspace, CSRF), the real function middleware, the real serializer and the
+ * real client fetcher before the test sees it.
  *
  * The Start handler finds server functions and the app's start instance
  * through package-internal imports the Vite plugin normally provides. Outside
@@ -17,13 +17,18 @@
  * resolve hooks that point them at this harness, and sets the server-function
  * base path the handler reads as it loads. Import it before anything loads
  * `@tanstack/react-start/server`.
+ *
+ * Node loads each stand-in once per process, and the start-entry stand-in reads
+ * the start instance as it loads, so the handler can be started once per
+ * process (each test file runs in its own).
  */
-import { register } from 'node:module'
+import { registerHooks } from 'node:module'
 import { vi } from 'vitest'
 
 interface HarnessGlobals {
   __qbRpcServerFns?: Record<string, unknown>
   __qbRpcStartInstance?: unknown
+  __qbRpcStarted?: boolean
 }
 
 const globals = globalThis as typeof globalThis & HarnessGlobals
@@ -31,28 +36,24 @@ globals.__qbRpcServerFns ??= {}
 
 const moduleSource = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`
 
-const RESOLVE_HOOKS = `
-const stand_ins = {
-  '#tanstack-start-server-fn-resolver': ${JSON.stringify(
-    moduleSource(
-      'export async function getServerFnById(id) { return globalThis.__qbRpcServerFns[id] }'
-    )
-  )},
-  '#tanstack-start-entry': ${JSON.stringify(
-    moduleSource('export const startInstance = globalThis.__qbRpcStartInstance')
-  )},
-  '#tanstack-router-entry': ${JSON.stringify(
-    moduleSource(
-      'export function getRouter() { throw new Error("server functions do not render a route") }'
-    )
-  )},
+const STAND_INS: Record<string, string> = {
+  '#tanstack-start-server-fn-resolver': moduleSource(
+    'export async function getServerFnById(id) { return globalThis.__qbRpcServerFns[id] }'
+  ),
+  '#tanstack-start-entry': moduleSource(
+    'export const startInstance = globalThis.__qbRpcStartInstance'
+  ),
+  '#tanstack-router-entry': moduleSource(
+    'export function getRouter() { throw new Error("server functions do not render a route") }'
+  ),
 }
-export async function resolve(specifier, context, next) {
-  const url = stand_ins[specifier]
-  return url ? { url, shortCircuit: true } : next(specifier, context)
-}
-`
-register(moduleSource(RESOLVE_HOOKS))
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    const url = STAND_INS[specifier]
+    return url ? { url, shortCircuit: true } : nextResolve(specifier, context)
+  },
+})
 
 // The Start handler reads the server-function base path once, as it loads.
 process.env.TSS_SERVER_FN_BASE ??= '/_serverFn/'
@@ -80,6 +81,10 @@ export interface ServerFnRpc {
 
 /** Starts the app's real Start handler and returns a way to define and call server functions. */
 export async function createServerFnRpc(): Promise<ServerFnRpc> {
+  if (globals.__qbRpcStarted) {
+    throw new Error('createServerFnRpc() runs once per process: create it once in beforeAll')
+  }
+  globals.__qbRpcStarted = true
   // The workspace middleware reads the app config, which needs these.
   vi.stubEnv('BASE_URL', ORIGIN)
   vi.stubEnv('SECRET_KEY', 'test-secret-key-for-the-server-fn-harness-0001')
