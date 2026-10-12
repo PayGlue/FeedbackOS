@@ -16,6 +16,8 @@ import { settingsAreaLabel } from '@/components/admin/ask/workspace-settings-pro
 import { refreshSettingsAreaQueries } from '@/components/admin/ask/settings-proposal-cache'
 import { getTimeAgo } from '@/components/ui/time-ago'
 import { Button } from '@/components/ui/button'
+import { SignInAgainDialog } from '@/components/auth/sign-in-again-dialog'
+import { useSignInAgain } from '@/lib/client/hooks/use-sign-in-again'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { SettingsArea } from '@/lib/shared/assistant/settings-proposals'
@@ -128,15 +130,24 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
     }
   }
 
-  /**
-   * A high-risk request needs a sign-in made just before the decision. Until
-   * the person can sign in again from here, the page says that is what it
-   * takes.
-   */
-  const requestSignInAgain = () => setError(intl.formatMessage(approvalMessages.errorSignIn))
+  // A high-risk request needs a sign-in made just before the decision. The
+  // refusal opens the dialog, and the approve is sent again once, after it.
+  const approveAction = `approve:${approval.id}:${approval.contentHash}`
+  const resumedRef = useRef<string | null>(null)
+  const approveRef = useRef<() => Promise<void>>(async () => undefined)
+  const signIn = useSignInAgain({
+    onSignedIn: (action) => {
+      if (action !== approveAction || resumedRef.current === action) return
+      resumedRef.current = action
+      void approveRef.current()
+    },
+  })
 
   const refused = async (code: string) => {
-    if (code === RECENT_SIGN_IN_REQUIRED) return requestSignInAgain()
+    if (code === RECENT_SIGN_IN_REQUIRED) {
+      resumedRef.current = null
+      return signIn.request(approveAction)
+    }
     setError(intl.formatMessage(refusalMessage(code)))
     if (code === 'APPROVAL_CONTENT_CHANGED' || code === 'PENDING_ACTION_NOT_DECIDABLE')
       await refresh().catch(() => undefined)
@@ -164,6 +175,8 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
     decide(() =>
       approveApprovalFn({ data: { approvalId: approval.id, contentHash: approval.contentHash } })
     )
+
+  approveRef.current = approve
 
   const reject = () =>
     decide(() =>
@@ -355,6 +368,8 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
           )}
         </div>
       )}
+
+      <SignInAgainDialog {...signIn.dialog} />
 
       {error && (
         <p role="alert" className="mt-3 text-sm text-destructive">

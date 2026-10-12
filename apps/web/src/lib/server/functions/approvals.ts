@@ -15,7 +15,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { isValidTypeId, type AssistantPendingActionId } from '@quackback/ids'
 import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
 import { approvalRefusal, type ApprovalRefusal } from '@/lib/shared/approval-refusal'
-import { requireAuth, policyActorFromAuth, type AuthContext } from './auth-helpers'
+import { requireAuth, policyActorFromAuth } from './auth-helpers'
 
 const ApprovalInput = z.object({ approvalId: z.string() })
 /** A decision always names the digest of the request it was shown. */
@@ -23,16 +23,6 @@ const DecisionInput = ApprovalInput.extend({ contentHash: z.string().min(1).max(
 
 /** A decision's outcome: the request as it now stands, or why it was refused. */
 export type ApprovalDecisionResult = { ok: true; approval: ApprovalView } | ApprovalRefusal
-
-/**
- * Whether the person signed in again just before this decision, which a
- * high-risk request needs. Only the server answers this, never the request.
- * A session carries no such proof yet, so a high-risk request is refused
- * with RECENT_SIGN_IN_REQUIRED and the page asks the person to sign in again.
- */
-async function hasRecentSignIn(_auth: AuthContext): Promise<boolean> {
-  return false
-}
 
 export const listApprovalsFn = createServerFn({ method: 'GET' })
   .validator(
@@ -75,6 +65,9 @@ export const approveApprovalFn = createServerFn({ method: 'POST' })
     const id = data.approvalId as AssistantPendingActionId
     const { approveApproval } = await import('@/lib/server/domains/assistant/approvals.service')
     const { approvalViewOf } = await import('@/lib/server/domains/assistant/approvals.queue')
+    // Only the server answers whether the person signed in just now, from
+    // their own session; a high-risk request is refused without it.
+    const { hasRecentSignIn } = await import('@/lib/server/auth/recent-sign-in')
     let settled
     try {
       settled = await approveApproval(actor, id, {

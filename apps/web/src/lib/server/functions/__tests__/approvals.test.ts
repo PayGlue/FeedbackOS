@@ -34,11 +34,15 @@ const hoisted = vi.hoisted(() => ({
   listApprovalsForViewer: vi.fn(),
   listDecidedApprovalsForViewer: vi.fn(),
   pageApprovalsForViewer: vi.fn(),
+  hasRecentSignIn: vi.fn(),
 }))
 
 vi.mock('@/lib/server/functions/auth-helpers', () => ({
   requireAuth: hoisted.requireAuth,
   policyActorFromAuth: hoisted.policyActorFromAuth,
+}))
+vi.mock('@/lib/server/auth/recent-sign-in', () => ({
+  hasRecentSignIn: hoisted.hasRecentSignIn,
 }))
 vi.mock('@/lib/server/domains/assistant/approvals.service', () => ({
   approveApproval: hoisted.approveApproval,
@@ -62,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   hoisted.requireAuth.mockResolvedValue({ principal: { id: 'principal_ada' } })
   hoisted.policyActorFromAuth.mockResolvedValue(actor)
+  hoisted.hasRecentSignIn.mockResolvedValue(false)
   hoisted.getApprovalForViewer.mockResolvedValue({ id: 'assistant_action_1', status: 'executed' })
   hoisted.approvalViewOf.mockImplementation(async (row: { id: string; status: string }) => ({
     ...row,
@@ -127,6 +132,16 @@ describe('approveApprovalFn', () => {
       code: 'RECENT_SIGN_IN_REQUIRED',
       message: 'Sign in again to decide this request.',
     })
+  })
+
+  it('passes a recent sign-in the server confirmed for the caller', async () => {
+    const auth = { principal: { id: 'principal_ada' }, user: { id: 'user_ada' } }
+    hoisted.requireAuth.mockResolvedValue(auth)
+    hoisted.hasRecentSignIn.mockResolvedValue(true)
+    hoisted.approveApproval.mockResolvedValue({ id: 'assistant_action_1', status: 'executed' })
+    await approveApprovalFn({ data: { approvalId: 'assistant_action_1', contentHash: 'd' } })
+    expect(hoisted.hasRecentSignIn).toHaveBeenCalledWith(auth)
+    expect(hoisted.approveApproval.mock.calls[0]![2]).toMatchObject({ freshSignIn: true })
   })
 
   it('never takes a recent sign-in from the request', async () => {

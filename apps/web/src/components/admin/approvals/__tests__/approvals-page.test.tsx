@@ -22,6 +22,8 @@ const state = vi.hoisted(() => ({
   waitingCount: null as number | null,
   pageSize: 50,
   bellRead: vi.fn(),
+  signInRequest: vi.fn(),
+  onSignedIn: null as null | ((action: string) => void),
 }))
 
 // The URL as a small store: navigating changes the search the page reads.
@@ -66,6 +68,16 @@ vi.mock('@/lib/server/functions/approvals', () => ({
   approveApprovalFn: (args: unknown) => state.approve(args),
   rejectApprovalFn: (args: unknown) => state.reject(args),
   markApprovalBellReadFn: () => state.bellRead(),
+}))
+// The real hook and dialog are covered on their own; here the page's use of them.
+vi.mock('@/lib/client/hooks/use-sign-in-again', () => ({
+  useSignInAgain: (options: { onSignedIn: (action: string) => void }) => {
+    state.onSignedIn = options.onSignedIn
+    return { request: state.signInRequest, dialog: { open: false } }
+  },
+}))
+vi.mock('@/components/auth/sign-in-again-dialog', () => ({
+  SignInAgainDialog: () => <div data-testid="sign-in-again-dialog" />,
 }))
 vi.mock('@/lib/server/functions/workspace-copilot', () => ({
   undoWorkspaceSettingsProposalFn: (args: unknown) => state.undo(args),
@@ -324,17 +336,56 @@ describe('ApprovalsPage', () => {
     )
   })
 
-  it('keeps Approve on a high-risk request and asks for a recent sign-in when refused', async () => {
+  it('opens the sign-in dialog when a high-risk approve is refused, then approves once after it', async () => {
     state.waiting = [view({ risk: 'high', needsFreshSignIn: true })]
-    state.approve.mockResolvedValue({
+    state.approve.mockResolvedValueOnce({
       ok: false,
       code: 'RECENT_SIGN_IN_REQUIRED',
       message: 'Sign in again to decide this request.',
     })
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Sign in again to approve')
+    await waitFor(() =>
+      expect(state.signInRequest).toHaveBeenCalledWith('approve:assistant_action_01:digest-1')
+    )
+    expect(state.approve).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+
+    state.approve.mockResolvedValue({ ok: true, approval: view({ status: 'executed' }) })
+    act(() => state.onSignedIn!('approve:assistant_action_01:digest-1'))
+    await waitFor(() => expect(state.approve).toHaveBeenCalledTimes(2))
+    expect(state.approve).toHaveBeenLastCalledWith({
+      data: { approvalId: 'assistant_action_01', contentHash: 'digest-1' },
+    })
+    // A second signal for the same sign-in does not approve again.
+    act(() => state.onSignedIn!('approve:assistant_action_01:digest-1'))
+    expect(state.approve).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores a resumed action meant for another request', async () => {
+    state.waiting = [view({ risk: 'high', needsFreshSignIn: true })]
+    renderPage()
+    await screen.findByRole('button', { name: 'Approve' })
+    act(() => state.onSignedIn!('approve:assistant_action_99'))
+    expect(state.approve).not.toHaveBeenCalled()
+  })
+
+  it('does not resume approving when the content changed during sign-in', async () => {
+    state.waiting = [view({ risk: 'high', contentHash: 'digest-2' })]
+    renderPage()
+    await screen.findByRole('button', { name: 'Approve' })
+    act(() => state.onSignedIn!('approve:assistant_action_01:digest-1'))
+    expect(state.approve).not.toHaveBeenCalled()
+  })
+
+  it('never asks for a sign-in to reject', async () => {
+    state.waiting = [view({ risk: 'high', needsFreshSignIn: true })]
+    state.reject.mockResolvedValue({ ok: true, approval: view({ status: 'rejected' }) })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    await waitFor(() => expect(state.reject).toHaveBeenCalled())
+    expect(state.signInRequest).not.toHaveBeenCalled()
   })
 
   it('says how a decided request ended when it is opened from Decided', async () => {
