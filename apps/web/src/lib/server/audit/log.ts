@@ -163,6 +163,11 @@ export type AuditEventType =
   | 'restore.side_effects_settled'
   // Labs: visibility or enablement changed for a registered experiment
   | 'labs.experiment.changed'
+  // Boundary audit: one row per REST write made with an API key, and one per
+  // MCP tool call that is not read-only. Method or tool, route pattern,
+  // target and outcome only; never a request body or a credential.
+  | 'api.write'
+  | 'mcp.tool_call'
 
 export type AuditEventOutcome = 'success' | 'failure'
 
