@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
 
 const state = vi.hoisted(() => ({
-  search: {} as { view?: 'decided'; id?: string; d?: string },
+  search: {} as { view?: 'decided'; id?: string; d?: string; source?: 'email' | 'app' },
   navigate: vi.fn(),
   waiting: [] as unknown[],
   decided: [] as unknown[],
