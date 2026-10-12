@@ -4,8 +4,8 @@ The experimental `ownAgent` feature lets one external AI answer Messenger
 conversations using its own service identity. Enable **Your AI agent** in
 Settings > Labs, register it in **Agents & API > Your AI**, then choose it in
 **Support > Who answers**. Registration and credential changes require an admin
-with API credential permission and a recent sign-in. The feature is off by
-default.
+with API credential permission and a recent sign-in. Changing who answers also
+requires a recent admin sign-in. The feature is off by default.
 
 Self-hosted installations can opt in without a plan check. Hosted installations
 also require the control plane to project `entitlements.ownAgent: true`. The

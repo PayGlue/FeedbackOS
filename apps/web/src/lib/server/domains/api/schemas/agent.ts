@@ -17,7 +17,7 @@ import {
   asSchema,
 } from '../openapi'
 import { TimestampSchema, UnauthorizedErrorSchema, ValidationErrorSchema } from './common'
-import { ASSISTANT_MODEL_HANDOFF_REASONS } from '@quackback/db'
+import { ASSISTANT_MODEL_HANDOFF_REASONS } from '@/lib/server/db'
 import { AGENT_ACTIVITY_STATUSES, AGENT_MAX_REPLY_LENGTH } from '@/lib/shared/support-agents'
 
 const TAG = 'AI agent'

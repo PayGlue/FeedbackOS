@@ -2082,11 +2082,6 @@ export async function markConversationUnreadFromMessage(
 
 // -------------------------------------------------------------- assistant (Quinn) ---
 
-/** Actor for an assistant-authored write: the system actor, carrying Quinn's principal id. */
-function assistantActor(principalId: PrincipalId): Actor {
-  return { ...systemActor(), principalId }
-}
-
 /**
  * Cheap synchronous gate before spending on an assistant turn: only the widget
  * channel triggers Quinn today (email + other sources join later phases), and a

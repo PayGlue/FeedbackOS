@@ -30,6 +30,8 @@ import { loadRequestedAgentTurnContext } from '../agent-context'
 
 vi.mock('@/lib/server/db', async (original) => {
   const actual = await original<typeof import('@/lib/server/db')>()
+  // A separate test pool must bypass the process-global request proxy.
+  // eslint-disable-next-line no-restricted-imports
   const { createDb } = await import('@quackback/db/client')
   // An independent real pool lets transactions compete while keeping this
   // concurrency suite separate from process-global clients in other tests.
@@ -46,10 +48,12 @@ beforeAll(() => {
   vi.stubEnv('SECRET_KEY', 'agent-turns-test-secret-local-and-ci-000000')
 })
 afterAll(async () => {
-  await (db as typeof db & { $client: import('postgres').Sql }).$client.end()
+  await (db as typeof db & { $client: import('postgres').Sql }).$client.end({ timeout: 5 })
   vi.unstubAllEnvs()
 })
 
+// The real database fixture runs alongside other suites on four-core CI.
+// Its cold imports and cleanup need the same headroom as database test bodies.
 beforeEach(async () => {
   customerUserId = createId('user')
   customerId = createId('principal')
@@ -72,7 +76,7 @@ beforeEach(async () => {
     endpointUrl: 'https://agent.example.com/turn',
     fallback: 'team',
   })
-})
+}, 30_000)
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -84,7 +88,7 @@ afterEach(async () => {
   }
   if (customerId) await db.delete(principal).where(eq(principal.id, customerId))
   if (customerUserId) await db.delete(user).where(eq(user.id, customerUserId))
-})
+}, 30_000)
 
 async function customerMessage(content = 'Help me', at = new Date()) {
   const [message] = await db
@@ -145,6 +149,28 @@ describe('agent turns against PostgreSQL', () => {
     await expect(loadRequestedAgentTurnContext(registered.agent, turn)).rejects.toMatchObject({
       code: 'TURN_NOT_OPEN',
     })
+  })
+
+  it('does not reopen a closed conversation through an agent handoff', async () => {
+    const turn = await newTurn()
+    await db
+      .update(conversations)
+      .set({ status: 'closed' })
+      .where(eq(conversations.id, conversationId))
+    await expect(
+      handOffToTeam({
+        agent: registered.agent,
+        conversationId,
+        turnId: turn.id,
+        reason: 'capability_limit',
+      })
+    ).rejects.toMatchObject({ code: 'CONVERSATION_PAUSED' })
+    const [stored] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+    expect(stored.status).toBe('closed')
+    expect((await getTurn(turn.id))?.status).toBe('requested')
   })
 
   it('excludes internal notes from requested-turn context', async () => {
