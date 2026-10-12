@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "Outra pessoa precisa decidir esta solicitação.",
   "admin.approvals.error.gone": "Esta solicitação já foi decidida ou expirou.",
   "admin.approvals.error.unavailable": "Esta solicitação só pode ser decidida onde foi feita.",
+  "admin.approvals.error.undo": "Essas configurações mudaram desde então. Não é possível desfazer.",
   "admin.approvals.error.failed": "Não deu certo. Tente novamente.",
   "admin.nav.settings": "Configurações",
   "admin.nav.viewPortal": "Ver portal",

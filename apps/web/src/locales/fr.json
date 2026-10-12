@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "Une autre personne doit trancher cette demande.",
   "admin.approvals.error.gone": "Cette demande a déjà été tranchée ou a expiré.",
   "admin.approvals.error.unavailable": "Cette demande ne peut être tranchée que là où elle a été faite.",
+  "admin.approvals.error.undo": "Ces paramètres ont changé depuis. Impossible d’annuler la modification.",
   "admin.approvals.error.failed": "Cela n’a pas abouti. Réessayez.",
   "admin.nav.settings": "Paramètres",
   "admin.nav.viewPortal": "Voir le portail",

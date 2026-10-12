@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "O tej prośbie musi zdecydować ktoś inny.",
   "admin.approvals.error.gone": "Ta prośba została już rozstrzygnięta lub wygasła.",
   "admin.approvals.error.unavailable": "O tej prośbie można zdecydować tylko tam, gdzie ją złożono.",
+  "admin.approvals.error.undo": "Te ustawienia zmieniły się od tego czasu. Nie można cofnąć.",
   "admin.approvals.error.failed": "Nie udało się. Spróbuj ponownie.",
   "admin.nav.settings": "Ustawienia",
   "admin.nav.viewPortal": "Zobacz portal",

@@ -1,4 +1,5 @@
 import { defineMessages } from 'react-intl'
+import { RECENT_SIGN_IN_REQUIRED } from '@/lib/shared/approval-refusal'
 
 /** The Approvals page's strings, and the ones the rail and Home share with it. */
 export const approvalMessages = defineMessages({
@@ -80,6 +81,10 @@ export const approvalMessages = defineMessages({
     id: 'admin.approvals.error.unavailable',
     defaultMessage: 'This request can only be decided where it was made.',
   },
+  errorUndo: {
+    id: 'admin.approvals.error.undo',
+    defaultMessage: 'These settings changed since then. Undo is unavailable.',
+  },
   errorFailed: {
     id: 'admin.approvals.error.failed',
     defaultMessage: 'That did not go through. Try again.',
@@ -91,7 +96,7 @@ export function refusalMessage(code: string) {
   switch (code) {
     case 'APPROVAL_CONTENT_CHANGED':
       return approvalMessages.errorChanged
-    case 'RECENT_SIGN_IN_REQUIRED':
+    case RECENT_SIGN_IN_REQUIRED:
       return approvalMessages.errorSignIn
     case 'APPROVAL_ADMIN_REQUIRED':
       return approvalMessages.errorAdmin
@@ -110,6 +115,10 @@ export function refusalMessage(code: string) {
     case 'ASSISTANT_ACTION_POLICY_CHANGED':
     case 'ASSISTANT_TOOL_GONE':
       return approvalMessages.errorUnavailable
+    case 'SETTINGS_UNDO_CONFLICT':
+    case 'SETTINGS_UNDO_UNAVAILABLE':
+    case 'INVALID_SETTINGS_UNDO':
+      return approvalMessages.errorUndo
     default:
       return approvalMessages.errorFailed
   }

@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { SettingsArea } from '@/lib/shared/assistant/settings-proposals'
 import { cn } from '@/lib/shared/utils'
+import { RECENT_SIGN_IN_REQUIRED } from '@/lib/shared/approval-refusal'
 import { approvalMessages, refusalMessage } from './approval-messages'
 import { personOf, requesterOf, toldOf } from './approval-people'
 import { ApprovalRiskChip } from './approval-risk-chip'
@@ -120,7 +121,7 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
   const requestSignInAgain = () => setError(intl.formatMessage(approvalMessages.errorSignIn))
 
   const refused = async (code: string) => {
-    if (code === 'RECENT_SIGN_IN_REQUIRED') return requestSignInAgain()
+    if (code === RECENT_SIGN_IN_REQUIRED) return requestSignInAgain()
     setError(intl.formatMessage(refusalMessage(code)))
     if (code === 'APPROVAL_CONTENT_CHANGED' || code === 'PENDING_ACTION_NOT_DECIDABLE')
       await refresh().catch(() => undefined)
@@ -163,7 +164,10 @@ export function ApprovalDetail({ approval, decidedHere, onChange, onBack }: Appr
     setBusy(true)
     setError(null)
     try {
-      await undoWorkspaceSettingsProposalFn({ data: { pendingActionId: approval.id } })
+      const undone = await undoWorkspaceSettingsProposalFn({
+        data: { pendingActionId: approval.id },
+      })
+      if (!undone.ok) return setError(intl.formatMessage(refusalMessage(undone.code)))
       const fresh = await queryClient.fetchQuery({
         ...approvalQueries.detail(approval.id),
         staleTime: 0,

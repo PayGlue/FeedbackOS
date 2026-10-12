@@ -221,6 +221,27 @@ describe('ApprovalsPage', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
   })
 
+  it('says when an applied change can no longer be undone', async () => {
+    state.waiting = [view()]
+    state.approve.mockResolvedValue({
+      ok: true,
+      approval: view({ status: 'executed', canDecide: false, undoable: true }),
+    })
+    state.undo.mockResolvedValue({
+      ok: false,
+      code: 'SETTINGS_UNDO_CONFLICT',
+      message: 'These settings changed since Apply.',
+    })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'These settings changed since then. Undo is unavailable.'
+    )
+    expect(state.undo).toHaveBeenCalledWith({ data: { pendingActionId: 'assistant_action_01' } })
+    expect(screen.getByText('Applied just now.')).toBeInTheDocument()
+  })
+
   it('refreshes a request that changed and asks for another look', async () => {
     state.waiting = [view()]
     state.approve.mockResolvedValue({

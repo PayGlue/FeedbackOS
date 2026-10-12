@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "Iemand anders moet over dit verzoek beslissen.",
   "admin.approvals.error.gone": "Over dit verzoek is al beslist of het is verlopen.",
   "admin.approvals.error.unavailable": "Over dit verzoek kan alleen worden beslist waar het is gedaan.",
+  "admin.approvals.error.undo": "Deze instellingen zijn sindsdien gewijzigd. Ongedaan maken is niet mogelijk.",
   "admin.approvals.error.failed": "Dat is niet gelukt. Probeer het opnieuw.",
   "admin.nav.settings": "Instellingen",
   "admin.nav.viewPortal": "Portaal bekijken",

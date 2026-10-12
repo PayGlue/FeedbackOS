@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "Otra persona debe decidir esta solicitud.",
   "admin.approvals.error.gone": "Esta solicitud ya se decidió o caducó.",
   "admin.approvals.error.unavailable": "Esta solicitud solo se puede decidir donde se hizo.",
+  "admin.approvals.error.undo": "Estos ajustes cambiaron desde entonces. No se puede deshacer.",
   "admin.approvals.error.failed": "No se pudo completar. Inténtalo de nuevo.",
   "admin.nav.settings": "Configuración",
   "admin.nav.viewPortal": "Ver portal",

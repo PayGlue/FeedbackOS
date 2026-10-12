@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "Решение по этому запросу должен принять кто-то другой.",
   "admin.approvals.error.gone": "По этому запросу уже принято решение, или срок его действия истёк.",
   "admin.approvals.error.unavailable": "Решение по этому запросу можно принять только там, где он создан.",
+  "admin.approvals.error.undo": "С тех пор эти настройки изменились. Отменить нельзя.",
   "admin.approvals.error.failed": "Не получилось. Попробуйте ещё раз.",
   "admin.nav.settings": "Настройки",
   "admin.nav.viewPortal": "Открыть портал",

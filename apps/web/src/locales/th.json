@@ -2058,6 +2058,7 @@
   "admin.approvals.error.self": "คนอื่นต้องเป็นผู้ตัดสินคำขอนี้",
   "admin.approvals.error.gone": "คำขอนี้ถูกตัดสินไปแล้วหรือหมดอายุแล้ว",
   "admin.approvals.error.unavailable": "คำขอนี้ตัดสินได้เฉพาะในที่ที่สร้างขึ้นเท่านั้น",
+  "admin.approvals.error.undo": "การตั้งค่าเหล่านี้เปลี่ยนไปแล้ว ไม่สามารถเลิกทำได้",
   "admin.approvals.error.failed": "ดำเนินการไม่สำเร็จ ลองอีกครั้ง",
   "admin.nav.settings": "การตั้งค่า",
   "admin.nav.viewPortal": "ดูพอร์ทัล",

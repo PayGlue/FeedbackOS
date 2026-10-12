@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "Jemand anderes muss diese Anfrage entscheiden.",
   "admin.approvals.error.gone": "Diese Anfrage wurde bereits entschieden oder ist abgelaufen.",
   "admin.approvals.error.unavailable": "Diese Anfrage kann nur dort entschieden werden, wo sie gestellt wurde.",
+  "admin.approvals.error.undo": "Diese Einstellungen haben sich seitdem geändert. Rückgängig machen ist nicht möglich.",
   "admin.approvals.error.failed": "Das hat nicht geklappt. Versuche es erneut.",
   "admin.nav.settings": "Einstellungen",
   "admin.nav.viewPortal": "Portal ansehen",

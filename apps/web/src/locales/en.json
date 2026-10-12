@@ -1825,6 +1825,7 @@
   "admin.approvals.error.self": "Someone else must decide this request.",
   "admin.approvals.error.gone": "This request was already decided or has expired.",
   "admin.approvals.error.unavailable": "This request can only be decided where it was made.",
+  "admin.approvals.error.undo": "These settings changed since then. Undo is unavailable.",
   "admin.approvals.error.failed": "That did not go through. Try again.",
   "admin.nav.settings": "Settings",
   "admin.nav.viewPortal": "View portal",
