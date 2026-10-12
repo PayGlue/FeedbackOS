@@ -519,7 +519,8 @@ describe('status lifecycle (Postgres)', () => {
       await updateIncident(running.id, { autoComplete: false })
       await handleMaintenanceComplete(running.id)
       expect((await getStatusIncidentById(running.id)).status).toBe('in_progress')
-      expect(await dispatched('status.maintenance_started')).toEqual([])
+      // Only the start recorded when the window was created under way.
+      expect(await dispatched('status.maintenance_started')).toHaveLength(1)
       expect(await dispatched('status.maintenance_completed')).toEqual([])
     })
 

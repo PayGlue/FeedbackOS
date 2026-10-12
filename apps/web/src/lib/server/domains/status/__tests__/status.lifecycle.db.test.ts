@@ -831,6 +831,71 @@ describe('status lifecycle (Postgres)', () => {
       expect(await notifyStatusIncidentPublished(row.id, actor)).toBe(false)
       expect(await sent('status.incident_created', row.id)).toBe(1)
     })
+
+    it('a window created already in progress writes scheduled and started, and the scheduler adds no start', async () => {
+      const db = await service('Database')
+      const window = await createIncident(
+        {
+          kind: 'maintenance',
+          title: 'Under way',
+          status: 'in_progress',
+          body: 'Already running.',
+          affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+          scheduledStartAt: new Date(Date.now() - HOUR),
+          scheduledEndAt: new Date(Date.now() + HOUR),
+          notifySubscribers: false,
+        },
+        { principalId: author }
+      )
+      await handleMaintenanceStart(window.id)
+      expect(await sent('status.maintenance_scheduled', window.id)).toBe(1)
+      expect(await sent('status.maintenance_started', window.id)).toBe(1)
+      expect(await sent('status.maintenance_completed', window.id)).toBe(0)
+    })
+
+    it('a window created already completed writes scheduled and completed, and the scheduler adds nothing', async () => {
+      const db = await service('Database')
+      const window = await createIncident(
+        {
+          kind: 'maintenance',
+          title: 'Done already',
+          status: 'completed',
+          body: 'It finished.',
+          affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+          scheduledStartAt: new Date(Date.now() - 2 * HOUR),
+          scheduledEndAt: new Date(Date.now() - HOUR),
+          notifySubscribers: false,
+        },
+        { principalId: author }
+      )
+      await handleMaintenanceStart(window.id)
+      await handleMaintenanceComplete(window.id)
+      expect(await sent('status.maintenance_scheduled', window.id)).toBe(1)
+      expect(await sent('status.maintenance_completed', window.id)).toBe(1)
+      expect(await sent('status.maintenance_started', window.id)).toBe(0)
+    })
+
+    it('a window logged as past history writes no transition events', async () => {
+      const db = await service('Database')
+      const window = await createIncident(
+        {
+          kind: 'maintenance',
+          title: 'Logged',
+          status: 'completed',
+          body: 'Happened last week.',
+          affectedComponents: [{ componentId: db, componentStatus: 'under_maintenance' }],
+          scheduledStartAt: new Date(Date.now() - 48 * HOUR),
+          scheduledEndAt: new Date(Date.now() - 47 * HOUR),
+          backfill: {
+            startedAt: new Date(Date.now() - 48 * HOUR),
+            resolvedAt: new Date(Date.now() - 47 * HOUR),
+          },
+        },
+        { principalId: author }
+      )
+      expect(await sent('status.maintenance_completed', window.id)).toBe(0)
+      expect(await sent('status.maintenance_scheduled', window.id)).toBe(0)
+    })
   })
 
   describe('logging a past incident', () => {

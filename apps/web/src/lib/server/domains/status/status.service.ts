@@ -321,6 +321,25 @@ export async function createIncident(
         tx
       )
     }
+
+    // A window created already under way, or already finished, has made its
+    // transition at create: announce it here, in the same transaction, so the
+    // scheduler (which only moves a window still scheduled or still running)
+    // has nothing left to add for it. A backfill is history and says nothing.
+    if (!backfilled && created.kind === 'maintenance' && created.status !== 'scheduled') {
+      await writeStatusEvent(
+        created.status === 'completed'
+          ? 'status.maintenance_completed'
+          : 'status.maintenance_started',
+        buildEventActor({ principalId: author.principalId }),
+        {
+          incidentId: created.id,
+          title: created.title,
+          componentIds: input.affectedComponents.map((c) => c.componentId),
+        },
+        tx
+      )
+    }
     return created
   })
 
