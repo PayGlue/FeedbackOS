@@ -33,6 +33,7 @@ import { PERMISSIONS, type PermissionKey } from '@/lib/shared/permissions'
 import type { JsonValue } from '@/lib/shared/json'
 import { settingsProposalSchema } from '@/lib/shared/assistant/settings-proposals'
 import { SETTINGS_PROPOSAL_TOOL } from './approval-policy'
+import { isHomeThreadKey } from './workspace-safety'
 import {
   digestForDisplay,
   approvalNotFound,
@@ -147,16 +148,37 @@ function mayDecide(row: PendingActionRow, actor: Actor, required: ReadonlySet<Pe
   )
 }
 
+type RequirementRow = Pick<
+  PendingActionRow,
+  'id' | 'toolName' | 'args' | 'originRole' | 'workspaceThreadKey'
+>
+
 /**
- * The permissions each request needs, read once per operation: settings
- * requests differ per row, while a tool needs the same for every row of it.
+ * What makes one request's requirement the same as another's. A settings
+ * request names its own changes. A tool's depends on the role that proposed
+ * it (which agent's connectors it resolves against) and on whether it came
+ * from a Home thread, another thread, or none.
+ */
+function requirementKey(row: RequirementRow): string {
+  if (row.toolName === SETTINGS_PROPOSAL_TOOL) return JSON.stringify(['settings', row.id])
+  const thread = !row.workspaceThreadKey
+    ? 'none'
+    : isHomeThreadKey(row.workspaceThreadKey)
+      ? 'home'
+      : 'thread'
+  return JSON.stringify([row.toolName, row.originRole, thread])
+}
+
+/**
+ * The permissions each request needs, looked up once per distinct requirement
+ * within one read.
  */
 export function approvalRequirements(): (
-  row: PendingActionRow
+  row: RequirementRow
 ) => Promise<ReadonlySet<PermissionKey> | null> {
   const cache = new Map<string, Promise<ReadonlySet<PermissionKey> | null>>()
   return (row) => {
-    const key = row.toolName === SETTINGS_PROPOSAL_TOOL ? row.id : row.toolName
+    const key = requirementKey(row)
     let required = cache.get(key)
     if (!required) {
       required = requiredApprovalPermissions(row)
