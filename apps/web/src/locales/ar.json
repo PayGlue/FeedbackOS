@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "سبق استخدام هذا الرمز.",
   "oauthDevice.problem.rateLimited": "محاولات كثيرة جدًا. حاول مرة أخرى بعد دقيقة.",
   "oauthDevice.problem.noScopes": "اختر صلاحية واحدة على الأقل.",
-  "oauthDevice.problem.error": "حدث خطأ ما. يرجى المحاولة مرة أخرى."
+  "oauthDevice.problem.error": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+  "oauthDevice.ready.unverified": "تطبيق غير موثّق. يمكن لأي شخص تسجيل تطبيق بأي اسم."
 }

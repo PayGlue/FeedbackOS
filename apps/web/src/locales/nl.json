@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "Deze code is al gebruikt.",
   "oauthDevice.problem.rateLimited": "Te veel pogingen. Probeer het over een minuut opnieuw.",
   "oauthDevice.problem.noScopes": "Kies minstens één ding om toe te staan.",
-  "oauthDevice.problem.error": "Er ging iets mis. Probeer het opnieuw."
+  "oauthDevice.problem.error": "Er ging iets mis. Probeer het opnieuw.",
+  "oauthDevice.ready.unverified": "Niet-geverifieerde app. Iedereen kan een app onder elke naam registreren."
 }

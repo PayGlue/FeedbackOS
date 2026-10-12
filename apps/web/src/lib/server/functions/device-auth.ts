@@ -53,7 +53,6 @@ export type DeviceCodeLookup =
       userCode: string
       clientName: string | null
       clientUri: string | null
-      clientIcon: string | null
       requestedScope: string
     }
 
@@ -108,12 +107,11 @@ async function clientDetails(clientId: string) {
   const { db, oauthClient, eq } = await import('@/lib/server/db')
   const row = await db.query.oauthClient.findFirst({
     where: eq(oauthClient.clientId, clientId),
-    columns: { name: true, uri: true, icon: true },
+    columns: { name: true, uri: true },
   })
   return {
     clientName: row?.name ?? null,
     clientUri: row?.uri ?? null,
-    clientIcon: row?.icon ?? null,
   }
 }
 

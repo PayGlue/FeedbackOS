@@ -163,6 +163,10 @@ const SetupResponseSchema = z.object({
           'The first admin API key, with every scope. Shown only in this response; store it now.',
       }),
     }),
+    reusedExistingAccount: z.boolean().meta({
+      description:
+        'True when adminEmail already had a verified account, which was promoted and signed out everywhere.',
+    }),
   }),
 })
 
@@ -182,7 +186,7 @@ registerPath('/setup', {
     tags: ['Workspace'],
     summary: 'Set up a new workspace without the browser',
     description:
-      "Creates the workspace and its first admin, and returns that admin's first API key, once. Authenticated with the setup token, sent as a bearer token: the SETUP_TOKEN environment variable, or the token the server writes to its log once on first boot. It works only while the workspace has no admin; afterwards it answers 409 and the token opens nothing. API keys are not accepted. Responds 404 when no setup token exists. Limited to 10 requests per minute per address.",
+      "Creates the workspace and its first admin, and returns that admin's first API key, once. Authenticated with the setup token, sent as a bearer token: the SETUP_TOKEN environment variable, or the token the server writes to its log once on first boot. It exists only while the workspace has no admin; at any other time, and on hosted workspaces, it answers 404 without a trace. An existing account with that email is reused only if its address is verified (409 otherwise). API keys are not accepted. Limited to 10 requests per minute per address.",
     security: [{ setupToken: [] }],
     requestBody: {
       required: true,
@@ -195,8 +199,14 @@ registerPath('/setup', {
       },
       400: setupError('Invalid request body', 'VALIDATION_ERROR'),
       401: setupError('Missing or wrong setup token', 'UNAUTHORIZED'),
-      404: setupError('No setup token is configured', 'NOT_FOUND'),
-      409: setupError('The workspace already has an admin', 'SETUP_ALREADY_COMPLETE'),
+      404: setupError(
+        'No setup token exists, or the workspace is not awaiting its first admin',
+        'NOT_FOUND'
+      ),
+      409: setupError(
+        'Another request set the workspace up first, or an unverified account already uses adminEmail',
+        'SETUP_ALREADY_COMPLETE'
+      ),
       429: setupError('Too many requests', 'RATE_LIMITED'),
     },
   },

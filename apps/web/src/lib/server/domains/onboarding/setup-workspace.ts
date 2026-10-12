@@ -385,6 +385,10 @@ export async function setupWorkspaceForUser(input: {
     log.info({ count: statusValues.length }, 'setup workspace: created default statuses')
   }
 
+  // The first admin exists now, so a generated setup token has nothing left to open.
+  const { clearGeneratedToken } = await import('@/lib/server/domains/onboarding/setup-token-store')
+  await clearGeneratedToken()
+
   log.info({ workspace_id: result.id, slug: result.slug }, 'save workspace and goal complete')
   return { ok: true, ...result }
 }

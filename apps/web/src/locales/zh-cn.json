@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "此代码已被使用。",
   "oauthDevice.problem.rateLimited": "尝试次数过多。请一分钟后再试。",
   "oauthDevice.problem.noScopes": "请至少选择一项允许的内容。",
-  "oauthDevice.problem.error": "出了点问题。请重试。"
+  "oauthDevice.problem.error": "出了点问题。请重试。",
+  "oauthDevice.ready.unverified": "未经验证的应用。任何人都可以用任意名称注册应用。"
 }

@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "รหัสนี้ถูกใช้ไปแล้ว",
   "oauthDevice.problem.rateLimited": "ลองหลายครั้งเกินไป ลองอีกครั้งในอีกหนึ่งนาที",
   "oauthDevice.problem.noScopes": "เลือกสิ่งที่อนุญาตอย่างน้อยหนึ่งอย่าง",
-  "oauthDevice.problem.error": "เกิดข้อผิดพลาดบางอย่าง โปรดลองอีกครั้ง"
+  "oauthDevice.problem.error": "เกิดข้อผิดพลาดบางอย่าง โปรดลองอีกครั้ง",
+  "oauthDevice.ready.unverified": "แอปพลิเคชันที่ยังไม่ได้รับการยืนยัน ใครก็ลงทะเบียนแอปด้วยชื่ออะไรก็ได้"
 }

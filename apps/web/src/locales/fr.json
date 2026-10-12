@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "Ce code a déjà été utilisé.",
   "oauthDevice.problem.rateLimited": "Trop de tentatives. Réessayez dans une minute.",
   "oauthDevice.problem.noScopes": "Choisissez au moins une autorisation.",
-  "oauthDevice.problem.error": "Une erreur s'est produite. Veuillez réessayer."
+  "oauthDevice.problem.error": "Une erreur s'est produite. Veuillez réessayer.",
+  "oauthDevice.ready.unverified": "Application non vérifiée. N'importe qui peut enregistrer une application sous n'importe quel nom."
 }

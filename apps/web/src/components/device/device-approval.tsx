@@ -258,15 +258,7 @@ function Approval({ request, onRetry }: { request: Ready; onRetry: () => void })
       <SignInAgainDialog {...signInAgain.dialog} />
       <div className="flex flex-col items-center gap-1.5 text-center">
         <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-muted/50">
-          {request.clientIcon && isSafeUrl(request.clientIcon) ? (
-            <img
-              src={request.clientIcon}
-              alt={clientName}
-              className="h-11 w-11 rounded-full object-cover"
-            />
-          ) : (
-            <Globe className="h-5 w-5 text-muted-foreground" aria-hidden />
-          )}
+          <Globe className="h-5 w-5 text-muted-foreground" aria-hidden />
         </div>
         <h1 className="text-xl font-semibold">{clientName}</h1>
         <p className="text-sm text-muted-foreground">
@@ -276,6 +268,12 @@ function Approval({ request, onRetry }: { request: Ready; onRetry: () => void })
           />
         </p>
         {clientDomain && <p className="text-xs text-muted-foreground/70">{clientDomain}</p>}
+        <p className="mt-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+          <FormattedMessage
+            id="oauthDevice.ready.unverified"
+            defaultMessage="Unverified application. Anyone can register an app under any name."
+          />
+        </p>
       </div>
 
       <div className="rounded-xl border border-border/50 bg-card px-4 py-3 text-center">

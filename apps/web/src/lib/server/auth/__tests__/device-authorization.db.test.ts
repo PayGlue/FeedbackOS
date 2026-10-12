@@ -8,9 +8,10 @@
  * from being claimed by the wrong person.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createId, type UserId } from '@quackback/ids'
+import { createId, type PrincipalId, type UserId } from '@quackback/ids'
 import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
-import { deviceCode, oauthResource, session, user } from '@/lib/server/db'
+import { deviceCode, oauthResource, principal, session, settings, user } from '@/lib/server/db'
+import { prepareDeviceCodeRequest } from '@/lib/server/auth/device-request'
 import { ensureMcpOauthResource } from '@/lib/server/auth/ensure-mcp-oauth-resource'
 import { API_KEY_SCOPES } from '@/lib/server/domains/api-keys/api-key-scopes'
 import { eq } from 'drizzle-orm'
@@ -183,21 +184,18 @@ describe.skipIf(!fixture.available)(
       expect(((await pending.json()) as { error: string }).error).toBe('authorization_pending')
 
       const { headers } = await signedInBearer()
-      const verify = await auth.handler(
-        new Request(`${ORIGIN}/api/auth/device?user_code=${code.user_code}`, { headers })
-      )
-      const verified = (await verify.json()) as {
-        client_id?: string
-        scope?: string
-        status: string
-      }
+      const verified = (await auth.api.deviceVerify({
+        query: { user_code: code.user_code },
+        headers: new Headers(headers),
+      })) as { client_id?: string; scope?: string; status: string }
       expect(verified.status).toBe('pending')
       expect(verified.client_id).toBe(client_id)
 
-      const approve = await auth.handler(
-        post('/device/approve', { userCode: code.user_code }, headers)
-      )
-      expect(approve.status).toBe(200)
+      const approve = (await auth.api.deviceApprove({
+        body: { userCode: code.user_code },
+        headers: new Headers(headers),
+      })) as { success: boolean }
+      expect(approve.success).toBe(true)
 
       // The polling interval is enforced; let the window pass.
       await testDb
@@ -235,11 +233,14 @@ describe.skipIf(!fixture.available)(
         await auth.handler(post('/device/code', { client_id, scope: 'openid' }))
       ).json()) as { device_code: string; user_code: string }
       const { headers } = await signedInBearer()
-      await auth.handler(
-        new Request(`${ORIGIN}/api/auth/device?user_code=${code.user_code}`, { headers })
-      )
-      const deny = await auth.handler(post('/device/deny', { userCode: code.user_code }, headers))
-      expect(deny.status).toBe(200)
+      await auth.api.deviceVerify({
+        query: { user_code: code.user_code },
+        headers: new Headers(headers),
+      })
+      await auth.api.deviceDeny({
+        body: { userCode: code.user_code },
+        headers: new Headers(headers),
+      })
 
       await testDb
         .update(deviceCode)
@@ -262,16 +263,138 @@ describe.skipIf(!fixture.available)(
         await auth.handler(post('/device/code', { client_id, scope: 'openid' }))
       ).json()) as { user_code: string }
       const first = await signedInBearer()
-      await auth.handler(
-        new Request(`${ORIGIN}/api/auth/device?user_code=${code.user_code}`, {
-          headers: first.headers,
-        })
-      )
+      await auth.api.deviceVerify({
+        query: { user_code: code.user_code },
+        headers: new Headers(first.headers),
+      })
       const second = await signedInBearer()
-      const approve = await auth.handler(
-        post('/device/approve', { userCode: code.user_code }, second.headers)
+      await expect(
+        auth.api.deviceApprove({
+          body: { userCode: code.user_code },
+          headers: new Headers(second.headers),
+        })
+      ).rejects.toMatchObject({ statusCode: 403 })
+    })
+
+    it('issues a token the MCP endpoint accepts, from a request with no resource', async () => {
+      const auth = await authHandler()
+      const { client_id } = await registerClient(auth)
+      const victim = await signedInBearer()
+      // What the route does to the request before the library sees it.
+      const raw = new Request(`${ORIGIN}/api/auth/device/code`, {
+        method: 'POST',
+        headers: { origin: ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({ client_id, scope: 'openid read:feedback', user_id: victim.userId }),
+      })
+      const prepared = await prepareDeviceCodeRequest(raw, `${ORIGIN}/api/mcp`)
+      const code = (await (await auth.handler(prepared)).json()) as {
+        device_code: string
+        user_code: string
+      }
+      // The caller could not pre-bind the code to someone else.
+      const [row] = await testDb
+        .select()
+        .from(deviceCode)
+        .where(eq(deviceCode.deviceCode, code.device_code))
+      expect(row?.userId).toBeNull()
+      expect(row?.resources).toEqual([`${ORIGIN}/api/mcp`])
+
+      const person = await signedInBearer()
+      await testDb.insert(settings).values({
+        id: createId('workspace'),
+        name: 'Acme',
+        slug: 'acme',
+        createdAt: new Date(),
+      })
+      await testDb.insert(principal).values({
+        id: createId('principal') as PrincipalId,
+        userId: person.userId,
+        role: 'admin',
+        type: 'user',
+        createdAt: new Date(),
+      })
+      await auth.api.deviceVerify({
+        query: { user_code: code.user_code },
+        headers: new Headers(person.headers),
+      })
+      await auth.api.deviceApprove({
+        body: { userCode: code.user_code },
+        headers: new Headers(person.headers),
+      })
+      await testDb
+        .update(deviceCode)
+        .set({ lastPolledAt: new Date(Date.now() - 60_000) })
+        .where(eq(deviceCode.deviceCode, code.device_code))
+
+      // The token request omits `resource` too; the route fills it in as it does here.
+      const tokenRes = await auth.handler(
+        post(
+          '/oauth2/token',
+          {
+            grant_type: GRANT,
+            device_code: code.device_code,
+            client_id,
+            resource: `${ORIGIN}/api/mcp`,
+          },
+          { 'content-type': 'application/x-www-form-urlencoded' }
+        )
       )
-      expect(approve.status).toBe(403)
+      const { access_token } = (await tokenRes.json()) as { access_token: string }
+      expect(access_token.split('.')).toHaveLength(3)
+
+      // The MCP route verifies the signature against the server's own JWKS.
+      const realFetch = globalThis.fetch
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        return url.endsWith('/api/auth/jwks')
+          ? auth.handler(new Request(url))
+          : realFetch(input, init)
+      })
+      try {
+        const { handleMcpRequest } = await import('@/lib/server/mcp/handler')
+        const res = await handleMcpRequest(
+          new Request(`${ORIGIN}/api/mcp`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              accept: 'application/json, text/event-stream',
+              authorization: `Bearer ${access_token}`,
+            },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+          })
+        )
+        expect(res.status).toBe(200)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('closes the library approval endpoints to HTTP, which skip the page checks', async () => {
+      const auth = await authHandler()
+      const { client_id } = await registerClient(auth)
+      const code = (await (
+        await auth.handler(post('/device/code', { client_id, scope: 'openid read:feedback' }))
+      ).json()) as { device_code: string; user_code: string }
+      const { headers } = await signedInBearer()
+
+      for (const [method, path, body] of [
+        ['GET', `/device?user_code=${code.user_code}`, null],
+        ['POST', '/device/approve', { userCode: code.user_code }],
+        ['POST', '/device/deny', { userCode: code.user_code }],
+        ['POST', '/device/token', { grant_type: GRANT, device_code: code.device_code, client_id }],
+      ] as const) {
+        const res = await auth.handler(
+          new Request(`${ORIGIN}/api/auth${path}`, {
+            method,
+            headers: { origin: ORIGIN, 'content-type': 'application/json', ...headers },
+            body: body ? JSON.stringify(body) : undefined,
+          })
+        )
+        expect(res.status, `${method} ${path}`).toBe(404)
+      }
+      const [row] = await testDb.select().from(deviceCode)
+      expect(row?.status).toBe('pending')
     })
 
     it('refuses an unregistered client', async () => {

@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "Dieser Code wurde bereits verwendet.",
   "oauthDevice.problem.rateLimited": "Zu viele Versuche. Versuche es in einer Minute erneut.",
   "oauthDevice.problem.noScopes": "Wähle mindestens eine Berechtigung aus.",
-  "oauthDevice.problem.error": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+  "oauthDevice.problem.error": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+  "oauthDevice.ready.unverified": "Nicht verifizierte Anwendung. Jeder kann eine App unter beliebigem Namen registrieren."
 }

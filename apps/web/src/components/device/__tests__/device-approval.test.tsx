@@ -29,7 +29,7 @@ const ready = {
   userCode: 'ABCD2345',
   clientName: 'Headless CLI',
   clientUri: 'https://cli.example.com',
-  clientIcon: null,
+  clientIcon: 'https://tracker.example.com/pixel.png',
   requestedScope: 'openid offline_access read:feedback write:feedback read:article',
 }
 
@@ -56,6 +56,10 @@ describe('DeviceApproval', () => {
     expect(await screen.findByText('Headless CLI')).toBeTruthy()
     expect(screen.getByText('ABCD2345')).toBeTruthy()
     expect(screen.getByText('cli.example.com')).toBeTruthy()
+    // Anyone can register a client under any name, so the page says so and
+    // never fetches an image the client chose.
+    expect(screen.getByText(/Unverified application/)).toBeTruthy()
+    expect(document.querySelector('img')).toBeNull()
 
     // Feedback and help center reads were asked for, writes only for feedback; conversations not at all.
     const feedbackWrite = screen.getByRole('button', { name: /Feedback: Read and write/ })

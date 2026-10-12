@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "Este código ya se ha usado.",
   "oauthDevice.problem.rateLimited": "Demasiados intentos. Inténtalo de nuevo dentro de un minuto.",
   "oauthDevice.problem.noScopes": "Elige al menos un permiso.",
-  "oauthDevice.problem.error": "Algo salió mal. Inténtalo de nuevo."
+  "oauthDevice.problem.error": "Algo salió mal. Inténtalo de nuevo.",
+  "oauthDevice.ready.unverified": "Aplicación no verificada. Cualquiera puede registrar una aplicación con cualquier nombre."
 }

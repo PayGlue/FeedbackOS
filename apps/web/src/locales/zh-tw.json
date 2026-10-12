@@ -2195,5 +2195,6 @@
   "oauthDevice.problem.settled": "此代碼已被使用。",
   "oauthDevice.problem.rateLimited": "嘗試次數過多。請一分鐘後再試。",
   "oauthDevice.problem.noScopes": "請至少選擇一項允許的內容。",
-  "oauthDevice.problem.error": "發生錯誤。請再試一次。"
+  "oauthDevice.problem.error": "發生錯誤。請再試一次。",
+  "oauthDevice.ready.unverified": "未經驗證的應用程式。任何人都可以用任意名稱註冊應用程式。"
 }

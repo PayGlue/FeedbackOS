@@ -8,8 +8,22 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createId, type PrincipalId, type UserId } from '@quackback/ids'
 import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
-import { auditLog, eq, principal, settings, sql, user, postStatuses } from '@/lib/server/db'
+import {
+  auditLog,
+  eq,
+  principal,
+  session,
+  settings,
+  sql,
+  user,
+  postStatuses,
+} from '@/lib/server/db'
 import { getSetupState, isOnboardingComplete } from '@/lib/shared/db-types'
+
+vi.hoisted(() => {
+  process.env.BASE_URL = 'http://localhost:3000'
+  process.env.SECRET_KEY = 'test-secret-key-for-headless-setup-0123456789'
+})
 
 vi.mock('@/lib/server/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/server/db')>()),
@@ -17,10 +31,13 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
 }))
 
 const logged = vi.hoisted(() => ({ info: [] as string[], warn: [] as string[] }))
+// A log call as one string: its fields and its message.
+const render = (args: unknown[]) =>
+  args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')
 vi.mock('@/lib/server/logger', () => {
   const fake: Record<string, unknown> = {
-    info: (...args: unknown[]) => logged.info.push(String(args[args.length - 1])),
-    warn: (...args: unknown[]) => logged.warn.push(String(args[args.length - 1])),
+    info: (...args: unknown[]) => logged.info.push(render(args)),
+    warn: (...args: unknown[]) => logged.warn.push(render(args)),
     error: () => undefined,
     debug: () => undefined,
     child: () => fake,
@@ -30,6 +47,8 @@ vi.mock('@/lib/server/logger', () => {
 
 import { handleSetupRequest } from '../setup-request'
 import { ensureBootSetupToken, verifySetupToken } from '../headless-setup'
+import { setupWorkspaceForUser } from '../setup-workspace'
+import { getBucketCount } from '@/lib/server/utils/rate-bucket'
 import { verifyApiKey } from '@/lib/server/domains/api-keys/api-key.service'
 
 const fixture = await createDbTestFixture({
@@ -82,6 +101,7 @@ describe.skipIf(!fixture.available)('POST /api/v1/setup (real DB, rolled back)',
     delete process.env.SETUP_TOKEN
     const res = await handleSetupRequest(setupRequest())
     expect(res.status).toBe(404)
+    expect(await auditEvents('workspace.setup.rejected')).toHaveLength(0)
   })
 
   it('refuses a missing or wrong token and records the attempt', async () => {
@@ -95,9 +115,10 @@ describe.skipIf(!fixture.available)('POST /api/v1/setup (real DB, rolled back)',
     ])
   })
 
-  it('ignores a token shorter than the minimum', async () => {
-    process.env.SETUP_TOKEN = 'short'
-    const res = await handleSetupRequest(setupRequest({ token: 'short' }))
+  it('ignores a token shorter than 32 characters', async () => {
+    const short = 'x'.repeat(31)
+    process.env.SETUP_TOKEN = short
+    const res = await handleSetupRequest(setupRequest({ token: short }))
     expect(res.status).toBe(404)
   })
 
@@ -138,20 +159,18 @@ describe.skipIf(!fixture.available)('POST /api/v1/setup (real DB, rolled back)',
     expect(JSON.stringify(done[0])).not.toContain(data.apiKey.key)
   })
 
-  it('is dead after the first admin exists', async () => {
+  it('is gone once the first admin exists, and says nothing about why', async () => {
     expect((await handleSetupRequest(setupRequest())).status).toBe(201)
-    const again = await handleSetupRequest(
-      setupRequest({ body: { ...BODY, adminEmail: 'other@example.com' } })
-    )
-    expect(again.status).toBe(409)
-    const body = (await again.json()) as { error: { code: string } }
-    expect(body.error.code).toBe('SETUP_ALREADY_COMPLETE')
+    const rejectedBefore = (await auditEvents('workspace.setup.rejected')).length
+    for (const token of [TOKEN, 'nope-nope-nope-nope-nope-nope-1']) {
+      const again = await handleSetupRequest(
+        setupRequest({ token, body: { ...BODY, adminEmail: 'other@example.com' } })
+      )
+      expect(again.status).toBe(404)
+    }
     const humans = await testDb.select().from(principal).where(eq(principal.type, 'user'))
     expect(humans.filter((p) => p.role === 'admin')).toHaveLength(1)
-    // A wrong token still learns nothing about the install.
-    expect(
-      (await handleSetupRequest(setupRequest({ token: 'nope-nope-nope-nope-1' }))).status
-    ).toBe(401)
+    expect(await auditEvents('workspace.setup.rejected')).toHaveLength(rejectedBefore)
   })
 
   it('validates the body', async () => {
@@ -182,11 +201,11 @@ describe.skipIf(!fixture.available)('POST /api/v1/setup (real DB, rolled back)',
     expect(stray?.role).toBe('user')
   })
 
-  it('promotes an existing account that has the given address', async () => {
+  async function seedAccount(emailVerified: boolean) {
     const existing = createId('user') as UserId
     await testDb
       .insert(user)
-      .values({ id: existing, name: 'Dana', email: 'dana@example.com', emailVerified: true })
+      .values({ id: existing, name: 'Dana', email: 'dana@example.com', emailVerified })
     await testDb.insert(principal).values({
       id: createId('principal') as PrincipalId,
       userId: existing,
@@ -194,13 +213,49 @@ describe.skipIf(!fixture.available)('POST /api/v1/setup (real DB, rolled back)',
       type: 'user',
       createdAt: new Date(),
     })
+    await testDb.insert(session).values({
+      id: `sess-${existing}`,
+      token: `tok-${existing}`,
+      userId: existing,
+      scope: 'portal',
+      expiresAt: new Date(Date.now() + 3600_000),
+      updatedAt: new Date(),
+    })
+    return existing
+  }
+
+  it('promotes a verified account that has the given address and signs it out everywhere', async () => {
+    const existing = await seedAccount(true)
     const res = await handleSetupRequest(setupRequest())
     expect(res.status).toBe(201)
+    const { data } = (await res.json()) as { data: { reusedExistingAccount: boolean } }
+    expect(data.reusedExistingAccount).toBe(true)
     const [p] = await testDb.select().from(principal).where(eq(principal.userId, existing))
     expect(p?.role).toBe('admin')
+    expect(await testDb.select().from(session).where(eq(session.userId, existing))).toHaveLength(0)
+    const [done] = await auditEvents('workspace.setup.completed')
+    expect((done?.metadata as { reusedExistingAccount: boolean }).reusedExistingAccount).toBe(true)
   })
 
-  it('does not open a workspace a control plane provisioned', async () => {
+  it('refuses an unverified account that already holds the address', async () => {
+    const existing = await seedAccount(false)
+    const res = await handleSetupRequest(setupRequest())
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('SETUP_ACCOUNT_UNVERIFIED')
+    expect(body.error.message).toMatch(/unverified/i)
+    const [p] = await testDb.select().from(principal).where(eq(principal.userId, existing))
+    expect(p?.role).toBe('user')
+    expect((await testDb.select().from(settings)).length).toBe(0)
+  })
+
+  it('reports a fresh account as not reused', async () => {
+    const res = await handleSetupRequest(setupRequest())
+    const { data } = (await res.json()) as { data: { reusedExistingAccount: boolean } }
+    expect(data.reusedExistingAccount).toBe(false)
+  })
+
+  it('is not there for a workspace a control plane provisioned', async () => {
     await testDb.insert(settings).values({
       id: createId('workspace'),
       name: 'Provisioned',
@@ -209,14 +264,23 @@ describe.skipIf(!fixture.available)('POST /api/v1/setup (real DB, rolled back)',
     })
     await testDb.execute(sql`UPDATE settings SET cloud_workspace_key = 'ws_acme'`)
     const res = await handleSetupRequest(setupRequest())
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(404)
+    expect(await auditEvents('workspace.setup.rejected')).toHaveLength(0)
+  })
+
+  it('counts only failed attempts toward the overall budget', async () => {
+    await handleSetupRequest(setupRequest({ body: { adminName: 'x' } }))
+    expect(await getBucketCount('setup:rl:all')).toBe(0)
+    await handleSetupRequest(setupRequest({ token: 'wrong-wrong-wrong-wrong-wrong-1' }))
+    expect(await getBucketCount('setup:rl:all')).toBe(1)
   })
 
   it('throttles repeated attempts from one address', async () => {
     const statuses: number[] = []
     for (let i = 0; i < 12; i++) {
       statuses.push(
-        (await handleSetupRequest(setupRequest({ token: 'wrong-wrong-wrong-12' }))).status
+        (await handleSetupRequest(setupRequest({ token: 'wrong-wrong-wrong-wrong-wrong-12' })))
+          .status
       )
     }
     expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true)
@@ -237,6 +301,8 @@ describe.skipIf(!fixture.available)('first-boot setup token (real DB, rolled bac
     await ensureBootSetupToken()
     const line = logged.info.find((l) => l.includes('First-run setup token'))
     const token = line?.match(/(qbs_[0-9a-f]{48})/)?.[1]
+    // The token is a structured field, not part of the sentence.
+    expect(line).toContain('"setup_token"')
     expect(token).toBeTruthy()
 
     expect(await verifySetupToken(token!)).toBe('ok')
@@ -272,5 +338,49 @@ describe.skipIf(!fixture.available)('first-boot setup token (real DB, rolled bac
     await ensureBootSetupToken()
     expect(logged.info.some((l) => l.includes('First-run setup token'))).toBe(false)
     expect(await verifySetupToken('anything-anything-1')).toBe('not_configured')
+  })
+
+  it('prints nothing when the operator named a setup owner', async () => {
+    process.env.SETUP_OWNER_EMAIL = 'owner@example.com'
+    try {
+      await ensureBootSetupToken()
+    } finally {
+      delete process.env.SETUP_OWNER_EMAIL
+    }
+    expect(logged.info.some((l) => l.includes('First-run setup token'))).toBe(false)
+  })
+
+  async function printedToken() {
+    await ensureBootSetupToken()
+    const line = logged.info.find((l) => l.includes('First-run setup token'))
+    return line!.match(/(qbs_[0-9a-f]{48})/)![1]!
+  }
+
+  it('forgets the token once the first admin exists, by either path', async () => {
+    const viaSetup = await printedToken()
+    expect((await handleSetupRequest(setupRequest({ token: viaSetup }))).status).toBe(201)
+    expect(await verifySetupToken(viaSetup)).toBe('not_configured')
+  })
+
+  it('forgets the token when the browser wizard makes the first admin', async () => {
+    const token = await printedToken()
+    const userId = createId('user') as UserId
+    await testDb
+      .insert(user)
+      .values({ id: userId, name: 'Wiz', email: 'wiz@example.com', emailVerified: true })
+    await testDb.insert(principal).values({
+      id: createId('principal') as PrincipalId,
+      userId,
+      role: 'user',
+      type: 'user',
+      createdAt: new Date(),
+    })
+    const saved = await setupWorkspaceForUser({
+      userId,
+      data: { workspaceName: 'Wizard Co' },
+      locale: undefined,
+    })
+    expect(saved.ok).toBe(true)
+    expect(await verifySetupToken(token)).toBe('not_configured')
   })
 })

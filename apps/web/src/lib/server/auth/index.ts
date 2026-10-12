@@ -416,14 +416,11 @@ async function createAuth() {
     // this only has to hold and bound; the cache evicts oldest-first.
     rateLimit: {
       customStorage: workspaceRateLimitStorage,
-      // The device endpoints are unauthenticated and mint or poll codes, so
-      // each gets its own small budget per address (polling is every 5s).
+      // Requesting a device code is unauthenticated and mints a row, so it gets
+      // its own small budget per address. The rest of the device endpoints are
+      // closed to HTTP (see http-disabled-paths.ts); polling uses /oauth2/token.
       customRules: {
         '/device/code': { window: 60, max: 10 },
-        '/device/token': { window: 60, max: 30 },
-        '/device': { window: 60, max: 30 },
-        '/device/approve': { window: 60, max: 20 },
-        '/device/deny': { window: 60, max: 20 },
       },
     },
     // Route the library's internal logging through pino, redacted. Without it

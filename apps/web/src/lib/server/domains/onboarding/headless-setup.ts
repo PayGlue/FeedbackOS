@@ -15,7 +15,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import type { PrincipalId, UserId } from '@quackback/ids'
-import { db, eq, principal, user } from '@/lib/server/db'
+import { db, eq, principal, session, user } from '@/lib/server/db'
 import { recordAuditEvent } from '@/lib/server/audit/log'
 import { createApiKey } from '@/lib/server/domains/api-keys/api-key.service'
 import { API_KEY_SCOPES } from '@/lib/server/domains/api-keys/api-key-scopes'
@@ -23,21 +23,24 @@ import {
   findHumanAdmin,
   isOpenToBootstrapClaim,
   isSetupOpenToClaim,
+  namedSetupOwnerEmail,
 } from '@/lib/server/domains/principals/bootstrap-admin'
 import { createPortalUser } from '@/lib/server/domains/users/user.create'
 import { setupWorkspaceForUser } from '@/lib/server/domains/onboarding/setup-workspace'
-import { kvGet, kvSetNx } from '@/lib/server/kv/pg-kv'
+import {
+  clearGeneratedToken,
+  readGeneratedTokenHash,
+  storeGeneratedTokenHash,
+} from '@/lib/server/domains/onboarding/setup-token-store'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'headless-setup' })
 
 /** Where the hash of a server-generated token lives until setup finishes. */
-const GENERATED_TOKEN_KEY = 'setup:generated-token-hash'
-const GENERATED_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365
 const GENERATED_TOKEN_PREFIX = 'qbs_'
 
 /** An operator-chosen token shorter than this is ignored: it would be guessable. */
-export const MIN_SETUP_TOKEN_LENGTH = 16
+export const MIN_SETUP_TOKEN_LENGTH = 32
 
 export const headlessSetupSchema = z.object({
   workspaceName: z
@@ -83,7 +86,7 @@ export type SetupTokenCheck = 'ok' | 'invalid' | 'not_configured'
 export async function verifySetupToken(presented: string): Promise<SetupTokenCheck> {
   const presentedDigest = sha256(presented)
   const fromEnv = configuredToken()
-  const stored = await kvGet<string>(GENERATED_TOKEN_KEY)
+  const stored = await readGeneratedTokenHash()
   if (!fromEnv && !stored) return 'not_configured'
 
   // Evaluate both so the time taken does not say which source matched.
@@ -107,10 +110,13 @@ export async function isAwaitingFirstAdmin(): Promise<boolean> {
  * by a control plane, gets nothing.
  */
 export async function ensureBootSetupToken(): Promise<void> {
+  if (!(await isAwaitingFirstAdmin())) {
+    // Nothing left to open: forget any token an earlier boot generated.
+    await clearGeneratedToken()
+    return
+  }
   if (configuredToken()) {
-    if (await isAwaitingFirstAdmin()) {
-      log.info('SETUP_TOKEN is set: POST /api/v1/setup can create the first admin')
-    }
+    log.info('SETUP_TOKEN is set: POST /api/v1/setup can create the first admin')
     return
   }
   if (process.env.SETUP_TOKEN?.trim()) {
@@ -119,17 +125,15 @@ export async function ensureBootSetupToken(): Promise<void> {
       'SETUP_TOKEN is shorter than the minimum and is ignored'
     )
   }
-  if (!(await isAwaitingFirstAdmin())) return
+  // The operator already named who sets this install up. That is the answer to
+  // "who may claim it", and a token anyone with log access could use is not.
+  if (namedSetupOwnerEmail()) return
 
   const token = `${GENERATED_TOKEN_PREFIX}${randomBytes(24).toString('hex')}`
-  const stored = await kvSetNx(
-    GENERATED_TOKEN_KEY,
-    sha256(token).toString('hex'),
-    GENERATED_TOKEN_TTL_SECONDS
-  )
-  if (!stored) return
+  if (!(await storeGeneratedTokenHash(sha256(token).toString('hex')))) return
   log.info(
-    `First-run setup token (shown once, valid until the first admin exists): ${token}. ` +
+    { setup_token: token },
+    'First-run setup token (shown once, valid until the first admin exists). ' +
       'Send it as "Authorization: Bearer <token>" to POST /api/v1/setup, or set SETUP_TOKEN to choose your own.'
   )
 }
@@ -140,8 +144,10 @@ export type HeadlessSetupResult =
       workspace: { id: string; name: string; slug: string }
       admin: { userId: UserId; principalId: PrincipalId; email: string; name: string }
       apiKey: { id: string; name: string; key: string }
+      /** The address already had a verified account, which was promoted. */
+      reusedExistingAccount: boolean
     }
-  | { ok: false; reason: 'already_set_up' }
+  | { ok: false; reason: 'already_set_up' | 'account_unverified' }
 
 /**
  * Creates the first admin and the workspace, and mints the admin's first API
@@ -153,13 +159,17 @@ export async function runHeadlessSetup(
 ): Promise<HeadlessSetupResult> {
   if (!(await isAwaitingFirstAdmin())) return { ok: false, reason: 'already_set_up' }
 
-  // The person may already have an account (they signed up in the browser and
-  // gave up on the wizard). Otherwise the operator vouches for the address,
-  // which is what an admin-created account means everywhere else.
+  // The address may already have an account. Only a verified one is reused:
+  // on an install nobody has claimed, anyone can register an address with a
+  // password they chose, and promoting that account would hand them the admin
+  // role meant for the real owner of the address. Otherwise the operator
+  // vouches for the address, as an admin-created account means everywhere else.
   const existing = await db.query.user.findFirst({
     where: eq(user.email, input.adminEmail),
-    columns: { id: true },
+    columns: { id: true, emailVerified: true },
   })
+  if (existing && !existing.emailVerified) return { ok: false, reason: 'account_unverified' }
+  const reusedExistingAccount = Boolean(existing)
   const userId: UserId = existing
     ? (existing.id as UserId)
     : (await createPortalUser({ name: input.adminName, email: input.adminEmail })).userId
@@ -171,6 +181,10 @@ export async function runHeadlessSetup(
     operatorAuthorized: true,
   })
   if (!saved.ok) return { ok: false, reason: 'already_set_up' }
+
+  // A reused account may hold sessions the operator never saw; the admin role
+  // starts from a clean sign-in.
+  if (reusedExistingAccount) await db.delete(session).where(eq(session.userId, userId))
 
   const admin = await db.query.principal.findFirst({
     where: eq(principal.userId, userId),
@@ -189,8 +203,9 @@ export async function runHeadlessSetup(
     actor: { userId, email: input.adminEmail, role: 'admin', type: 'user' },
     headers,
     target: { type: 'workspace', id: saved.id },
-    metadata: { via: 'setup_token', apiKeyId: apiKey.id },
+    metadata: { via: 'setup_token', apiKeyId: apiKey.id, reusedExistingAccount },
   })
+  await clearGeneratedToken()
   log.info({ workspace_id: saved.id, user_id: userId }, 'first admin created through setup token')
 
   return {
@@ -198,5 +213,6 @@ export async function runHeadlessSetup(
     workspace: { id: saved.id, name: saved.name, slug: saved.slug },
     admin: { userId, principalId, email: input.adminEmail, name: input.adminName },
     apiKey: { id: apiKey.id, name: apiKey.name, key: plainTextKey },
+    reusedExistingAccount,
   }
 }

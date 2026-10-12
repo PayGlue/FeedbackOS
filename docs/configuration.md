@@ -31,7 +31,7 @@ For optional email, storage, AI, authentication, and integration settings, see [
 
 ## Setting up without a browser
 
-On a new install you can skip the setup wizard. Set `SETUP_TOKEN` to a secret of at least 16 characters, or leave it unset and read the one-time token the server prints to its log on first boot (a line starting `First-run setup token`). Then send it as a bearer token:
+On a new install you can skip the setup wizard. Set `SETUP_TOKEN` to a secret of at least 32 characters, or leave it unset and read the one-time token the server prints to its log on first boot (a line starting `First-run setup token`). Then send it as a bearer token:
 
 ```bash
 curl -X POST https://feedback.example.com/api/v1/setup \
@@ -40,7 +40,7 @@ curl -X POST https://feedback.example.com/api/v1/setup \
   -d '{"workspaceName":"Acme","adminEmail":"you@example.com","adminName":"You"}'
 ```
 
-The response creates the workspace and its first admin, and includes that admin's first API key. It is shown once, so store it. The admin has no password; they can sign in later with an emailed link or code once email is configured. The endpoint works only while the install has no admin. After that it answers `409` and the token opens nothing, so you can remove `SETUP_TOKEN`. It is rate limited, every attempt is logged, and setup and refused attempts are written to the audit log.
+The response creates the workspace and its first admin, and includes that admin's first API key. It is shown once, so store it. The admin has no password; they can sign in later with an emailed link or code once email is configured. The endpoint exists only while the install has no admin. After that it answers `404` and the token opens nothing, so you can remove `SETUP_TOKEN`. If `adminEmail` already has an account, it is promoted only when its address is verified (otherwise `409`), and its sessions are ended. It is rate limited, every attempt is logged, and setup and refused attempts are written to the audit log.
 
 ## Signing in headless clients
 
