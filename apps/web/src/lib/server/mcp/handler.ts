@@ -29,6 +29,8 @@ import { DomainException, RateLimitError } from '@/lib/shared/errors'
 import { EntitlementRequiredError } from '@/lib/server/errors/entitlement-error'
 import { getDeveloperConfig } from '@/lib/server/domains/settings/settings.service'
 import { db, principal, eq } from '@/lib/server/db'
+import { permissionsForPrincipal } from '@/lib/server/policy/permissions'
+import type { PermissionKey } from '@/lib/shared/permissions'
 import { config } from '@/lib/server/config'
 import { createMcpServer } from './server'
 import type { PrincipalId } from '@quackback/ids'
@@ -110,6 +112,13 @@ async function resolveOAuthContext(
     if (!principalRecord) return null
 
     const role = principalRecord.role
+    // The caller's current assignment-derived permissions, resolved as a
+    // signed-in session resolves them, gate every tool. Portal users hold no
+    // workspace assignments, so they skip the read.
+    const permissions =
+      role === 'user'
+        ? new Set<PermissionKey>()
+        : await permissionsForPrincipal(principalId as PrincipalId, role as Role)
 
     // Parse granted scopes from space-separated string
     const scopeStr = (payload.scope as string) ?? ''
@@ -123,6 +132,7 @@ async function resolveOAuthContext(
       name: (payload.name as string) ?? 'Unknown',
       email: payload.email as string | undefined,
       role: role as Role,
+      permissions,
       authMethod: 'oauth',
       scopes,
     }

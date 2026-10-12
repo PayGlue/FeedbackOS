@@ -46,6 +46,17 @@ vi.mock('@/lib/server/domains/api-keys/api-key-authority', () => ({
   resolveApiKeyAuthority: (key: unknown) => mockAuthority(key),
 }))
 
+// An OAuth caller's assignment-derived permissions; here the preset of the
+// role mockFindFirst serves, as for a principal with no custom role.
+vi.mock('@/lib/server/policy/permissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/server/policy/permissions')>()
+  return {
+    ...actual,
+    permissionsForPrincipal: async (_id: unknown, role: 'admin' | 'member' | 'user') =>
+      actual.permissionsForLegacyRole(role),
+  }
+})
+
 vi.mock('@/lib/server/db', async (importOriginal) => ({
   // Spread the real db module so tables/operators stay current; override only what this suite drives.
   ...(await importOriginal<typeof import('@/lib/server/db')>()),
