@@ -10,7 +10,6 @@ import {
   InboxArrowDownIcon,
   SparklesIcon,
   LinkIcon,
-  ShieldCheckIcon,
 } from '@heroicons/react/24/solid'
 import type { NotificationType } from '@/lib/shared/types'
 
@@ -122,8 +121,11 @@ export const notificationTypeConfigs: Record<NotificationType, NotificationTypeC
     iconClass: 'text-yellow-500',
     bgClass: 'bg-yellow-500/10',
   },
+  // Reuses an icon this module already imports: a new one shared with the lazy
+  // settings and feedback pages would split into a chunk of its own, loaded on
+  // every page with the bell.
   approval_requested: {
-    icon: ShieldCheckIcon,
+    icon: CheckCircleIcon,
     iconClass: 'text-emerald-600',
     bgClass: 'bg-emerald-600/10',
   },
