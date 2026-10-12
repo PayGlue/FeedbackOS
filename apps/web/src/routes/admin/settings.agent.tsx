@@ -1,11 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 import { redirectMoved } from '@/lib/shared/moved-route'
-import { adminPageHead } from '@/lib/client/admin-head'
 
 /** Retired path: Agent became Quackback AI, Customers. A tab opens its own page. */
 export const Route = createFileRoute('/admin/settings/agent')({
-  head: adminPageHead('Agent settings'),
   validateSearch: z.object({
     tab: z.enum(['basics', 'knowledge', 'guidance', 'actions']).optional(),
   }),
