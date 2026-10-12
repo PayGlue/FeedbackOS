@@ -11,7 +11,13 @@ import {
   type ApiKeyPrincipal,
 } from '@/lib/server/domains/api-keys/api-key-authority'
 import type { ApiKey } from '@/lib/server/domains/api-keys'
-import { checkRateLimit, getClientIp } from './rate-limit'
+import {
+  apiRateLimitRetryAfter,
+  checkRateLimit,
+  getClientIp,
+  hasRecentApiKeyFailure,
+  recordApiKeyFailure,
+} from './rate-limit'
 import { UnauthorizedError, ForbiddenError, RateLimitError } from '@/lib/shared/errors'
 import type { PrincipalId } from '@quackback/ids'
 import { isAdmin, type Role } from '@/lib/shared/roles'
@@ -114,18 +120,36 @@ export async function withApiKeyAuth(
 ): Promise<ApiAuthContext> {
   const clientIp = getClientIp(request)
   const wantsImportMode = request.headers.get('x-import-mode') === 'true'
+  // Each request is counted once, before its key is checked. Asking for import
+  // mode admits it up to the import cap, but past the base cap it is served
+  // only for a verified admin key, and only from an address that has not
+  // presented a bad key in import mode this window. A missing, bad or
+  // non-admin key therefore stays at the base cap, and so do failed attempts.
   const rateLimit = await checkRateLimit(clientIp, wantsImportMode)
 
   if (!rateLimit.allowed) {
     throw new RateLimitError(rateLimit.retryAfter ?? 60)
   }
 
+  const overBaseLimit = rateLimit.overBaseLimit === true
+  if (overBaseLimit && (await hasRecentApiKeyFailure(clientIp))) {
+    throw new RateLimitError(await apiRateLimitRetryAfter(clientIp))
+  }
+
   const auth = await requireApiKey(request)
 
   if (!auth) {
+    if (wantsImportMode) await recordApiKeyFailure(clientIp)
+    if (overBaseLimit) throw new RateLimitError(await apiRateLimitRetryAfter(clientIp))
     throw new UnauthorizedError(
       'Invalid or missing API key. Provide a valid key in the Authorization header: Bearer qb_xxx'
     )
+  }
+
+  // The key's role is already capped at its creator's current role.
+  const importMode = wantsImportMode && isAdmin(auth.role)
+  if (overBaseLimit && !importMode) {
+    throw new RateLimitError(await apiRateLimitRetryAfter(clientIp))
   }
 
   // A key's authority is its resolved permission set (role preset intersected
@@ -141,7 +165,7 @@ export async function withApiKeyAuth(
     assertKeyScopeFor(auth, options.permission)
   }
 
-  if (wantsImportMode && isAdmin(auth.role)) {
+  if (importMode) {
     auth.importMode = true
   }
 
