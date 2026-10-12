@@ -11,7 +11,7 @@
  * is re-checked periodically so enabling Quinn later heals without a restart.
  */
 import type { PrincipalId } from '@quackback/ids'
-import { db, supportAgents, and, eq, isNull, isNotNull } from '@/lib/server/db'
+import { db, supportAgents, and, eq, isNotNull } from '@/lib/server/db'
 import { getAssistantPrincipal } from '@/lib/server/domains/assistant/assistant.principal'
 import { WorkspaceKeyedCache } from '@/lib/server/workspaces/workspace-keyed'
 
@@ -57,13 +57,7 @@ export async function aiPrincipalIdsOnce(): Promise<ReadonlySet<PrincipalId>> {
   const agents = await db
     .select({ principalId: supportAgents.principalId })
     .from(supportAgents)
-    .where(
-      and(
-        eq(supportAgents.kind, 'external'),
-        isNull(supportAgents.deletedAt),
-        isNotNull(supportAgents.principalId)
-      )
-    )
+    .where(and(eq(supportAgents.kind, 'external'), isNotNull(supportAgents.principalId)))
   for (const agent of agents) if (agent.principalId) ids.add(agent.principalId)
   cachedAiPrincipalIds.set(AI_IDS_KEY, ids)
   aiIdsCheckedAt.set(AI_IDS_KEY, Date.now())

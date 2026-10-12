@@ -15,17 +15,16 @@ import {
   conversationMessages,
   assistantInvolvements,
   supportAgentTurns,
+  supportAgents,
+  type Transaction,
   and,
   eq,
   inArray,
+  desc,
   type AssistantHandoffReason,
   type Conversation,
 } from '@/lib/server/db'
-import type {
-  ConversationId,
-  ConversationMessageId,
-  SupportAgentTurnId,
-} from '@quackback/ids'
+import type { ConversationId, ConversationMessageId, SupportAgentTurnId } from '@quackback/ids'
 import type {
   ConversationMessageCitation,
   ConversationStreamEvent,
@@ -36,6 +35,8 @@ import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/erro
 import {
   publishAgentConversationEvent,
   publishConversationOnlyEvent,
+  publishConversationUpdate,
+  publishConversationEvent,
 } from '@/lib/server/realtime/conversation-channels'
 import {
   clearActivitySnapshot,
@@ -45,7 +46,11 @@ import { toMessageDTO } from '@/lib/server/messages/message-core'
 import { logger } from '@/lib/server/logger'
 import type { AgentActivityStatus } from '@/lib/shared/support-agents'
 import type { SupportAgent } from './support-agents.service'
-import { getTurn, recordTurnReply, releaseAgentControl, settleTurn } from './turns.service'
+import { getTurn } from './turns.service'
+import { enqueueJob } from '@/lib/server/jobs/job-queue'
+import { emit } from '@/lib/server/events/emit'
+import { assistantHandedOff, assistantResolved } from '@/lib/server/events/catalogue'
+import { conversationToDTO } from '../conversation/conversation.query'
 
 const log = logger.child({ component: 'agent-actions' })
 
@@ -93,24 +98,31 @@ export async function assertAgentControls(
 }
 
 /** The agent's active involvement on the conversation, opened if it has none. */
-async function engage(agent: SupportAgent, conversationId: ConversationId) {
+async function engage(
+  agent: SupportAgent,
+  conversationId: ConversationId,
+  exec: Transaction | typeof db = db
+) {
   const { getLatestInvolvement, openInvolvement, voidAssumedResolutionForConversation } =
     await import('@/lib/server/domains/assistant')
-  const revived = await voidAssumedResolutionForConversation(conversationId)
-  const latest = revived ?? (await getLatestInvolvement(conversationId))
+  const revived = await voidAssumedResolutionForConversation(conversationId, exec)
+  const latest = revived ?? (await getLatestInvolvement(conversationId, exec))
   if (latest?.status === 'active') {
     if (latest.supportAgentId === agent.id) return latest
     // Another answerer was engaged before this agent took over.
-    await db
+    await exec
       .update(assistantInvolvements)
       .set({ status: 'abandoned', endedAt: new Date() })
       .where(eq(assistantInvolvements.id, latest.id))
   }
-  return openInvolvement({
-    conversationId,
-    triggeredBy: 'first_touch',
-    supportAgentId: agent.id,
-  })
+  return openInvolvement(
+    {
+      conversationId,
+      triggeredBy: 'first_touch',
+      supportAgentId: agent.id,
+    },
+    exec
+  )
 }
 
 async function claimTurn(
@@ -147,57 +159,78 @@ export async function postAgentReply(input: AgentReplyInput): Promise<AgentReply
   const content = input.content.trim()
   if (!content) throw new ValidationError('VALIDATION_ERROR', 'Reply content is required')
 
-  const turn = await claimTurn(agent, conversationId, turnId)
-  if (turn.status === 'replied' && turn.replyKey === idempotencyKey && turn.replyMessageId) {
-    const [existing] = await db
-      .select({ createdAt: conversationMessages.createdAt })
-      .from(conversationMessages)
-      .where(eq(conversationMessages.id, turn.replyMessageId))
-      .limit(1)
-    if (existing) {
-      return {
-        messageId: turn.replyMessageId,
-        createdAt: existing.createdAt.toISOString(),
-        replayed: true,
-      }
+  const { persistAssistantReply, publishAssistantReply } =
+    await import('../conversation/assistant-reply')
+  const result = await db.transaction(async (tx) => {
+    // Every turn operation locks the conversation before the turn.
+    const [conversation] = await tx
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .for('update')
+    if (!conversation) throw new NotFoundError('CONVERSATION_NOT_FOUND', 'Conversation not found')
+    const [turn] = await tx
+      .select()
+      .from(supportAgentTurns)
+      .where(eq(supportAgentTurns.id, turnId))
+      .for('update')
+    if (!turn || turn.conversationId !== conversationId || turn.agentId !== agent.id)
+      throw new NotFoundError('TURN_NOT_FOUND', 'Turn not found')
+    if (turn.status === 'replied' && turn.replyKey === idempotencyKey && turn.replyMessageId) {
+      const [message] = await tx
+        .select()
+        .from(conversationMessages)
+        .where(eq(conversationMessages.id, turn.replyMessageId))
+      if (message) return { replayed: true as const, message }
     }
-  }
-  await assertAgentControls(agent, conversationId)
-
-  const claimed = await settleTurn(turnId, 'replied', { replyKey: idempotencyKey, agentId: agent.id })
-  if (!claimed) {
-    throw new ConflictError(
-      'STALE_TURN',
-      `This turn is no longer open (it is ${turn.status}). A newer customer message or the deadline replaced it.`
+    if (conversation.controllerAgentId !== agent.id)
+      throw new ConflictError('NOT_CONTROLLER', 'The conversation has another controller')
+    const [live] = await tx.select().from(supportAgents).where(eq(supportAgents.id, agent.id))
+    if (
+      !live ||
+      live.deletedAt ||
+      live.status !== 'active' ||
+      live.credentialHash !== agent.credentialHash
     )
-  }
-
-  try {
-    const involvement = await engage(agent, conversationId)
-    const { appendAssistantReply } =
-      await import('@/lib/server/domains/conversation/conversation.service')
-    const citations = (input.citations ?? []).map(
-      (c): ConversationMessageCitation => ({ type: c.type, id: c.id, title: c.title, url: c.url })
-    )
-    const message = await appendAssistantReply(conversationId, content, authorOf(agent), {
+      throw new ConflictError('AGENT_UNAVAILABLE', 'The agent is no longer available')
+    if (turn.status !== 'requested' || turn.deadlineAt.getTime() <= Date.now())
+      throw new ConflictError('STALE_TURN', 'This turn is no longer open')
+    const involvement = await engage(agent, conversationId, tx)
+    const citations = (input.citations ?? []).map((c): ConversationMessageCitation => ({
+      type: c.type,
+      id: c.id,
+      title: c.title,
+      url: c.url,
+    }))
+    const stored = await persistAssistantReply(tx, conversationId, content, authorOf(agent), {
       waiting: false,
       citations,
       contentJson: input.contentJson ?? null,
+      controllerAgentId: agent.id,
     })
-    await recordTurnReply(turnId, message.id)
-    const { recordAssistantAnswer } = await import('@/lib/server/domains/assistant')
-    await recordAssistantAnswer(involvement.id, {
-      sources: citations.map((c) => ({ type: c.type, id: c.id, title: c.title, url: c.url })),
-    })
-    await clearActivitySnapshot(conversationId)
-    return { messageId: message.id, createdAt: message.createdAt, replayed: false }
-  } catch (err) {
-    // The answer never reached the customer: reopen the turn so the agent can retry.
-    await db
+    await tx
       .update(supportAgentTurns)
-      .set({ status: 'requested', completedAt: null, replyKey: null })
-      .where(and(eq(supportAgentTurns.id, turnId), eq(supportAgentTurns.status, 'replied')))
-    throw err
+      .set({
+        status: 'replied',
+        completedAt: new Date(),
+        replyKey: idempotencyKey,
+        replyMessageId: stored.message.id,
+      })
+      .where(eq(supportAgentTurns.id, turnId))
+    const { recordAssistantAnswer } = await import('@/lib/server/domains/assistant')
+    await recordAssistantAnswer(involvement.id, { sources: citations }, tx)
+    return { replayed: false as const, message: stored.message, stored }
+  })
+  if (!result.replayed) {
+    await publishAssistantReply(result.stored, authorOf(agent))
+    await clearActivitySnapshot(conversationId).catch((err) =>
+      log.warn({ err, conversation_id: conversationId }, 'could not clear agent activity')
+    )
+  }
+  return {
+    messageId: result.message.id,
+    createdAt: result.message.createdAt.toISOString(),
+    replayed: result.replayed,
   }
 }
 
@@ -239,7 +272,12 @@ export async function streamAgentText(
   }
   let text = ''
   let lastPublishAt = 0
-  const publish = (at: number) => {
+  const publish = async (at: number) => {
+    await assertAgentControls(agent, conversationId)
+    const current = await claimTurn(agent, conversationId, turnId)
+    if (current.status !== 'requested' || current.deadlineAt.getTime() <= Date.now()) {
+      throw new ConflictError('STALE_TURN', 'This turn is no longer open')
+    }
     lastPublishAt = at
     publishConversationOnlyEvent(conversationId, {
       kind: 'assistant_delta',
@@ -254,17 +292,42 @@ export async function streamAgentText(
     }
     text += chunk
     const now = Date.now()
-    if (now - lastPublishAt >= STREAM_PUBLISH_INTERVAL_MS) publish(now)
+    if (now - lastPublishAt >= STREAM_PUBLISH_INTERVAL_MS) await publish(now)
   }
-  if (text) publish(Date.now())
+  if (text) await publish(Date.now())
   return { chars: text.length }
 }
 
+async function lockController(
+  tx: Transaction,
+  agent: SupportAgent,
+  conversationId: ConversationId
+) {
+  const [conversation] = await tx
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .for('update')
+  if (!conversation) throw new NotFoundError('CONVERSATION_NOT_FOUND', 'Conversation not found')
+  if (conversation.controllerAgentId !== agent.id)
+    throw new ConflictError('NOT_CONTROLLER', 'The conversation has another controller')
+  const [live] = await tx.select().from(supportAgents).where(eq(supportAgents.id, agent.id))
+  if (
+    !live ||
+    live.deletedAt ||
+    live.status !== 'active' ||
+    live.credentialHash !== agent.credentialHash
+  )
+    throw new ConflictError('AGENT_UNAVAILABLE', 'The agent is no longer available')
+  return conversation
+}
+
 async function closeTurns(
+  tx: Transaction,
   conversationId: ConversationId,
   status: 'handed_off' | 'resolved'
-): Promise<void> {
-  await db
+) {
+  await tx
     .update(supportAgentTurns)
     .set({ status, completedAt: new Date() })
     .where(
@@ -275,125 +338,233 @@ async function closeTurns(
     )
 }
 
-/** An internal note for the teammate who picks the conversation up. */
-async function postInternalNote(
+async function finishHandoff(
+  tx: Transaction,
+  agent: SupportAgent | null,
   conversationId: ConversationId,
-  content: string,
-  author: ConversationAuthorInput
-): Promise<void> {
-  const [message] = await db
-    .insert(conversationMessages)
-    .values({
-      conversationId,
-      principalId: author.principalId,
-      senderType: 'agent',
-      isInternal: true,
-      content,
-    })
+  reason: AssistantHandoffReason,
+  note?: string | null
+) {
+  if (agent?.principalId) {
+    const involvement = await engage(agent, conversationId, tx)
+    const { recordHandoff } = await import('@/lib/server/domains/assistant')
+    if (!(await recordHandoff(involvement.id, reason, tx)))
+      throw new ConflictError('ALREADY_ENDED', 'This engagement already ended')
+  }
+  await closeTurns(tx, conversationId, 'handed_off')
+  const [conversation] = await tx
+    .update(conversations)
+    .set({ controllerAgentId: null, status: 'open', updatedAt: new Date() })
+    .where(eq(conversations.id, conversationId))
     .returning()
-  const dto = toMessageDTO(
-    message,
-    { principalId: author.principalId, displayName: author.displayName ?? null, avatarUrl: null },
-    author.principalId
-  )
-  publishAgentConversationEvent({ kind: 'message', conversationId, message: dto })
+  const messages = await tx
+    .insert(conversationMessages)
+    .values([
+      {
+        conversationId,
+        principalId: null,
+        senderType: 'system' as const,
+        content: 'Connecting you to the team',
+        metadata: { systemEvent: { kind: 'assistant_handoff' as const } },
+      },
+      {
+        conversationId,
+        principalId: agent?.principalId ?? null,
+        senderType: 'agent' as const,
+        isInternal: true,
+        content: `AI agent handed off (${reason.replace(/_/g, ' ')}).${note?.trim() ? ` ${note.trim()}` : ''}`,
+      },
+    ])
+    .returning()
+  await emit(tx, assistantHandedOff, {
+    payload: { conversationId, reason },
+    actor: { type: 'system', ...(agent?.principalId ? { id: agent.principalId } : {}) },
+    entityId: conversationId,
+  })
+  return { conversation, messages }
 }
 
-/**
- * Give the conversation to the team: the involvement ends as handed off, the
- * customer sees the same transition notice the built-in AI shows, and the
- * conversation is routed to a teammate.
- */
+async function publishHandoff(result: Awaited<ReturnType<typeof finishHandoff>>) {
+  const id = result.conversation.id
+  await clearActivitySnapshot(id).catch((err) =>
+    log.warn({ err }, 'could not clear agent activity')
+  )
+  await publishConversationUpdate(id, await conversationToDTO(result.conversation, 'agent'))
+  for (const message of result.messages) {
+    const event = {
+      kind: 'message' as const,
+      conversationId: id,
+      message: toMessageDTO(message, null),
+    }
+    if (message.isInternal) publishAgentConversationEvent(event)
+    else publishConversationEvent(id, event)
+  }
+  const { hasLiveWorkflowForTrigger } =
+    await import('@/lib/server/domains/workflows/workflow.service')
+  if (!(await hasLiveWorkflowForTrigger('assistant.handed_off'))) {
+    const { routeUnassignedConversation } = await import('../conversation/conversation.service')
+    await routeUnassignedConversation(result.conversation)
+  }
+}
+
+/** Ownership, outcome, notices and event commit together before broadcasting. */
 export async function handOffToTeam(input: {
   agent: SupportAgent
   conversationId: ConversationId
   reason: AssistantHandoffReason
   note?: string | null
 }): Promise<void> {
-  const { agent, conversationId, reason } = input
-  const author = authorOf(agent)
-  const involvement = await engage(agent, conversationId)
-  const { recordHandoff } = await import('@/lib/server/domains/assistant')
-  const handed = await recordHandoff(involvement.id, reason)
-  if (!handed) throw new ConflictError('ALREADY_ENDED', 'This engagement already ended')
-
-  await releaseAgentControl(conversationId)
-  await closeTurns(conversationId, 'handed_off')
-  await clearActivitySnapshot(conversationId)
-
-  const label = reason.replace(/_/g, ' ')
-  const note = input.note?.trim()
-  await postInternalNote(
-    conversationId,
-    note ? `AI agent handed off (${label}). ${note}` : `AI agent handed off (${label}).`,
-    author
+  const result = await db.transaction(async (tx) => {
+    await lockController(tx, input.agent, input.conversationId)
+    return finishHandoff(tx, input.agent, input.conversationId, input.reason, input.note)
+  })
+  await publishHandoff(result).catch((err) =>
+    log.warn(
+      { err, conversation_id: input.conversationId },
+      'stored handoff could not be broadcast'
+    )
   )
-  const { executeAssistantHandoff } =
-    await import('@/lib/server/domains/conversation/conversation.service')
-  await executeAssistantHandoff(conversationId, reason, author)
 }
 
-/** Record that the agent resolved the customer's question. */
 export async function resolveAsAgent(input: {
   agent: SupportAgent
   conversationId: ConversationId
   confirmed: boolean
   summary?: string | null
 }): Promise<{ outcome: 'resolved_confirmed' | 'resolved_assumed' }> {
-  const { agent, conversationId } = input
-  const author = authorOf(agent)
-  const { getActiveInvolvement, recordOutcome } = await import('@/lib/server/domains/assistant')
-  const active = await getActiveInvolvement(conversationId)
-  if (!active || active.supportAgentId !== agent.id) {
-    throw new ConflictError('NOT_ENGAGED', 'This agent has not answered this conversation yet')
-  }
-  const kind = input.confirmed ? 'confirmed' : 'assumed'
-  const row = await recordOutcome(active.id, kind, db, {
-    principalId: author.principalId,
-    displayName: agent.name,
+  const outcome = input.confirmed ? ('resolved_confirmed' as const) : ('resolved_assumed' as const)
+  const result = await db.transaction(async (tx) => {
+    await lockController(tx, input.agent, input.conversationId)
+    const [active] = await tx
+      .update(assistantInvolvements)
+      .set({ status: outcome, endedAt: new Date() })
+      .where(
+        and(
+          eq(assistantInvolvements.conversationId, input.conversationId),
+          eq(assistantInvolvements.supportAgentId, input.agent.id),
+          eq(assistantInvolvements.status, 'active')
+        )
+      )
+      .returning()
+    if (!active)
+      throw new ConflictError('NOT_ENGAGED', 'This agent has not answered this conversation yet')
+    await closeTurns(tx, input.conversationId, 'resolved')
+    const [conversation] = await tx
+      .update(conversations)
+      .set({ controllerAgentId: null })
+      .where(eq(conversations.id, input.conversationId))
+      .returning()
+    await emit(tx, assistantResolved, {
+      payload: { conversationId: input.conversationId, outcome },
+      actor: { type: 'system', id: input.agent.principalId! },
+      entityId: input.conversationId,
+    })
+    const [message] = input.summary?.trim()
+      ? await tx
+          .insert(conversationMessages)
+          .values({
+            conversationId: input.conversationId,
+            principalId: input.agent.principalId,
+            senderType: 'agent',
+            isInternal: true,
+            content: `AI agent resolved: ${input.summary.trim()}`,
+          })
+          .returning()
+      : []
+    return { conversation, message }
   })
-  if (!row) throw new ConflictError('ALREADY_ENDED', 'This engagement already ended')
-
-  await releaseAgentControl(conversationId)
-  await closeTurns(conversationId, 'resolved')
-  await clearActivitySnapshot(conversationId)
-  const summary = input.summary?.trim()
-  if (summary) await postInternalNote(conversationId, `AI agent resolved: ${summary}`, author)
-  return { outcome: input.confirmed ? 'resolved_confirmed' : 'resolved_assumed' }
+  await clearActivitySnapshot(input.conversationId).catch(() => {})
+  if (result.message)
+    publishAgentConversationEvent({
+      kind: 'message',
+      conversationId: input.conversationId,
+      message: toMessageDTO(result.message, null),
+    })
+  return { outcome }
 }
 
-/**
- * The agent missed its deadline. Hand the conversation to its fallback: the
- * built-in AI when it is set up and may answer, otherwise the team.
- */
+/** Recovery repeats only an unfinished fallback for the latest turn, never a newer owner. */
 export async function applyTurnFallback(
   turn: TurnRow,
   agent: SupportAgent | null,
   fallback: 'quackback_ai' | 'team'
 ): Promise<void> {
-  const conversationId = turn.conversationId
-  try {
-    if (fallback === 'quackback_ai') {
-      const orchestrator = await import('@/lib/server/domains/assistant/assistant.orchestrator')
-      if ((await orchestrator.previewAssistantTurnForConversation(conversationId)) === 'eligible') {
-        await db
-          .update(assistantInvolvements)
-          .set({ status: 'abandoned', endedAt: new Date() })
-          .where(
-            and(
-              eq(assistantInvolvements.conversationId, conversationId),
-              eq(assistantInvolvements.status, 'active'),
-              eq(assistantInvolvements.supportAgentId, turn.agentId)
-            )
-          )
-        await orchestrator.runAssistantTurnForConversation(conversationId)
-        return
-      }
+  const orchestrator =
+    fallback === 'quackback_ai'
+      ? await import('@/lib/server/domains/assistant/assistant.orchestrator')
+      : null
+  const builtin =
+    orchestrator &&
+    (await orchestrator.previewAssistantTurnForConversation(turn.conversationId)) === 'eligible'
+  const result = await db.transaction(async (tx) => {
+    const [conversation] = await tx
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, turn.conversationId))
+      .for('update')
+    const [current] = await tx
+      .select()
+      .from(supportAgentTurns)
+      .where(eq(supportAgentTurns.id, turn.id))
+      .for('update')
+    if (!conversation || !current || current.status !== 'expired' || current.fallbackAppliedAt)
+      return null
+    const [latest] = await tx
+      .select({ id: supportAgentTurns.id })
+      .from(supportAgentTurns)
+      .where(eq(supportAgentTurns.conversationId, turn.conversationId))
+      .orderBy(desc(supportAgentTurns.createdAt), desc(supportAgentTurns.id))
+      .limit(1)
+    if (
+      latest?.id !== turn.id ||
+      conversation.status === 'closed' ||
+      conversation.controllerAgentId !== turn.agentId
+    ) {
+      await tx
+        .update(supportAgentTurns)
+        .set({ fallbackAppliedAt: new Date() })
+        .where(eq(supportAgentTurns.id, turn.id))
+      return null
     }
-    if (!agent?.principalId) return
-    await handOffToTeam({ agent, conversationId, reason: 'system_error' })
-  } catch (err) {
-    log.error({ err, turn_id: turn.id, conversation_id: conversationId }, 'agent fallback failed')
-    throw err
-  }
+    if (builtin) {
+      await tx
+        .update(assistantInvolvements)
+        .set({ status: 'abandoned', endedAt: new Date() })
+        .where(
+          and(
+            eq(assistantInvolvements.conversationId, turn.conversationId),
+            eq(assistantInvolvements.status, 'active'),
+            eq(assistantInvolvements.supportAgentId, turn.agentId)
+          )
+        )
+      await tx
+        .update(conversations)
+        .set({ controllerAgentId: null })
+        .where(eq(conversations.id, turn.conversationId))
+      // Queue the built-in attempt in this transaction so a crash after commit
+      // cannot lose it. The same deadline job handles the durable second step.
+      await enqueueJob({
+        queue: 'agent-turn-deadline',
+        payload: { turnId: turn.id, builtin: true },
+        dedupeKey: `agent-native-fallback:${turn.id}`,
+        maxAttempts: 3,
+        executor: tx,
+      })
+      await tx
+        .update(supportAgentTurns)
+        .set({ fallbackAppliedAt: new Date() })
+        .where(eq(supportAgentTurns.id, turn.id))
+      return null
+    }
+    const handoff = await finishHandoff(tx, agent, turn.conversationId, 'system_error')
+    await tx
+      .update(supportAgentTurns)
+      .set({ fallbackAppliedAt: new Date() })
+      .where(eq(supportAgentTurns.id, turn.id))
+    return handoff
+  })
+  if (result)
+    await publishHandoff(result).catch((err) =>
+      log.warn({ err, turn_id: turn.id }, 'stored fallback could not be broadcast')
+    )
 }

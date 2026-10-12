@@ -11,6 +11,7 @@ import {
   db,
   conversations,
   supportAgents,
+  conversationMessages,
   supportAgentTurns,
   and,
   eq,
@@ -52,12 +53,48 @@ export async function requestAgentTurn(input: {
 }): Promise<SupportAgentTurn | null> {
   const { conversationId, agent, triggerMessageId } = input
   return db.transaction(async (tx) => {
+    const [conversation] = await tx
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .for('update')
+    if (!conversation || conversation.channel !== 'messenger' || conversation.status === 'closed')
+      return null
+    const [live] = await tx.select().from(supportAgents).where(eq(supportAgents.id, agent.id))
+    if (!live || live.deletedAt || live.status !== 'active') return null
+    if (triggerMessageId) {
+      const [existing] = await tx
+        .select()
+        .from(supportAgentTurns)
+        .where(
+          and(
+            eq(supportAgentTurns.conversationId, conversationId),
+            eq(supportAgentTurns.triggerMessageId, triggerMessageId)
+          )
+        )
+      if (existing) return existing
+      const [latest] = await tx
+        .select({ id: conversationMessages.id })
+        .from(conversationMessages)
+        .where(
+          and(
+            eq(conversationMessages.conversationId, conversationId),
+            eq(conversationMessages.senderType, 'visitor')
+          )
+        )
+        .orderBy(desc(conversationMessages.createdAt), desc(conversationMessages.id))
+        .limit(1)
+      if (latest?.id !== triggerMessageId) return null
+    }
     const [{ count }] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(supportAgentTurns)
       .where(eq(supportAgentTurns.conversationId, conversationId))
     if (count >= MAX_TURNS_PER_CONVERSATION) {
-      log.warn({ conversation_id: conversationId }, 'agent turn allowance used, leaving to the team')
+      log.warn(
+        { conversation_id: conversationId },
+        'agent turn allowance used, leaving to the team'
+      )
       return null
     }
 
@@ -174,6 +211,11 @@ export async function recordTurnReply(
 export async function releaseAgentControl(conversationId: ConversationId): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .for('update')
+    await tx
       .update(supportAgentTurns)
       .set({ status: 'superseded', completedAt: new Date() })
       .where(
@@ -198,49 +240,57 @@ export async function expireTurn(
   id: SupportAgentTurnId,
   opts: { force?: boolean } = {}
 ): Promise<void> {
+  const existing = await getTurn(id)
+  if (!existing) return
   const expired = await db.transaction(async (tx) => {
-    const [turn] = await tx
-      .update(supportAgentTurns)
-      .set({ status: 'expired', completedAt: new Date() })
-      .where(
-        and(
-          eq(supportAgentTurns.id, id),
-          eq(supportAgentTurns.status, 'requested'),
-          // The deadline job waits for the deadline; a delivery that can never
-          // arrive expires the turn at once.
-          ...(opts.force ? [] : [sql`${supportAgentTurns.deadlineAt} <= now()`])
-        )
-      )
-      .returning()
-    if (!turn) return null
-    const [agent] = await tx.select().from(supportAgents).where(eq(supportAgents.id, turn.agentId))
     await tx
-      .update(conversations)
-      .set({ controllerAgentId: null })
-      .where(
-        and(
-          eq(conversations.id, turn.conversationId),
-          eq(conversations.controllerAgentId, turn.agentId)
-        )
-      )
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.id, existing.conversationId))
+      .for('update')
+    const [current] = await tx
+      .select()
+      .from(supportAgentTurns)
+      .where(eq(supportAgentTurns.id, id))
+      .for('update')
+    if (!current || current.fallbackAppliedAt) return null
+    if (current.status !== 'requested' && current.status !== 'expired') return null
+    if (current.status === 'requested' && !opts.force && current.deadlineAt.getTime() > Date.now())
+      return null
+    const [agent] = await tx
+      .select()
+      .from(supportAgents)
+      .where(eq(supportAgents.id, current.agentId))
     const fallback = agent?.fallback ?? 'team'
-    await emit(tx, agentTurnExpired, {
-      payload: {
-        turnId: turn.id,
-        agentId: turn.agentId,
-        conversationId: turn.conversationId,
-        fallback,
-      },
-      actor: { type: 'system' },
-      entityId: turn.conversationId,
-    })
-    return { turn, agent, fallback }
+    if (current.status === 'requested') {
+      await tx
+        .update(supportAgentTurns)
+        .set({ status: 'expired', completedAt: new Date() })
+        .where(eq(supportAgentTurns.id, id))
+      await emit(tx, agentTurnExpired, {
+        payload: {
+          turnId: current.id,
+          agentId: current.agentId,
+          conversationId: current.conversationId,
+          fallback,
+        },
+        actor: { type: 'system' },
+        entityId: current.conversationId,
+      })
+    }
+    // Keep ownership until fallback takes it atomically. A retry must recover
+    // an expired turn whose fallback did not finish, rather than drop it.
+    return { turn: { ...current, status: 'expired' as const }, agent, fallback }
   })
   if (!expired) return
 
   const { turn, agent, fallback } = expired
-  log.warn({ turn_id: turn.id, conversation_id: turn.conversationId, fallback }, 'agent turn expired')
-  if (agent) await recordDeliveryResult(agent.id, { ok: false, error: 'No reply before the deadline' })
+  log.warn(
+    { turn_id: turn.id, conversation_id: turn.conversationId, fallback },
+    'agent turn expired'
+  )
+  if (agent)
+    await recordDeliveryResult(agent.id, { ok: false, error: 'No reply before the deadline' })
 
   const { applyTurnFallback } = await import('./agent-actions.service')
   await applyTurnFallback(turn, agent ?? null, fallback)

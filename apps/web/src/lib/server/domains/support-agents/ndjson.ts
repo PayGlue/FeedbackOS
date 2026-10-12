@@ -24,26 +24,43 @@ function chunkOf(line: string): string {
 export async function* ndjsonTextChunks(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
   let buffer = ''
   try {
     for (;;) {
-      const { done, value } = await reader.read()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const { done, value } = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new ValidationError('STREAM_IDLE', 'The stream stopped sending text')),
+            5000
+          )
+        }),
+      ]).finally(() => clearTimeout(timer))
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       let newline = buffer.indexOf('\n')
       while (newline !== -1) {
-        const line = buffer.slice(0, newline).trim()
+        const rawLine = buffer.slice(0, newline)
+        const line = rawLine.trim()
+        if (encoder.encode(rawLine).byteLength > MAX_LINE_BYTES) {
+          throw new ValidationError('VALIDATION_ERROR', 'A streamed line is too long')
+        }
         buffer = buffer.slice(newline + 1)
         if (line) yield chunkOf(line)
         newline = buffer.indexOf('\n')
       }
-      if (buffer.length > MAX_LINE_BYTES) {
+      if (encoder.encode(buffer).byteLength > MAX_LINE_BYTES) {
         throw new ValidationError('VALIDATION_ERROR', 'A streamed line is too long')
       }
     }
     const rest = (buffer + decoder.decode()).trim()
+    if (encoder.encode(buffer).byteLength > MAX_LINE_BYTES)
+      throw new ValidationError('VALIDATION_ERROR', 'A streamed line is too long')
     if (rest) yield chunkOf(rest)
   } finally {
+    await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 }

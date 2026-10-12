@@ -55,15 +55,13 @@ export function buildAgentContext(
 ): AgentConversationContext {
   const messages = thread
     .filter((m) => !m.isInternal)
-    .map(
-      (m): AgentContextMessage => ({
-        id: m.id,
-        role: roleOf(m),
-        content: m.content,
-        authorName: m.author?.displayName ?? null,
-        createdAt: m.createdAt,
-      })
-    )
+    .map((m): AgentContextMessage => ({
+      id: m.id,
+      role: roleOf(m),
+      content: m.content,
+      authorName: m.author?.displayName ?? null,
+      createdAt: m.createdAt,
+    }))
 
   // Customer messages and system notices (which quote customer details) are
   // outside text. Teammate and AI messages are the team's own.

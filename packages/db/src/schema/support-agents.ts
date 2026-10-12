@@ -112,6 +112,12 @@ export const supportAgentTurns = pgTable(
       foreignColumns: [conversationMessages.id],
     }).onDelete('set null'),
     index('support_agent_turns_conversation_idx').on(t.conversationId, t.createdAt),
+    uniqueIndex('support_agent_turns_one_open_idx')
+      .on(t.conversationId)
+      .where(sql`${t.status} = 'requested'`),
+    uniqueIndex('support_agent_turns_trigger_idx')
+      .on(t.conversationId, t.triggerMessageId)
+      .where(sql`${t.triggerMessageId} IS NOT NULL`),
     // The deadline sweep reads only turns still waiting for an answer.
     index('support_agent_turns_open_deadline_idx')
       .on(t.deadlineAt)

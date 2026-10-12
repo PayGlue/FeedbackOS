@@ -63,3 +63,8 @@ ALTER TABLE "assistant_involvements" ADD COLUMN IF NOT EXISTS "support_agent_id"
 INSERT INTO "support_agents" ("id", "kind", "name")
 VALUES (gen_random_uuid(), 'quackback_ai', 'Quackback AI')
 ON CONFLICT ("kind") WHERE "deleted_at" IS NULL DO NOTHING;
+
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "support_agent_turns_one_open_idx" ON "support_agent_turns" ("conversation_id") WHERE "status" = 'requested';
+--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "support_agent_turns_trigger_idx" ON "support_agent_turns" ("conversation_id", "trigger_message_id") WHERE "trigger_message_id" IS NOT NULL;

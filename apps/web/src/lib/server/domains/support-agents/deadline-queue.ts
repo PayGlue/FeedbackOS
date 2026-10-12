@@ -11,5 +11,14 @@ import { expireTurn } from './turns.service'
 export async function runTurnDeadline(job: ClaimedJob): Promise<void> {
   const turnId = (job.payload as { turnId?: string }).turnId
   if (!turnId) return
+  if ((job.payload as { builtin?: boolean }).builtin) {
+    const { getTurn } = await import('./turns.service')
+    const turn = await getTurn(turnId as SupportAgentTurnId)
+    if (!turn || turn.status !== 'expired' || !turn.fallbackAppliedAt) return
+    const { runAssistantTurnForConversation } =
+      await import('@/lib/server/domains/assistant/assistant.orchestrator')
+    await runAssistantTurnForConversation(turn.conversationId)
+    return
+  }
   await expireTurn(turnId as SupportAgentTurnId)
 }

@@ -10,20 +10,23 @@
 import { db, conversations, eq } from '@/lib/server/db'
 import type { ConversationId, ConversationMessageId, PrincipalId } from '@quackback/ids'
 import { logger } from '@/lib/server/logger'
-import { getExternalSupportAgent, type SupportAgent } from './support-agents.service'
+import {
+  getExternalSupportAgent,
+  getSupportAgent,
+  type SupportAgent,
+} from './support-agents.service'
 import { releaseAgentControl, requestAgentTurn } from './turns.service'
 
 const log = logger.child({ component: 'switchboard' })
 
 export type AnswerRoute =
-  | { kind: 'quackback_ai' }
-  | { kind: 'team' }
-  | { kind: 'external'; agent: SupportAgent }
+  { kind: 'quackback_ai' } | { kind: 'team' } | { kind: 'external'; agent: SupportAgent }
 
 async function ownAgentEnabled(): Promise<boolean> {
   try {
-    const { isFeatureEnabled } = await import('@/lib/server/domains/settings/settings.service')
-    return await isFeatureEnabled('ownAgent')
+    const { assertOwnAgentAvailable } = await import('./availability')
+    await assertOwnAgentAvailable()
+    return true
   } catch (err) {
     // A settings hiccup must not silence the built-in AI.
     log.warn({ err }, 'could not read the own-agent switch, using the built-in AI')
@@ -46,7 +49,24 @@ async function aiMayAnswer(
 }
 
 export async function decideRoute(conversationId: ConversationId): Promise<AnswerRoute> {
-  if (!(await ownAgentEnabled())) return { kind: 'quackback_ai' }
+  if (!(await ownAgentEnabled())) {
+    await releaseIfControlled(conversationId)
+    return { kind: 'quackback_ai' }
+  }
+
+  // A live conversation's owner takes precedence over the workspace default.
+  const [conversation] = await db
+    .select({ controllerAgentId: conversations.controllerAgentId })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1)
+  if (conversation?.controllerAgentId) {
+    const owner = await getSupportAgent(conversation.controllerAgentId)
+    if (owner?.status === 'active' && owner.endpointUrl && owner.principalId)
+      return { kind: 'external', agent: owner }
+    await releaseAgentControl(conversationId)
+    return owner?.fallback === 'quackback_ai' ? { kind: 'quackback_ai' } : { kind: 'team' }
+  }
 
   const { getAnswering } = await import('@/lib/server/domains/settings/settings.answering')
   const { mode } = await getAnswering()

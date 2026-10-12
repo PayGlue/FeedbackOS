@@ -745,6 +745,7 @@ export async function sendAgentMessage(
       .from(conversations)
       .where(eq(conversations.id, conversationId))
       .limit(1)
+      .for('update')
     if (!existing) {
       throw new NotFoundError('CONVERSATION_NOT_FOUND', 'Conversation not found')
     }
@@ -797,6 +798,19 @@ export async function sendAgentMessage(
       .where(eq(conversations.id, conversationId))
       .returning()
 
+    if (existing.controllerAgentId) {
+      const { supportAgentTurns } = await import('@/lib/server/db')
+      await tx
+        .update(supportAgentTurns)
+        .set({ status: 'superseded', completedAt: message.createdAt })
+        .where(
+          and(
+            eq(supportAgentTurns.conversationId, conversationId),
+            eq(supportAgentTurns.status, 'requested')
+          )
+        )
+    }
+
     return {
       message,
       conversation: updated,
@@ -804,13 +818,6 @@ export async function sendAgentMessage(
       hadAgentController: existing.controllerAgentId !== null,
     }
   })
-
-  // The AI agent that was answering no longer controls it, so its open turn is moot.
-  if (txResult.hadAgentController) {
-    void import('@/lib/server/domains/support-agents/turns.service')
-      .then((m) => m.releaseAgentControl(conversationId))
-      .catch((err) => log.warn({ err, conversationId }, 'releasing agent control failed'))
-  }
 
   const authored = await resolveAuthorAudiences(agent)
   // Inbox sees the account name. The visitor channel keeps the public name,
@@ -2161,66 +2168,14 @@ export async function appendAssistantReply(
     metadata?: ConversationMessageMetadata | null
   }
 ): Promise<ConversationMessageDTO> {
-  const txResult = await db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select()
-      .from(conversations)
-      .where(eq(conversations.id, conversationId))
-      .limit(1)
-    if (!existing) throw new NotFoundError('CONVERSATION_NOT_FOUND', 'Conversation not found')
-    const [message] = await tx
-      .insert(conversationMessages)
-      .values({
-        conversationId,
-        principalId: author.principalId,
-        senderType: 'agent',
-        content,
-        contentJson: opts.contentJson ?? null,
-        citations: opts.citations?.length ? opts.citations : null,
-        metadata: opts.metadata ?? null,
-      })
-      .returning()
-    const nextStatus = applyAgentReopenStatus(
-      existing.status,
-      getChannelDescriptor(existing.channel)?.reopenOnReply ?? 'always'
-    )
-    const [updated] = await tx
-      .update(conversations)
-      .set({
-        lastMessageAt: message.createdAt,
-        lastMessagePreview: preview(content, []),
-        status: nextStatus,
-        waitingSince: opts.waiting ? message.createdAt : null,
-        resolvedAt: resolvedAtForStatus(nextStatus, message.createdAt),
-        updatedAt: message.createdAt,
-      })
-      .where(eq(conversations.id, conversationId))
-      .returning()
-    return { conversation: updated, message }
-  })
-
-  const authored = await resolveAuthorAudiences(author)
-  const messageDTO = toMessageDTO(txResult.message, authored.supportAuthor, author.principalId)
-  const conversationDTO = await conversationToDTO(txResult.conversation, 'agent')
-  await publishConversationUpdate(conversationDTO.id, conversationDTO)
-  publishConversationMessage(
-    txResult.conversation.id,
-    {
-      visitor: toMessageDTO(txResult.message, authored.publicAuthor, author.principalId),
-      agent: messageDTO,
-    },
-    { conversationUpdated: true }
+  const { persistAssistantReply, publishAssistantReply } = await import('./assistant-reply')
+  const stored = await db.transaction((tx) =>
+    persistAssistantReply(tx, conversationId, content, author, {
+      ...opts,
+      controllerAgentId: null,
+    })
   )
-  // isFirstMessage only matters for a VISITOR message — this is Quinn's own
-  // reply, so false.
-  void emitMessageCreated(
-    assistantActor(author.principalId),
-    author,
-    txResult.message,
-    txResult.conversation,
-    false
-  )
-  return messageDTO
+  return publishAssistantReply(stored, author)
 }
 
 /**

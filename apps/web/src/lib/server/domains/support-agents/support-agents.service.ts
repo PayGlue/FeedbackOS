@@ -181,6 +181,8 @@ export async function registerExternalAgent(input: ExternalAgentInput): Promise<
         fallback: input.fallback ?? 'team',
       })
       .returning()
+    const { resetAiPrincipalIds } = await import('@/lib/server/messages/assistant-principal')
+    resetAiPrincipalIds()
     log.info({ agent_id: agent.id }, 'external support agent registered')
     return { agent, credential, signingSecret }
   } catch (err) {
@@ -278,6 +280,8 @@ export async function deleteExternalAgent(id: SupportAgentId): Promise<void> {
       })
       .where(eq(supportAgents.id, id))
   })
+  const { resetAiPrincipalIds } = await import('@/lib/server/messages/assistant-principal')
+  resetAiPrincipalIds()
   log.info({ agent_id: id }, 'external support agent removed')
 }
 

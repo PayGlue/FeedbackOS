@@ -42,5 +42,8 @@ export async function withAgentAuth(request: Request): Promise<SupportAgent> {
   if (agent.status !== 'active') {
     throw new ForbiddenError('AGENT_PAUSED', 'This agent is paused')
   }
+  const { assertOwnAgentAvailable } =
+    await import('@/lib/server/domains/support-agents/availability')
+  await assertOwnAgentAvailable()
   return agent
 }
