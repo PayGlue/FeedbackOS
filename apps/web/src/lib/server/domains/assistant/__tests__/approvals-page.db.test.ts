@@ -60,7 +60,12 @@ import { createWorkspaceThread } from '../workspace-threads.service'
 import { enqueueWorkspaceSettingsProposal } from '../workspace-settings-actions.service'
 import { proposePendingAction } from '../pending-actions.service'
 import { approveApproval, rejectApproval } from '../approvals.service'
-import { listDecidedApprovalsForViewer, waitingApprovalsSummary } from '../approvals.queue'
+import {
+  listApprovalsForViewer,
+  listDecidedApprovalsForViewer,
+  pageApprovalsForViewer,
+  waitingApprovalsSummary,
+} from '../approvals.queue'
 
 const fixture = await createDbTestFixture()
 
@@ -315,5 +320,51 @@ describe('the waiting summary', () => {
     expect((await listDecidedApprovalsForViewer(member)).map((view) => view.id)).toEqual([
       turnedDown.id,
     ])
+  })
+})
+
+describe('one count, every request', () => {
+  it('pages through every waiting request, and the count matches what the pages hold', async () => {
+    const first = await inboxProposal()
+    const second = await inboxProposal()
+    const third = await inboxProposal()
+    const page1 = await pageApprovalsForViewer(otherAdmin, { view: 'waiting', limit: 2 })
+    expect(page1.items.map((view) => view.id)).toEqual([third.id, second.id])
+    expect(page1.nextCursor).not.toBeNull()
+    const page2 = await pageApprovalsForViewer(otherAdmin, {
+      view: 'waiting',
+      limit: 2,
+      cursor: page1.nextCursor!,
+    })
+    expect(page2.items.map((view) => view.id)).toEqual([first.id])
+    expect(page2.nextCursor).toBeNull()
+    expect((await waitingApprovalsSummary(otherAdmin)).count).toBe(3)
+  })
+
+  it('pages through decided requests', async () => {
+    const first = await inboxProposal()
+    await rejectApproval(otherAdmin, first.id, { contentHash: first.argsDigest! })
+    const second = await inboxProposal()
+    await rejectApproval(otherAdmin, second.id, { contentHash: second.argsDigest! })
+    const page1 = await pageApprovalsForViewer(otherAdmin, { view: 'decided', limit: 1 })
+    expect(page1.items.map((view) => view.id)).toEqual([second.id])
+    const page2 = await pageApprovalsForViewer(otherAdmin, {
+      view: 'decided',
+      limit: 1,
+      cursor: page1.nextCursor!,
+    })
+    expect(page2.items.map((view) => view.id)).toEqual([first.id])
+    expect(page2.nextCursor).toBeNull()
+  })
+
+  it('leaves out of what waits on a person the request their own assistant filed', async () => {
+    // The owner's Home chat asked; the card is already in front of them, so
+    // like the bell, the count and the queue leave it out for them.
+    const home = await homeProposal()
+    expect(await waitingApprovalsSummary(owner)).toEqual({ count: 0, latest: [] })
+    expect((await listApprovalsForViewer(owner)).map((view) => view.id)).not.toContain(home.id)
+    const forOther = await waitingApprovalsSummary(otherAdmin)
+    expect(forOther.count).toBe(1)
+    expect(forOther.latest.map((view) => view.id)).toEqual([home.id])
   })
 })

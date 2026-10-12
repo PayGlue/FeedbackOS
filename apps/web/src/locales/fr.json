@@ -1790,6 +1790,7 @@
   "admin.approvals.notFound": "Cette demande est introuvable.",
   "admin.approvals.loadFailed": "Impossible de charger les approbations.",
   "admin.approvals.retry": "Réessayer",
+  "admin.approvals.showMore": "Afficher plus",
   "admin.approvals.risk.low": "Faible",
   "admin.approvals.risk.medium": "Moyen",
   "admin.approvals.risk.high": "Élevé",

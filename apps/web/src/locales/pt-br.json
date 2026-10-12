@@ -1790,6 +1790,7 @@
   "admin.approvals.notFound": "Esta solicitação não foi encontrada.",
   "admin.approvals.loadFailed": "Não foi possível carregar as aprovações.",
   "admin.approvals.retry": "Tentar novamente",
+  "admin.approvals.showMore": "Mostrar mais",
   "admin.approvals.risk.low": "Baixo",
   "admin.approvals.risk.medium": "Médio",
   "admin.approvals.risk.high": "Alto",

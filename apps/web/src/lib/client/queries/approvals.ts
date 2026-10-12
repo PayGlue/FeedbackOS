@@ -5,8 +5,9 @@
  * admin layout warms it with the document, so neither asks again as the
  * viewer moves between pages. A decision refreshes it, and so does a new
  * approval notification (see useWaitingApprovals); it has no poll of its own.
+ * Its count is the Waiting tab's too. The lists page through every request.
  */
-import { queryOptions } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import {
   getApprovalFn,
   getWaitingApprovalsFn,
@@ -31,9 +32,11 @@ export const approvalQueries = {
       staleTime: 30 * 1000,
     }),
   list: (view: ApprovalsView) =>
-    queryOptions({
+    infiniteQueryOptions({
       queryKey: approvalKeys.list(view),
-      queryFn: () => listApprovalsFn({ data: { view } }),
+      queryFn: ({ pageParam }) => listApprovalsFn({ data: { view, cursor: pageParam } }),
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (page) => page.nextCursor ?? undefined,
     }),
   detail: (id: string) =>
     queryOptions({

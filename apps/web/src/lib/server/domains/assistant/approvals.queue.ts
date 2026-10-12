@@ -21,6 +21,7 @@ import {
   inArray,
   isNull,
   isNotNull,
+  sql,
   tickets,
   principal,
   user,
@@ -48,6 +49,7 @@ import {
   approvalRiskOf,
   isDecidableApproval,
   requiredApprovalPermissions,
+  requesterIsPresent,
 } from './approvals.service'
 
 type PendingActionRow = typeof assistantPendingActions.$inferSelect
@@ -332,82 +334,161 @@ function isTeammate(actor: Actor): boolean {
   return actor.principalType === 'user' && !!actor.principalId && isTeamActor(actor)
 }
 
-/** The pending rows this viewer may decide, newest first, up to `limit`. */
-async function waitingRowsFor(actor: Actor, limit: number): Promise<PendingActionRow[]> {
-  if (!isTeammate(actor)) return []
-  const rows = await db
-    .select()
-    .from(assistantPendingActions)
-    .where(
-      and(
-        eq(assistantPendingActions.status, 'proposed'),
-        gt(assistantPendingActions.expiresAt, new Date()),
-        parentVisible(actor)
-      )
-    )
-    // Ids are time-ordered, so they break a tie between requests filed together.
-    .orderBy(desc(assistantPendingActions.proposedAt), desc(assistantPendingActions.id))
-    .limit(SCAN_LIMIT)
-  const requiredFor = approvalRequirements()
-  const decidable: PendingActionRow[] = []
-  for (const row of rows) {
-    if (decidable.length >= limit) break
-    if (!isDecidableApproval(row)) continue
-    const required = await requiredFor(row)
-    if (required && mayDecide(row, actor, required)) decidable.push(row)
-  }
-  return decidable
+/**
+ * Requests are listed newest first and read in batches; a page stops after
+ * `limit` rows the viewer may see, and the next one starts after the last row
+ * read. The cursor is that row's id: the next page compares against the row's
+ * own stored time, so no precision is lost on the way.
+ */
+type ApprovalsList = 'waiting' | 'decided'
+
+/** One page of a list, and where the next one starts, or null at the end. */
+export interface ApprovalsPage {
+  items: ApprovalView[]
+  nextCursor: string | null
+}
+
+/** The most requests the waiting count reads; the rail shows 99+ well before it. */
+const MAX_COUNT = 999
+
+/** Rows after the cursor row, in the list's order. */
+function afterCursor(list: ApprovalsList, cursor: string | null) {
+  if (!cursor) return undefined
+  const column =
+    list === 'waiting' ? assistantPendingActions.proposedAt : assistantPendingActions.decidedAt
+  const stored = list === 'waiting' ? sql.raw('anchor.proposed_at') : sql.raw('anchor.decided_at')
+  return sql`(${column}, ${assistantPendingActions.id}) < (select ${stored}, anchor.id from ${assistantPendingActions} anchor where anchor.id = ${sql.param(cursor as AssistantPendingActionId, assistantPendingActions.id)})`
 }
 
 /**
- * The pending requests this viewer may decide, newest first. Only people
- * decide, so a credential or agent sees an empty queue.
+ * Whether a waiting request is the viewer's to decide. The person whose own
+ * assistant asked, in the app, already has the request in front of them, so
+ * it does not wait on them; the bell leaves them out the same way.
  */
+function waitsOn(row: PendingActionRow, actor: Actor, required: ReadonlySet<PermissionKey>) {
+  if (row.onBehalfOfPrincipalId === actor.principalId && requesterIsPresent(row)) return false
+  return mayDecide(row, actor, required)
+}
+
+/** Whether a decided request is the viewer's to see: theirs, or one they could have decided. */
+function decidedFor(
+  row: PendingActionRow,
+  actor: Actor,
+  required: ReadonlySet<PermissionKey> | null
+) {
+  if (row.decidedById === actor.principalId || row.onBehalfOfPrincipalId === actor.principalId)
+    return true
+  return !!required && holdsAll(actor, required)
+}
+
+/** The rows of a list this viewer may see, from the cursor on, up to `limit`. */
+async function scan(
+  actor: Actor,
+  list: ApprovalsList,
+  limit: number,
+  cursor: string | null
+): Promise<{ rows: PendingActionRow[]; next: string | null }> {
+  if (!isTeammate(actor)) return { rows: [], next: null }
+  const requiredFor = approvalRequirements()
+  const rows: PendingActionRow[] = []
+  let after = cursor
+  for (;;) {
+    const batch = await db
+      .select()
+      .from(assistantPendingActions)
+      .where(
+        and(
+          list === 'waiting'
+            ? and(
+                eq(assistantPendingActions.status, 'proposed'),
+                gt(assistantPendingActions.expiresAt, new Date())
+              )
+            : isNotNull(assistantPendingActions.decidedAt),
+          parentVisible(actor),
+          afterCursor(list, after)
+        )
+      )
+      // Ids are time-ordered, so they break a tie between requests filed together.
+      .orderBy(
+        desc(
+          list === 'waiting'
+            ? assistantPendingActions.proposedAt
+            : assistantPendingActions.decidedAt
+        ),
+        desc(assistantPendingActions.id)
+      )
+      .limit(SCAN_LIMIT)
+    for (const [index, row] of batch.entries()) {
+      after = row.id
+      if (!isDecidableApproval(row)) continue
+      const required = await requiredFor(row)
+      const shown =
+        list === 'waiting'
+          ? !!required && waitsOn(row, actor, required)
+          : decidedFor(row, actor, required)
+      if (!shown) continue
+      rows.push(row)
+      if (rows.length >= limit) {
+        const more = index < batch.length - 1 || batch.length === SCAN_LIMIT
+        return { rows, next: more ? after : null }
+      }
+    }
+    if (batch.length < SCAN_LIMIT) return { rows, next: null }
+  }
+}
+
+function pageLimit(limit: number | undefined): number {
+  return Math.max(1, Math.min(limit ?? DEFAULT_LIMIT, MAX_LIMIT))
+}
+
+/**
+ * One page of the requests waiting on this viewer, or of those decided, newest
+ * first; the Approvals page reads every page. Only people decide, so a
+ * credential or agent sees empty lists.
+ */
+export async function pageApprovalsForViewer(
+  actor: Actor,
+  options: { view: ApprovalsList; limit?: number; cursor?: string | null }
+): Promise<ApprovalsPage> {
+  const { rows, next } = await scan(
+    actor,
+    options.view,
+    pageLimit(options.limit),
+    options.cursor ?? null
+  )
+  return {
+    items: await toViews(rows, () => options.view === 'waiting'),
+    nextCursor: next,
+  }
+}
+
+/** The pending requests this viewer may decide, newest first: the first page. */
 export async function listApprovalsForViewer(
   actor: Actor,
   options: { limit?: number } = {}
 ): Promise<ApprovalView[]> {
-  const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT))
-  return toViews(await waitingRowsFor(actor, limit), () => true)
+  return (await pageApprovalsForViewer(actor, { view: 'waiting', limit: options.limit })).items
 }
 
 /**
- * How many requests wait on this viewer, and the newest few: the rail's count
- * and Home's list, in one read.
+ * How many requests wait on this viewer, and the newest few: the rail's
+ * count, Home's list and the Waiting tab's count, in one read.
  */
 export async function waitingApprovalsSummary(actor: Actor): Promise<WaitingApprovals> {
-  const rows = await waitingRowsFor(actor, MAX_LIMIT)
+  const { rows } = await scan(actor, 'waiting', MAX_COUNT, null)
   return { count: rows.length, latest: await toViews(rows.slice(0, SUMMARY_LATEST), () => true) }
 }
 
 /**
  * Requests already decided that this viewer could have decided, decided
  * themselves, or that were filed on their behalf, most recently decided
- * first.
+ * first: the first page.
  */
 export async function listDecidedApprovalsForViewer(
   actor: Actor,
   options: { limit?: number } = {}
 ): Promise<ApprovalView[]> {
-  if (!isTeammate(actor)) return []
-  const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT))
-  const rows = await db
-    .select()
-    .from(assistantPendingActions)
-    .where(and(isNotNull(assistantPendingActions.decidedAt), parentVisible(actor)))
-    .orderBy(desc(assistantPendingActions.decidedAt), desc(assistantPendingActions.id))
-    .limit(SCAN_LIMIT)
-  const requiredFor = approvalRequirements()
-  const shown: PendingActionRow[] = []
-  for (const row of rows) {
-    if (shown.length >= limit) break
-    if (!isDecidableApproval(row)) continue
-    const involved =
-      row.decidedById === actor.principalId || row.onBehalfOfPrincipalId === actor.principalId
-    const required = involved ? null : await requiredFor(row)
-    if (involved || (required && holdsAll(actor, required))) shown.push(row)
-  }
-  return toViews(shown, () => false)
+  return (await pageApprovalsForViewer(actor, { view: 'decided', limit: options.limit })).items
 }
 
 /**

@@ -19,6 +19,8 @@ const state = vi.hoisted(() => ({
   wide: true,
   listeners: new Set<() => void>(),
   listFails: false,
+  waitingCount: null as number | null,
+  pageSize: 50,
   bellRead: vi.fn(),
 }))
 
@@ -46,12 +48,19 @@ vi.mock('@/lib/client/hooks/use-media-query', () => ({
   useMediaQuery: () => state.wide,
 }))
 vi.mock('@/lib/server/functions/approvals', () => ({
-  listApprovalsFn: async ({ data }: { data: { view?: string } }) => {
+  listApprovalsFn: async ({ data }: { data: { view?: string; cursor?: string } }) => {
     if (state.listFails) throw new Error('Service unavailable')
-    return data.view === 'decided' ? state.decided : state.waiting
+    const all = (data.view === 'decided' ? state.decided : state.waiting) as Array<{ id: string }>
+    const start = data.cursor ? all.findIndex((item) => item.id === data.cursor) + 1 : 0
+    const items = all.slice(start, start + state.pageSize)
+    const more = start + state.pageSize < all.length
+    return { items, nextCursor: more ? items[items.length - 1]!.id : null }
   },
   getApprovalFn: (args: unknown) => state.getApproval(args),
-  getWaitingApprovalsFn: async () => ({ count: 0, latest: [] }),
+  getWaitingApprovalsFn: async () => ({
+    count: state.waitingCount ?? state.waiting.length,
+    latest: [],
+  }),
   approveApprovalFn: (args: unknown) => state.approve(args),
   rejectApprovalFn: (args: unknown) => state.reject(args),
   markApprovalBellReadFn: () => state.bellRead(),
@@ -127,6 +136,8 @@ beforeEach(() => {
   state.search = {}
   state.wide = true
   state.listFails = false
+  state.waitingCount = null
+  state.pageSize = 50
   state.bellRead.mockReset()
   state.bellRead.mockResolvedValue({ marked: 0 })
   state.navigate.mockReset()
@@ -573,5 +584,31 @@ describe('ApprovalsPage', () => {
     )
     fireEvent.click(within(list).getByRole('button'))
     expect(state.bellRead).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts what waits on the viewer from the same read as the rail and Home', async () => {
+    state.waiting = [view()]
+    state.waitingCount = 7
+    renderPage()
+    await screen.findByRole('list')
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Waiting/ })).toHaveTextContent('7'))
+  })
+
+  it('reads every page of the list, not only the first', async () => {
+    state.pageSize = 1
+    state.waiting = [
+      view(),
+      view({
+        id: 'assistant_action_02',
+        summary: 'Close the conversation',
+        proposedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
+    ]
+    renderPage()
+    const list = await screen.findByRole('list')
+    expect(within(list).queryByText('Close the conversation')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+    expect(await within(list).findByText('Close the conversation')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
   })
 })

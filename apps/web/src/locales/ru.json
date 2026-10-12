@@ -1790,6 +1790,7 @@
   "admin.approvals.notFound": "Этот запрос не найден.",
   "admin.approvals.loadFailed": "Не удалось загрузить одобрения.",
   "admin.approvals.retry": "Повторить",
+  "admin.approvals.showMore": "Показать ещё",
   "admin.approvals.risk.low": "Низкий",
   "admin.approvals.risk.medium": "Средний",
   "admin.approvals.risk.high": "Высокий",

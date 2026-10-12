@@ -1790,6 +1790,7 @@
   "admin.approvals.notFound": "لم يُعثر على هذا الطلب.",
   "admin.approvals.loadFailed": "تعذّر تحميل الموافقات.",
   "admin.approvals.retry": "أعد المحاولة",
+  "admin.approvals.showMore": "عرض المزيد",
   "admin.approvals.risk.low": "منخفضة",
   "admin.approvals.risk.medium": "متوسطة",
   "admin.approvals.risk.high": "عالية",

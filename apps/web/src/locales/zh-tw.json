@@ -1790,6 +1790,7 @@
   "admin.approvals.notFound": "找不到此請求。",
   "admin.approvals.loadFailed": "無法載入審核。",
   "admin.approvals.retry": "重試",
+  "admin.approvals.showMore": "顯示更多",
   "admin.approvals.risk.low": "低",
   "admin.approvals.risk.medium": "中",
   "admin.approvals.risk.high": "高",

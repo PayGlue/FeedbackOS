@@ -33,6 +33,7 @@ const hoisted = vi.hoisted(() => ({
   waitingApprovalsSummary: vi.fn(),
   listApprovalsForViewer: vi.fn(),
   listDecidedApprovalsForViewer: vi.fn(),
+  pageApprovalsForViewer: vi.fn(),
 }))
 
 vi.mock('@/lib/server/functions/auth-helpers', () => ({
@@ -49,6 +50,7 @@ vi.mock('@/lib/server/domains/assistant/approvals.queue', () => ({
   waitingApprovalsSummary: hoisted.waitingApprovalsSummary,
   listApprovalsForViewer: hoisted.listApprovalsForViewer,
   listDecidedApprovalsForViewer: hoisted.listDecidedApprovalsForViewer,
+  pageApprovalsForViewer: hoisted.pageApprovalsForViewer,
 }))
 
 import {
@@ -186,10 +188,20 @@ describe('reads', () => {
     expect(hoisted.waitingApprovalsSummary).toHaveBeenCalledWith(actor)
   })
 
-  it('lists the waiting or the decided requests', async () => {
-    hoisted.listApprovalsForViewer.mockResolvedValue([{ id: 'waiting' }])
-    hoisted.listDecidedApprovalsForViewer.mockResolvedValue([{ id: 'decided' }])
-    expect(await listApprovalsFn({ data: {} })).toEqual([{ id: 'waiting' }])
-    expect(await listApprovalsFn({ data: { view: 'decided' } })).toEqual([{ id: 'decided' }])
+  it('pages through the waiting or the decided requests', async () => {
+    const page = { items: [{ id: 'assistant_action_2' }], nextCursor: 'assistant_action_2' }
+    hoisted.pageApprovalsForViewer.mockResolvedValue(page)
+    expect(await listApprovalsFn({ data: {} })).toEqual(page)
+    expect(hoisted.pageApprovalsForViewer).toHaveBeenLastCalledWith(actor, {
+      view: 'waiting',
+      limit: undefined,
+      cursor: undefined,
+    })
+    await listApprovalsFn({ data: { view: 'decided', cursor: 'assistant_action_2' } })
+    expect(hoisted.pageApprovalsForViewer).toHaveBeenLastCalledWith(actor, {
+      view: 'decided',
+      limit: undefined,
+      cursor: 'assistant_action_2',
+    })
   })
 })

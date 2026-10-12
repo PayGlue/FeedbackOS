@@ -1790,6 +1790,7 @@
   "admin.approvals.notFound": "Diese Anfrage wurde nicht gefunden.",
   "admin.approvals.loadFailed": "Die Freigaben konnten nicht geladen werden.",
   "admin.approvals.retry": "Erneut versuchen",
+  "admin.approvals.showMore": "Mehr anzeigen",
   "admin.approvals.risk.low": "Niedrig",
   "admin.approvals.risk.medium": "Mittel",
   "admin.approvals.risk.high": "Hoch",

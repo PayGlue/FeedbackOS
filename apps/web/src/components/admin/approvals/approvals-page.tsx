@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useIntl } from 'react-intl'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
@@ -129,15 +129,22 @@ export function ApprovalsPage() {
   const search = route.useSearch()
   const sideBySide = useMediaQuery(SIDE_BY_SIDE)
   const view: ApprovalsView = search.view === 'decided' ? 'decided' : 'waiting'
-  const waitingQuery = useQuery(approvalQueries.list('waiting'))
-  const decidedQuery = useQuery({ ...approvalQueries.list('decided'), enabled: view === 'decided' })
+  const waitingQuery = useInfiniteQuery(approvalQueries.list('waiting'))
+  const decidedQuery = useInfiniteQuery({
+    ...approvalQueries.list('decided'),
+    enabled: view === 'decided',
+  })
+  // The Waiting count is the rail's and Home's, from one read of everything waiting.
+  const summary = useQuery(approvalQueries.waiting())
   // Requests as they stand after a decision or a refresh on this page, and
   // which of them were decided here.
   const [latest, setLatest] = useState<ReadonlyMap<string, ApprovalView>>(new Map())
   const [decidedHere, setDecidedHere] = useState<ReadonlySet<string>>(new Set())
 
   const waiting = useMemo(() => {
-    const listed = (waitingQuery.data ?? []).map((item) => latest.get(item.id) ?? item)
+    const listed = (waitingQuery.data?.pages ?? [])
+      .flatMap((page) => page.items)
+      .map((item) => latest.get(item.id) ?? item)
     const listedIds = new Set(listed.map((item) => item.id))
     const kept = [...decidedHere]
       .filter((id) => !listedIds.has(id))
@@ -146,11 +153,15 @@ export function ApprovalsPage() {
     return [...listed, ...kept].sort(newestFirst)
   }, [waitingQuery.data, latest, decidedHere])
   const decided = useMemo(
-    () => (decidedQuery.data ?? []).map((item) => latest.get(item.id) ?? item),
+    () =>
+      (decidedQuery.data?.pages ?? [])
+        .flatMap((page) => page.items)
+        .map((item) => latest.get(item.id) ?? item),
     [decidedQuery.data, latest]
   )
   const items = view === 'waiting' ? waiting : decided
-  const waitingCount = waiting.filter((item) => item.status === 'proposed').length
+  const waitingCount =
+    summary.data?.count ?? waiting.filter((item) => item.status === 'proposed').length
   const listQuery = view === 'waiting' ? waitingQuery : decidedQuery
   // A failed read says so; it never reads as an empty list.
   const loading = listQuery.isPending && !listQuery.isError
@@ -246,12 +257,27 @@ export function ApprovalsPage() {
                   <Spinner size="lg" />
                 </div>
               ) : (
-                <ApprovalsList
-                  items={items}
-                  selectedId={search.id ?? null}
-                  view={view}
-                  onSelect={select}
-                />
+                <>
+                  <ApprovalsList
+                    items={items}
+                    selectedId={search.id ?? null}
+                    view={view}
+                    onSelect={select}
+                  />
+                  {listQuery.hasNextPage && (
+                    <div className="flex justify-center pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={listQuery.isFetchingNextPage}
+                        onClick={() => void listQuery.fetchNextPage()}
+                      >
+                        {intl.formatMessage(approvalMessages.showMore)}
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </ScrollArea>

@@ -2,7 +2,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { isValidTypeId } from '@quackback/ids'
 import { ApprovalsPage } from '@/components/admin/approvals/approvals-page'
 import { adminPageHead } from '@/lib/client/admin-head'
-import { warmQuery } from '@/lib/client/queries/warm-query'
 import { approvalQueries } from '@/lib/client/queries/approvals'
 
 interface ApprovalsSearch {
@@ -24,7 +23,9 @@ export const Route = createFileRoute('/admin/approvals')({
   // decide. The list arrives with the page; a failed read is left to the
   // page's own query.
   loader: async ({ context }) => {
-    await warmQuery(context.queryClient, approvalQueries.list('waiting'))
+    await context.queryClient
+      .ensureInfiniteQueryData(approvalQueries.list('waiting'))
+      .catch(() => undefined)
   },
   component: ApprovalsPage,
 })

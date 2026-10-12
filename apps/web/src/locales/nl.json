@@ -1790,6 +1790,7 @@
   "admin.approvals.notFound": "Dit verzoek is niet gevonden.",
   "admin.approvals.loadFailed": "De goedkeuringen konden niet worden geladen.",
   "admin.approvals.retry": "Opnieuw proberen",
+  "admin.approvals.showMore": "Meer tonen",
   "admin.approvals.risk.low": "Laag",
   "admin.approvals.risk.medium": "Gemiddeld",
   "admin.approvals.risk.high": "Hoog",

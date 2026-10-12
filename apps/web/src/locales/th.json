@@ -2023,6 +2023,7 @@
   "admin.approvals.notFound": "ไม่พบคำขอนี้",
   "admin.approvals.loadFailed": "โหลดการอนุมัติไม่ได้",
   "admin.approvals.retry": "ลองอีกครั้ง",
+  "admin.approvals.showMore": "แสดงเพิ่มเติม",
   "admin.approvals.risk.low": "ต่ำ",
   "admin.approvals.risk.medium": "ปานกลาง",
   "admin.approvals.risk.high": "สูง",

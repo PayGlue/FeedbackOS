@@ -281,7 +281,7 @@ function personRequired() {
 }
 
 /** Whether the person a request borrows authority from is in the app with it. */
-function requesterIsPresent(row: Pick<PendingActionRow, 'requestedVia'>): boolean {
+export function requesterIsPresent(row: Pick<PendingActionRow, 'requestedVia'>): boolean {
   return row.requestedVia === null || row.requestedVia === 'assistant' || row.requestedVia === 'ui'
 }
 

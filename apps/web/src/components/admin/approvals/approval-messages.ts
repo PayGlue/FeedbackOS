@@ -17,6 +17,7 @@ export const approvalMessages = defineMessages({
     defaultMessage: 'Approvals could not be loaded.',
   },
   retry: { id: 'admin.approvals.retry', defaultMessage: 'Try again' },
+  showMore: { id: 'admin.approvals.showMore', defaultMessage: 'Show more' },
   riskLow: { id: 'admin.approvals.risk.low', defaultMessage: 'Low' },
   riskMedium: { id: 'admin.approvals.risk.medium', defaultMessage: 'Medium' },
   riskHigh: { id: 'admin.approvals.risk.high', defaultMessage: 'High' },

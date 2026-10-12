@@ -12,7 +12,7 @@
  */
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
-import type { AssistantPendingActionId } from '@quackback/ids'
+import { isValidTypeId, type AssistantPendingActionId } from '@quackback/ids'
 import type { ApprovalView } from '@/lib/server/domains/assistant/approvals.queue'
 import { approvalRefusal, type ApprovalRefusal } from '@/lib/shared/approval-refusal'
 import { requireAuth, policyActorFromAuth, type AuthContext } from './auth-helpers'
@@ -39,15 +39,23 @@ export const listApprovalsFn = createServerFn({ method: 'GET' })
     z.object({
       limit: z.number().int().min(1).max(100).optional(),
       view: z.enum(['waiting', 'decided']).optional(),
+      /** Where the next page starts: the id of the last request the previous one read. */
+      cursor: z
+        .string()
+        .refine((value) => isValidTypeId(value, 'assistant_action'))
+        .optional(),
     })
   )
   .handler(async ({ data }) => {
     const auth = await requireAuth()
     const actor = await policyActorFromAuth(auth)
-    const queue = await import('@/lib/server/domains/assistant/approvals.queue')
-    return data.view === 'decided'
-      ? queue.listDecidedApprovalsForViewer(actor, { limit: data.limit })
-      : queue.listApprovalsForViewer(actor, { limit: data.limit })
+    const { pageApprovalsForViewer } =
+      await import('@/lib/server/domains/assistant/approvals.queue')
+    return pageApprovalsForViewer(actor, {
+      view: data.view ?? 'waiting',
+      limit: data.limit,
+      cursor: data.cursor,
+    })
   })
 
 export const getWaitingApprovalsFn = createServerFn({ method: 'GET' }).handler(async () => {
