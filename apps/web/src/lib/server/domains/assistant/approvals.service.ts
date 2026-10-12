@@ -429,7 +429,7 @@ export async function approveApproval(
 
   if (!row.conversationId && !row.ticketId) throw approvalUnavailable()
   const required = (await requiredApprovalPermissions(row)) ?? GONE_TOOL_PERMISSIONS
-  await assertMayDecide(row, actor, decision, required)
+  await assertMayDecide(row, actor, decision, required, 'approved')
   const { decideAssistantAction } = await import('./assistant-actions.service')
   return decideAssistantAction(id, 'approved', actor.principalId!, actor, undefined, {
     contentHash: decision.contentHash,
