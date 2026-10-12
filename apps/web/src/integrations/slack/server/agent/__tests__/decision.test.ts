@@ -35,6 +35,7 @@ vi.mock('@/lib/server/domains/settings/settings.assistant', () => ({
   }),
 }))
 import { handleSlackDecision } from '../handler'
+import { buildProposalBlocks } from '../presentation'
 const id = generateId('assistant_action')
 const member = { id: generateId('principal'), role: 'member' }
 const actor = { principalId: member.id }
@@ -103,6 +104,18 @@ it('executes through the shared approval service with the member actor', async (
     { via: 'slack', contentHash: 'digest-1' }
   )
   expect(client.chat.update).toHaveBeenCalled()
+})
+it('replaces the decided request buttons with the outcome', async () => {
+  const blocks = buildProposalBlocks({ id, summary: 'Create feedback', contentHash: 'digest-1' })
+  await handleSlackDecision({ ...payload, message: { ...payload.message, blocks } }, client, 'T')
+  const update = client.chat.update.mock.calls[0][0]
+  expect(update.blocks.some((block: { type: string }) => block.type === 'actions')).toBe(false)
+  expect(update.blocks).toContainEqual({
+    type: 'context',
+    elements: [{ type: 'mrkdwn', text: 'Approved by <@U>' }],
+  })
+  // The request itself stays readable above the outcome.
+  expect(update.blocks[0]).toEqual(blocks[0])
 })
 it('asks again instead of deciding a request whose button names no content', async () => {
   await handleSlackDecision(

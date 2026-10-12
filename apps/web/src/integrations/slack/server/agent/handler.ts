@@ -231,7 +231,9 @@ export async function handleSlackDecision(
         : 'The action could not be completed. Check Quackback before retrying.'
   const blocks = (payload.message?.blocks ?? []).map((block: Payload) =>
     block.type === 'actions' &&
-    block.elements?.some((element: Payload) => element.value === pending.id)
+    block.elements?.some(
+      (element: Payload) => parseProposalButtonValue(element.value)?.id === pending.id
+    )
       ? { type: 'context', elements: [{ type: 'mrkdwn', text: status }] }
       : block
   )
