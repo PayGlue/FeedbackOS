@@ -56,6 +56,15 @@ export function withoutSignInAgainMarker(href: string): string {
   return url.pathname + url.search + url.hash
 }
 
+/** A page's search without the marker and the error that came with it; unchanged without a marker. */
+export function stripSignInAgainSearch(search: Record<string, unknown>): Record<string, unknown> {
+  if (!(SIGN_IN_AGAIN_PARAM in search)) return search
+  const next = { ...search }
+  delete next[SIGN_IN_AGAIN_PARAM]
+  for (const param of ERROR_PARAMS) delete next[param]
+  return next
+}
+
 export interface SignInAgainStash {
   action: string
   /** The person who asked; a sign-in as anyone else resumes nothing. */

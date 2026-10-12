@@ -6,6 +6,7 @@ import {
   signInAgainProviderRequest,
   signInAgainReturnUrl,
   stashSignInAgain,
+  stripSignInAgainSearch,
   takeSignInAgain,
   withoutSignInAgainMarker,
 } from '../sign-in-again'
@@ -58,6 +59,24 @@ describe('the marker', () => {
     const failed = `https://acme.example.com/admin/approvals?status=open&${SIGN_IN_AGAIN_PARAM}=a&error=x&error_description=y#row-3`
     expect(withoutSignInAgainMarker(failed)).toBe('/admin/approvals?status=open#row-3')
     expect(withoutSignInAgainMarker(PAGE)).toBe('/admin/approvals?status=open#row-3')
+  })
+})
+
+describe('stripSignInAgainSearch', () => {
+  it('drops the marker and the error that came with it, keeping the rest', () => {
+    expect(
+      stripSignInAgainSearch({
+        status: 'open',
+        [SIGN_IN_AGAIN_PARAM]: 'a',
+        error: 'access_denied',
+        error_description: 'no',
+      })
+    ).toEqual({ status: 'open' })
+  })
+
+  it("leaves a page's own error alone when there is no marker", () => {
+    const search = { status: 'open', error: 'not_found' }
+    expect(stripSignInAgainSearch(search)).toEqual(search)
   })
 })
 

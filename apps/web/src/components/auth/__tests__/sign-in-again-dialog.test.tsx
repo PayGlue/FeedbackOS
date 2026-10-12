@@ -98,6 +98,16 @@ function Page({ onSignedIn }: { onSignedIn: (action: string) => void }) {
 
 const ME = { user: { id: 'user_me' } }
 
+let router: ReturnType<typeof createRouter>
+
+/** Neither the address bar nor the router's own location still holds the marker. */
+function expectMarkerCleared() {
+  expect(window.location.pathname + window.location.search).toBe(PAGE)
+  expect(router.state.location.searchStr).toBe('?status=open')
+  expect(router.state.location.search).not.toHaveProperty('signedInAgain')
+  expect(router.state.location.search).not.toHaveProperty('error')
+}
+
 /**
  * The page inside a real router: the session comes from the root route
  * context, as on every page, and the approvals route validates its search the
@@ -116,7 +126,7 @@ async function renderPage(onSignedIn = vi.fn(), session: { user: { id: string } 
     }),
     component: () => <Page onSignedIn={onSignedIn} />,
   })
-  const router = createRouter({
+  router = createRouter({
     routeTree: root.addChildren([approvals]),
     history: createBrowserHistory(),
     context: {},
@@ -352,7 +362,7 @@ describe('coming back from an identity provider', () => {
     const onSignedIn = await renderPage()
 
     await waitFor(() => expect(onSignedIn).toHaveBeenCalledWith('approve:act_1'))
-    expect(window.location.pathname + window.location.search).toBe(PAGE)
+    await waitFor(expectMarkerCleared)
     expect(window.sessionStorage.getItem(STASH_KEY)).toBeNull()
     act(() => signalEverything())
     await settle()
@@ -378,7 +388,7 @@ describe('coming back from an identity provider', () => {
     expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Sign in with Okta' })).toBeInTheDocument()
     expect(onSignedIn).not.toHaveBeenCalled()
-    expect(window.location.search).toBe('?status=open')
+    await waitFor(expectMarkerCleared)
   })
 
   it('does nothing in a tab that did not ask, such as one opened from the emailed link', async () => {
@@ -386,7 +396,7 @@ describe('coming back from an identity provider', () => {
     hoisted.options.mockResolvedValue(opts({ fresh: true }))
     const onSignedIn = await renderPage()
 
-    await waitFor(() => expect(window.location.search).toBe('?status=open'))
+    await waitFor(expectMarkerCleared)
     expect(onSignedIn).not.toHaveBeenCalled()
     expect(screen.queryByText('Sign in again')).not.toBeInTheDocument()
   })

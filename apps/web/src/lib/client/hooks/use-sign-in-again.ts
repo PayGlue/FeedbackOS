@@ -22,6 +22,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouter } from '@tanstack/react-router'
 import { getSignInAgainOptionsFn } from '@/lib/server/functions/sign-in-again'
 import { startOidcSignIn } from '@/lib/client/start-oidc-sign-in'
 import { useSessionContext } from '@/lib/client/hooks/use-root-context'
@@ -30,6 +31,7 @@ import {
   signInAgainProviderRequest,
   signInAgainReturnUrl,
   stashSignInAgain,
+  stripSignInAgainSearch,
   takeSignInAgain,
   withoutSignInAgainMarker,
 } from '@/lib/client/sign-in-again'
@@ -66,6 +68,7 @@ export function useSignInAgain(options: {
   onSignedIn: (action: string) => void
 }): UseSignInAgainResult {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const sessionUserId = useSessionContext()?.user?.id ?? null
   const [action, setAction] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -231,11 +234,13 @@ export function useSignInAgain(options: {
     landedRef.current = true
     const marker = readSignInAgainMarker(window.location.href)
     if (!marker) return
-    window.history.replaceState(
-      window.history.state,
-      '',
-      withoutSignInAgainMarker(window.location.href)
-    )
+    // Through the router, so its location loses the marker along with the address bar.
+    void router.navigate({
+      to: '.',
+      search: (search: Record<string, unknown>) => stripSignInAgainSearch(search),
+      replace: true,
+      resetScroll: false,
+    })
     const stash = takeSignInAgain(marker.action)
     if (!stash) return
     generationRef.current += 1
@@ -247,7 +252,7 @@ export function useSignInAgain(options: {
     }
     pendingRef.current = stash.action
     void confirm(true)
-  }, [confirm, reopen])
+  }, [confirm, reopen, router])
 
   return {
     request,
