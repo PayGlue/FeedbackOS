@@ -363,6 +363,7 @@ function CopilotHomeView({
         <HomeColumn>
           <Collapse open={!inChat} instant={instant}>
             <HomeHeaderSpace>{header}</HomeHeaderSpace>
+            {waiting}
           </Collapse>
           <div className={cn('flex flex-col', inChat ? 'grow opacity-100' : 'grow-0 opacity-0')}>
             {inChat && (
@@ -446,7 +447,6 @@ function CopilotHomeView({
                   {error}
                 </p>
               )}
-              {waiting}
               <RecentChats threads={threads.data ?? []} onOpenThread={openThread} />
               {below}
             </div>

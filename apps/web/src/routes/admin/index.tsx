@@ -154,7 +154,7 @@ function AdminHome() {
           paused={
             paused ? <CopilotPaused resetsAt={paused.resetsAt} trial={paused.trial} /> : undefined
           }
-          waiting={<WaitingOnYou />}
+          waiting={<WaitingOnYou className="mb-6" />}
           below={
             <>
               {plan}
