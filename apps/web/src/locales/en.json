@@ -2236,5 +2236,7 @@
   "ownAgent.active": "Active",
   "ownAgent.paused": "Paused",
   "ownAgent.loading": "Loading…",
-  "ownAgent.localHint": "For a local agent, leave the URL empty and poll /api/v1/agent/turns with its credential."
+  "ownAgent.localHint": "For a local agent, leave the URL empty and poll /api/v1/agent/turns with its credential.",
+  "admin.auditLog.via.agent": "via AI agent",
+  "ask.destination.settings_agents_your-ai": "Your AI"
 }

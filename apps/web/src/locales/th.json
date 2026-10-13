@@ -2236,5 +2236,7 @@
   "ownAgent.active": "ทำงานอยู่",
   "ownAgent.paused": "หยุดชั่วคราว",
   "ownAgent.loading": "กำลังโหลด…",
-  "ownAgent.localHint": "สำหรับเอเจนต์ภายในเครื่อง ให้เว้น URL ว่างและใช้ข้อมูลรับรองเรียก /api/v1/agent/turns เป็นระยะ"
+  "ownAgent.localHint": "สำหรับเอเจนต์ภายในเครื่อง ให้เว้น URL ว่างและใช้ข้อมูลรับรองเรียก /api/v1/agent/turns เป็นระยะ",
+  "admin.auditLog.via.agent": "ผ่านเอเจนต์ AI",
+  "ask.destination.settings_agents_your-ai": "AI ของคุณ"
 }

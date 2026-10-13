@@ -2236,5 +2236,7 @@
   "ownAgent.active": "Aktywny",
   "ownAgent.paused": "Wstrzymany",
   "ownAgent.loading": "Ładowanie…",
-  "ownAgent.localHint": "Dla lokalnego agenta pozostaw pusty URL i odpytuj /api/v1/agent/turns jego kluczem dostępu."
+  "ownAgent.localHint": "Dla lokalnego agenta pozostaw pusty URL i odpytuj /api/v1/agent/turns jego kluczem dostępu.",
+  "admin.auditLog.via.agent": "przez agenta AI",
+  "ask.destination.settings_agents_your-ai": "Twoja AI"
 }

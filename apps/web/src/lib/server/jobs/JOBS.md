@@ -427,8 +427,8 @@ went stale the moment a queue moved.
 | `integration-sync-retention`    | `45 2 * * *`   | 1           | 3        | 60s   |
 | `event-dispatch`                | —              | 5           | 10       | 60s   |
 | `event-reactions`               | —              | 1           | 3        | 60s   |
-| `event-summaries`               | —              | 2           | 3        | 60s   |
 | `agent-turn-deadline`           | —              | 2           | 3        | 60s   |
+| `event-summaries`               | —              | 2           | 3        | 60s   |
 | `segment-evaluation`            | dynamic        | 2           | 3        | 60s   |
 | `file-preview`                  | —              | 2           | 2        | 120s  |
 | `file-retention`                | `40 4 * * *`   | 1           | 3        | 60s   |

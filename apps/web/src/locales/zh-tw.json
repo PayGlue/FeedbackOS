@@ -2236,5 +2236,7 @@
   "ownAgent.active": "執行中",
   "ownAgent.paused": "已暫停",
   "ownAgent.loading": "載入中…",
-  "ownAgent.localHint": "本地智慧代理可將網址留空，並使用其憑證輪詢 /api/v1/agent/turns。"
+  "ownAgent.localHint": "本地智慧代理可將網址留空，並使用其憑證輪詢 /api/v1/agent/turns。",
+  "admin.auditLog.via.agent": "透過 AI 智慧代理",
+  "ask.destination.settings_agents_your-ai": "你的 AI"
 }

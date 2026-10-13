@@ -2236,5 +2236,7 @@
   "ownAgent.active": "Activo",
   "ownAgent.paused": "En pausa",
   "ownAgent.loading": "Cargando…",
-  "ownAgent.localHint": "Para un agente local, deja la URL vacía y consulta /api/v1/agent/turns con su credencial."
+  "ownAgent.localHint": "Para un agente local, deja la URL vacía y consulta /api/v1/agent/turns con su credencial.",
+  "admin.auditLog.via.agent": "mediante agente de IA",
+  "ask.destination.settings_agents_your-ai": "Tu IA"
 }

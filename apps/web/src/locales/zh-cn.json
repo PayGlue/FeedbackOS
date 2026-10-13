@@ -2236,5 +2236,7 @@
   "ownAgent.active": "运行中",
   "ownAgent.paused": "已暂停",
   "ownAgent.loading": "加载中…",
-  "ownAgent.localHint": "本地智能体可以将地址留空，并使用其凭据轮询 /api/v1/agent/turns。"
+  "ownAgent.localHint": "本地智能体可以将地址留空，并使用其凭据轮询 /api/v1/agent/turns。",
+  "admin.auditLog.via.agent": "通过 AI 智能体",
+  "ask.destination.settings_agents_your-ai": "你的 AI"
 }

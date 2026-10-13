@@ -2236,5 +2236,7 @@
   "ownAgent.active": "Aktiv",
   "ownAgent.paused": "Pausiert",
   "ownAgent.loading": "Wird geladen…",
-  "ownAgent.localHint": "Lass für einen lokalen Agenten die URL leer und frage /api/v1/agent/turns mit seinem Zugangsschlüssel ab."
+  "ownAgent.localHint": "Lass für einen lokalen Agenten die URL leer und frage /api/v1/agent/turns mit seinem Zugangsschlüssel ab.",
+  "admin.auditLog.via.agent": "über KI-Agent",
+  "ask.destination.settings_agents_your-ai": "Deine KI"
 }

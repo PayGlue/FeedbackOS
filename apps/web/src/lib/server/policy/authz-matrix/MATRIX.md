@@ -1004,7 +1004,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `routes/api/v1/webhooks/index.ts`::GET | webhook.view |
 | `routes/api/v1/webhooks/index.ts`::POST | webhook.manage |
 
-### Own AI agent API (`withAgentAuth`, live controller required) — 6 surfaces
+### Own AI agent API (`withAgentAuth`, live controller required) — 7 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -1014,6 +1014,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `routes/api/v1/agent/conversations/$conversationId.resolve.ts`::POST | OWN AGENT (live controller only) |
 | `routes/api/v1/agent/conversations/$conversationId.stream.ts`::POST | OWN AGENT (live controller only) |
 | `routes/api/v1/agent/conversations/$conversationId.ts`::GET | OWN AGENT (live controller only) |
+| `routes/api/v1/agent/turns.ts`::GET | OWN AGENT (live controller only) |
 
 ### Session-authenticated routes (`requireAuth`) — 2 surfaces
 
@@ -1099,7 +1100,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-228 of 1110 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+228 of 1111 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 

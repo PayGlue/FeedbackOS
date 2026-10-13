@@ -6,16 +6,16 @@
  */
 import type { SupportAgentTurnId } from '@quackback/ids'
 import type { ClaimedJob } from '@/lib/server/jobs/job-queue'
-import { expireTurn } from './turns.service'
+import { expireTurn, getTurn } from './turns.service'
+import { db, supportAgentTurns, conversations, eq, desc } from '@/lib/server/db'
+import { runAssistantTurnForConversation } from '@/lib/server/domains/assistant/assistant.orchestrator'
 
 export async function runTurnDeadline(job: ClaimedJob): Promise<void> {
   const turnId = (job.payload as { turnId?: string }).turnId
   if (!turnId) return
   if ((job.payload as { builtin?: boolean }).builtin) {
-    const { getTurn } = await import('./turns.service')
     const turn = await getTurn(turnId as SupportAgentTurnId)
     if (!turn || turn.status !== 'expired' || !turn.fallbackAppliedAt) return
-    const { db, supportAgentTurns, conversations, eq, desc } = await import('@/lib/server/db')
     const [latest] = await db
       .select({ id: supportAgentTurns.id })
       .from(supportAgentTurns)
@@ -30,11 +30,9 @@ export async function runTurnDeadline(job: ClaimedJob): Promise<void> {
       latest?.id !== turn.id ||
       !conversation ||
       conversation.controllerAgentId ||
-      conversation.status === 'closed'
+      conversation.status !== 'open'
     )
       return
-    const { runAssistantTurnForConversation } =
-      await import('@/lib/server/domains/assistant/assistant.orchestrator')
     await runAssistantTurnForConversation(turn.conversationId)
     return
   }

@@ -2236,5 +2236,7 @@
   "ownAgent.active": "Активен",
   "ownAgent.paused": "Приостановлен",
   "ownAgent.loading": "Загрузка…",
-  "ownAgent.localHint": "Для локального агента оставьте URL пустым и опрашивайте /api/v1/agent/turns с его ключом доступа."
+  "ownAgent.localHint": "Для локального агента оставьте URL пустым и опрашивайте /api/v1/agent/turns с его ключом доступа.",
+  "admin.auditLog.via.agent": "через ИИ-агента",
+  "ask.destination.settings_agents_your-ai": "Ваш ИИ"
 }

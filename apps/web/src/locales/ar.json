@@ -2236,5 +2236,7 @@
   "ownAgent.active": "نشط",
   "ownAgent.paused": "متوقف مؤقتًا",
   "ownAgent.loading": "جارٍ التحميل…",
-  "ownAgent.localHint": "للوكيل المحلي، اترك العنوان فارغًا واستعلم من /api/v1/agent/turns باستخدام بيانات اعتماده."
+  "ownAgent.localHint": "للوكيل المحلي، اترك العنوان فارغًا واستعلم من /api/v1/agent/turns باستخدام بيانات اعتماده.",
+  "admin.auditLog.via.agent": "عبر وكيل الذكاء الاصطناعي",
+  "ask.destination.settings_agents_your-ai": "ذكاؤك الاصطناعي"
 }
