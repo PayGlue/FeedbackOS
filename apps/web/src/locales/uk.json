@@ -1061,7 +1061,7 @@
   "automation.knowledge.source.changelog.label": "Журнал змін",
   "automation.knowledge.source.changelog.description": "Опубліковані записи журналу змін.",
   "automation.knowledge.source.documents.label": "Документи",
-  "team.roleSelect.supportLead": "Керівник підтримки — також може налаштовувати маршрутизацію, робочі процеси, SLA та канали",
+  "team.roleSelect.supportLead": "Керівник підтримки - також може налаштовувати маршрутизацію, робочі процеси, SLA та канали",
   "automation.knowledge.source.documents.description": "Завантажені документи зі знаннями (PDF).",
   "automation.knowledge.source.status.label": "Статус системи",
   "automation.knowledge.source.status.description": "Поточні компоненти статусу, інциденти та вікна технічних робіт.",
