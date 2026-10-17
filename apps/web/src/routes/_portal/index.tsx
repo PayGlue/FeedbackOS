@@ -12,14 +12,14 @@ import { isStatusPagePublished } from '@/lib/shared/status-settings'
 import { isPortalSupportSurfaceEnabled } from '@/lib/shared/support-surfaces'
 import { getShowPoweredByFn } from '@/lib/server/functions/powered-by'
 import { useSessionContext, useWorkspaceSettings } from '@/lib/client/hooks/use-root-context'
-import { PUBLIC_FEED_VIEWS } from '@/lib/shared/types/filters'
+import { PUBLIC_FEED_VIEWS, PUBLIC_POST_SORTS } from '@/lib/shared/types/filters'
 
 const searchSchema = z.object({
   board: z.string().optional(),
   search: z.string().optional(),
   // No schema default: the router would write it into the URL and redirect a bare
   // "/" to "/?sort=trending". An absent sort is trending wherever the feed reads it.
-  sort: z.enum(['top', 'new', 'trending']).optional().catch('trending'),
+  sort: z.enum(PUBLIC_POST_SORTS).optional().catch('trending'),
   status: z.array(z.string()).optional(),
   tagIds: z.array(z.string()).optional(),
   minVotes: z.coerce.number().int().min(1).optional(),
