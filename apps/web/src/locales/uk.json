@@ -2222,5 +2222,8 @@
   "oauthDevice.problem.noScopes": "Виберіть принаймні один дозвіл.",
   "oauthDevice.problem.error": "Щось пішло не так. Спробуйте ще раз.",
   "oauthDevice.ready.unverified": "Неперевірений застосунок. Будь-хто може зареєструвати застосунок під будь-якою назвою.",
-  "portal.feedback.filter.status.summaryMore": "{names} +{count}"
+  "portal.feedback.filter.status.summaryMore": "{names} +{count}",
+  "portal.feedback.toolbar.sortRelevance": "Найкращі збіги",
+  "portal.feedback.list.noSearchResults": "Немає ідей за запитом «{query}».",
+  "portal.feedback.list.postSearchAsIdea": "Опублікувати як нову ідею"
 }

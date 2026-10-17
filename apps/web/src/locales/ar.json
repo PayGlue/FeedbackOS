@@ -2222,5 +2222,8 @@
   "oauthDevice.problem.noScopes": "اختر صلاحية واحدة على الأقل.",
   "oauthDevice.problem.error": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
   "oauthDevice.ready.unverified": "تطبيق غير موثّق. يمكن لأي شخص تسجيل تطبيق بأي اسم.",
-  "portal.feedback.filter.status.summaryMore": "{names} +{count}"
+  "portal.feedback.filter.status.summaryMore": "{names} +{count}",
+  "portal.feedback.toolbar.sortRelevance": "الأفضل تطابقًا",
+  "portal.feedback.list.noSearchResults": "لا توجد أفكار تطابق “{query}”.",
+  "portal.feedback.list.postSearchAsIdea": "انشرها كفكرة جديدة"
 }

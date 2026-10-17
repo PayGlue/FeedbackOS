@@ -2222,5 +2222,8 @@
   "oauthDevice.problem.noScopes": "เลือกสิ่งที่อนุญาตอย่างน้อยหนึ่งอย่าง",
   "oauthDevice.problem.error": "เกิดข้อผิดพลาดบางอย่าง โปรดลองอีกครั้ง",
   "oauthDevice.ready.unverified": "แอปพลิเคชันที่ยังไม่ได้รับการยืนยัน ใครก็ลงทะเบียนแอปด้วยชื่ออะไรก็ได้",
-  "portal.feedback.filter.status.summaryMore": "{names} +{count}"
+  "portal.feedback.filter.status.summaryMore": "{names} +{count}",
+  "portal.feedback.toolbar.sortRelevance": "ตรงที่สุด",
+  "portal.feedback.list.noSearchResults": "ไม่มีไอเดียที่ตรงกับ “{query}”",
+  "portal.feedback.list.postSearchAsIdea": "โพสต์เป็นไอเดียใหม่"
 }

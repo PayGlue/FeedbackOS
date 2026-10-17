@@ -2222,5 +2222,8 @@
   "oauthDevice.problem.noScopes": "Wybierz co najmniej jedno uprawnienie.",
   "oauthDevice.problem.error": "Coś poszło nie tak. Spróbuj ponownie.",
   "oauthDevice.ready.unverified": "Niezweryfikowana aplikacja. Każdy może zarejestrować aplikację pod dowolną nazwą.",
-  "portal.feedback.filter.status.summaryMore": "{names} +{count}"
+  "portal.feedback.filter.status.summaryMore": "{names} +{count}",
+  "portal.feedback.toolbar.sortRelevance": "Najlepsze dopasowanie",
+  "portal.feedback.list.noSearchResults": "Brak pomysłów pasujących do „{query}”.",
+  "portal.feedback.list.postSearchAsIdea": "Opublikuj jako nowy pomysł"
 }

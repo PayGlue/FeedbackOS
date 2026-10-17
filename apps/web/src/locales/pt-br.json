@@ -2222,5 +2222,8 @@
   "oauthDevice.problem.noScopes": "Escolha pelo menos uma permissão.",
   "oauthDevice.problem.error": "Algo deu errado. Tente novamente.",
   "oauthDevice.ready.unverified": "Aplicativo não verificado. Qualquer pessoa pode registrar um aplicativo com qualquer nome.",
-  "portal.feedback.filter.status.summaryMore": "{names} +{count}"
+  "portal.feedback.filter.status.summaryMore": "{names} +{count}",
+  "portal.feedback.toolbar.sortRelevance": "Mais relevantes",
+  "portal.feedback.list.noSearchResults": "Nenhuma ideia corresponde a “{query}”.",
+  "portal.feedback.list.postSearchAsIdea": "Publicar como nova ideia"
 }
