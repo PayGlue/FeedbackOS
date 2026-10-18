@@ -443,6 +443,11 @@ function UsageCard(props: {
   const formatNumber = useFormatNumber()
   const ai = props.overview.ai
   const canTopUp = props.overview.canManageBilling
+  // AI top-ups are a paid-plan purchase. The effective plan during a trial is the trial plan.
+  const onPaidAiPlan =
+    (props.overview.trialActive && props.overview.trialPlanId != null) ||
+    props.overview.plan !== 'free'
+  const canTopUpAi = canTopUp && onPaidAiPlan
   const hasAi = ai != null && (ai.includedCents > 0 || ai.extraCents > 0)
   const hasEmails = emails != null && emails.limit != null
   const hasApi = api != null && api.limit != null
@@ -486,7 +491,7 @@ function UsageCard(props: {
               used={aiUsed}
               limit={aiCap}
               action={
-                canTopUp && hasTopUpPackPrice(props.catalogue?.aiTopUpPackCents) ? (
+                canTopUpAi && hasTopUpPackPrice(props.catalogue?.aiTopUpPackCents) ? (
                   <Button
                     type="button"
                     size="sm"

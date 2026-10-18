@@ -22,7 +22,10 @@ import {
   roles,
   statusComponents,
   emailSendingDomains,
+  channelAccounts,
+  statusSubscriptions,
 } from '@/lib/server/db'
+import { getHelpCenterConfig } from '@/lib/server/domains/settings/settings.service'
 import { aiTokensThisWindow } from '@/lib/server/domains/ai/ai-budget'
 import { countSeatUsage } from '@/lib/server/domains/principals/seat-usage'
 import { emailsSentThisMonth } from '@/lib/server/email/email-budget'
@@ -46,6 +49,9 @@ export async function loadUsageCounts(): Promise<Record<string, number>> {
     aiTokens,
     emailsSent,
     apiRequests,
+    inboundRow,
+    subscriberRow,
+    helpCenter,
   ] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
@@ -68,6 +74,21 @@ export async function loadUsageCounts(): Promise<Record<string, number>> {
     aiTokensThisWindow(),
     emailsSentThisMonth(),
     apiRequestsThisMonth(),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(channelAccounts)
+      .where(
+        and(
+          eq(channelAccounts.role, 'inbound'),
+          eq(channelAccounts.channel, 'email'),
+          isNull(channelAccounts.deletedAt)
+        )
+      ),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(statusSubscriptions)
+      .where(isNull(statusSubscriptions.unsubscribedAt)),
+    getHelpCenterConfig(),
   ])
   return {
     maxBoards: boardRow[0]?.count ?? 0,
@@ -79,6 +100,10 @@ export async function loadUsageCounts(): Promise<Record<string, number>> {
     aiTokensPerMonth: aiTokens,
     emailsPerMonth: emailsSent,
     apiRequestsPerMonth: apiRequests,
+    maxInboundEmailAddresses: inboundRow[0]?.count ?? 0,
+    // The default language counts toward the plan's language cap.
+    maxHelpCenterLocales: 1 + helpCenter.locales.additional.length,
+    maxStatusSubscribers: subscriberRow[0]?.count ?? 0,
   }
 }
 
