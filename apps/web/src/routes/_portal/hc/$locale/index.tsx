@@ -4,8 +4,12 @@ import { HelpCenterHero } from '@/components/help-center/help-center-hero'
 import { HelpCenterHeroSearch } from '@/components/help-center/help-center-search'
 import { HelpCenterCategoryGrid } from '@/components/help-center/help-center-category-grid'
 import { getTopLevelCategories } from '@/components/help-center/help-center-utils'
-import { helpCenterHeadMessages } from '@/components/help-center/help-center-head'
+import {
+  helpCenterHeadMessages,
+  helpCenterHeadPortal,
+} from '@/components/help-center/help-center-head'
 import { listPublicCategoriesFn } from '@/lib/server/functions/help-center'
+import { localizedHcPath } from '@/lib/shared/help-center-url'
 import { DEFAULT_HELP_CENTER_CONFIG, type HelpCenterConfig } from '@/lib/shared/types/settings'
 import { resolvePortalOgImageUrl } from '@/lib/shared/portal-og-image'
 
@@ -66,9 +70,10 @@ export const Route = createFileRoute('/_portal/hc/$locale/')({
       ),
     }
   },
-  head: ({ loaderData, matches }) => {
+  head: ({ loaderData, params, matches }) => {
     if (!loaderData) return {}
     const { workspaceName, logoUrl } = loaderData
+    const { baseUrl } = helpCenterHeadPortal(matches)
     const messages = helpCenterHeadMessages(matches)
     const { title, description } = landingCopy(
       loaderData.title,
@@ -84,6 +89,7 @@ export const Route = createFileRoute('/_portal/hc/$locale/')({
         { property: 'og:description', content: description },
         { property: 'og:image', content: logoUrl },
       ],
+      links: [{ rel: 'canonical', href: `${baseUrl}${localizedHcPath(params.locale, '/hc')}` }],
     }
   },
   component: LocaleHelpCenterLandingPage,

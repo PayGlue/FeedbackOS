@@ -21,3 +21,20 @@ export function helpCenterHeadMessages(
   const layout = matches.find((m) => m.routeId === helpCenterLayout.id)
   return (layout?.loaderData as { messages?: Record<string, string> } | undefined)?.messages ?? {}
 }
+
+/**
+ * The portal's head inputs for a help center page: the workspace name for the
+ * title, and the public base URL canonical links are built on (the verified
+ * custom domain when the request arrived on it, else BASE_URL).
+ */
+export function helpCenterHeadPortal(
+  matches: readonly { routeId: string; loaderData?: unknown; context?: unknown }[]
+): { workspaceName: string; baseUrl: string } {
+  const portal = matches.find((m) => m.routeId === '/_portal')
+  return {
+    workspaceName:
+      (portal?.loaderData as { workspaceName?: string } | undefined)?.workspaceName ??
+      'Help Center',
+    baseUrl: (portal?.context as { baseUrl?: string } | undefined)?.baseUrl ?? '',
+  }
+}

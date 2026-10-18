@@ -7,7 +7,10 @@ import { HelpCenterHeroSearch } from '@/components/help-center/help-center-searc
 import { HelpCenterCategoryGrid } from '@/components/help-center/help-center-category-grid'
 import { HelpCenterPopularArticles } from '@/components/help-center/help-center-popular-articles'
 import { getTopLevelCategories } from '@/components/help-center/help-center-utils'
-import { helpCenterHeadMessages } from '@/components/help-center/help-center-head'
+import {
+  helpCenterHeadMessages,
+  helpCenterHeadPortal,
+} from '@/components/help-center/help-center-head'
 import {
   listPublicCategoriesFn,
   listPopularPublicArticlesFn,
@@ -121,6 +124,7 @@ export const Route = createFileRoute('/_portal/hc/')({
     )
 
     const pageTitle = `${title} - ${workspaceName}`
+    const { baseUrl } = helpCenterHeadPortal(matches)
 
     return {
       meta: [
@@ -132,6 +136,7 @@ export const Route = createFileRoute('/_portal/hc/')({
         { name: 'twitter:title', content: pageTitle },
         { name: 'twitter:description', content: description },
       ],
+      links: [{ rel: 'canonical', href: `${baseUrl}/hc` }],
     }
   },
   component: HelpCenterLandingPage,
