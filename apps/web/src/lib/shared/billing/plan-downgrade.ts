@@ -6,9 +6,9 @@ import {
 import type { PlanUsageLine } from './plan-usage'
 
 /**
- * Numeric caps a workspace must fit before switching to that plan.
- * Must match CP `PLAN_DEFINITIONS` / `FREE_TIER_LIMITS` (null = unlimited).
- * Usage meters (AI, email, API) are not deletable resources and are omitted.
+ * Numeric caps a workspace must fit before switching to that plan
+ * (null = unlimited). Usage meters (AI, email, API) are not deletable
+ * resources and are omitted.
  */
 export const PLAN_NUMERIC_CAPS: Record<
   PlanId,
@@ -19,6 +19,9 @@ export const PLAN_NUMERIC_CAPS: Record<
     maxStatusComponents: number | null
     maxCustomRoles: number | null
     maxSendingDomains: number | null
+    maxInboundEmailAddresses: number | null
+    maxHelpCenterLocales: number | null
+    maxStatusSubscribers: number | null
   }
 > = {
   free: {
@@ -28,6 +31,9 @@ export const PLAN_NUMERIC_CAPS: Record<
     maxStatusComponents: 3,
     maxCustomRoles: 0,
     maxSendingDomains: 0,
+    maxInboundEmailAddresses: 1,
+    maxHelpCenterLocales: 1,
+    maxStatusSubscribers: 100,
   },
   pro: {
     maxBoards: null,
@@ -36,6 +42,9 @@ export const PLAN_NUMERIC_CAPS: Record<
     maxStatusComponents: 10,
     maxCustomRoles: 0,
     maxSendingDomains: 1,
+    maxInboundEmailAddresses: 1,
+    maxHelpCenterLocales: 1,
+    maxStatusSubscribers: 250,
   },
   business: {
     maxBoards: null,
@@ -44,6 +53,9 @@ export const PLAN_NUMERIC_CAPS: Record<
     maxStatusComponents: 25,
     maxCustomRoles: 5,
     maxSendingDomains: 3,
+    maxInboundEmailAddresses: 2,
+    maxHelpCenterLocales: 3,
+    maxStatusSubscribers: 1000,
   },
   enterprise: {
     maxBoards: null,
@@ -52,6 +64,9 @@ export const PLAN_NUMERIC_CAPS: Record<
     maxStatusComponents: null,
     maxCustomRoles: null,
     maxSendingDomains: null,
+    maxInboundEmailAddresses: null,
+    maxHelpCenterLocales: null,
+    maxStatusSubscribers: null,
   },
 }
 
@@ -89,6 +104,21 @@ const RESOURCE: Record<PlanCapKey, { singular: string; plural: string; href: str
     singular: 'sending domain',
     plural: 'sending domains',
     href: '/admin/settings/domains',
+  },
+  maxInboundEmailAddresses: {
+    singular: 'inbound email address',
+    plural: 'inbound email addresses',
+    href: '/admin/settings/channels/email',
+  },
+  maxHelpCenterLocales: {
+    singular: 'help center language',
+    plural: 'help center languages',
+    href: '/admin/settings/help-center',
+  },
+  maxStatusSubscribers: {
+    singular: 'status subscriber',
+    plural: 'status subscribers',
+    href: '/admin/status',
   },
 }
 

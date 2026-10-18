@@ -76,6 +76,82 @@ describe('planDowngradeIssues', () => {
     expect(planDowngradeIssues({ maxStatusComponents: 25 }, 'business')).toEqual([])
     expect(planDowngradeIssues({ maxStatusComponents: 26 }, 'business')[0]?.cap).toBe(25)
   })
+
+  it('flags inbound email addresses over the Free cap of 1', () => {
+    const issues = planDowngradeIssues({ maxInboundEmailAddresses: 2 }, 'free')
+    expect(issues).toEqual([
+      {
+        key: 'maxInboundEmailAddresses',
+        used: 2,
+        cap: 1,
+        message: 'You have 2 out of 1 inbound email addresses',
+        actionLabel: 'Remove 1 inbound email address',
+        href: '/admin/settings/channels/email',
+      },
+    ])
+  })
+
+  it('flags help center languages over the Business cap of 3', () => {
+    const issues = planDowngradeIssues({ maxHelpCenterLocales: 5 }, 'business')
+    expect(issues).toEqual([
+      {
+        key: 'maxHelpCenterLocales',
+        used: 5,
+        cap: 3,
+        message: 'You have 5 out of 3 help center languages',
+        actionLabel: 'Remove 2 help center languages',
+        href: '/admin/settings/help-center',
+      },
+    ])
+  })
+
+  it('flags status subscribers over the Free cap of 100', () => {
+    const issues = planDowngradeIssues({ maxStatusSubscribers: 101 }, 'free')
+    expect(issues).toEqual([
+      {
+        key: 'maxStatusSubscribers',
+        used: 101,
+        cap: 100,
+        message: 'You have 101 out of 100 status subscribers',
+        actionLabel: 'Remove 1 status subscriber',
+        href: '/admin/status',
+      },
+    ])
+  })
+
+  it('allows usage exactly at the inbound, locale and subscriber caps of each paid plan', () => {
+    expect(
+      planDowngradeIssues(
+        { maxInboundEmailAddresses: 1, maxHelpCenterLocales: 1, maxStatusSubscribers: 250 },
+        'pro'
+      )
+    ).toEqual([])
+    expect(
+      planDowngradeIssues(
+        { maxInboundEmailAddresses: 2, maxHelpCenterLocales: 3, maxStatusSubscribers: 1000 },
+        'business'
+      )
+    ).toEqual([])
+  })
+
+  it('never flags the inbound, locale and subscriber caps on Enterprise, where they are unlimited', () => {
+    expect(
+      planDowngradeIssues(
+        { maxInboundEmailAddresses: 50, maxHelpCenterLocales: 40, maxStatusSubscribers: 100000 },
+        'enterprise'
+      )
+    ).toEqual([])
+  })
+
+  it('blocks a downgrade to Free while more than one help center language is enabled', () => {
+    const issues = freeDowngradeIssues({ maxHelpCenterLocales: 2 })
+    expect(issues[0]).toMatchObject({
+      key: 'maxHelpCenterLocales',
+      cap: 1,
+      message: 'You have 2 out of 1 help center languages',
+      actionLabel: 'Remove 1 help center language',
+    })
+  })
 })
 
 describe('featuresDisabledOnFree', () => {
