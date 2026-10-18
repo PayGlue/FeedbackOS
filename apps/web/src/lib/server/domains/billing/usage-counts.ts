@@ -90,8 +90,10 @@ export async function loadUsageCounts(): Promise<Record<string, number>> {
       .select({ count: sql<number>`count(*)::int` })
       .from(statusSubscriptions)
       .where(isNull(statusSubscriptions.unsubscribedAt)),
+    // Fresh, not cached: this count can decide a downgrade, and another
+    // process may have enabled a language since this one cached settings.
     // A workspace without a settings row only has the default language.
-    getHelpCenterConfig().catch((error: unknown) => {
+    getHelpCenterConfig('fresh').catch((error: unknown) => {
       if (error instanceof NotFoundError) return DEFAULT_HELP_CENTER_CONFIG
       throw error
     }),
