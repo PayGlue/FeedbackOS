@@ -17,15 +17,25 @@ const mockSubscribeInsert = vi.fn()
 // when the conflict update was skipped because they had opted out.
 const mockUpsertReturning = vi.fn()
 
-vi.mock('@/lib/server/db', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/server/db')>()),
-  db: {
+const mockStateLimit = vi.fn()
+
+vi.mock('@/lib/server/domains/settings/tier-limits.service', () => ({
+  // No cap: the slot lock still runs, the count does not.
+  getTierLimits: async () => ({ maxStatusSubscribers: null }),
+}))
+
+vi.mock('@/lib/server/db', async (importOriginal) => {
+  const mockDb: Record<string, unknown> = {
     select: () => ({
       from: () => ({
         innerJoin: () => ({
           where: () => ({
             limit: (...args: unknown[]) => mockSelectLimit(...args),
           }),
+        }),
+        // The existing-row lookup, used to decide whether a new slot is needed.
+        where: () => ({
+          limit: (...args: unknown[]) => mockStateLimit(...args),
         }),
       }),
     }),
@@ -37,14 +47,21 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
         }
       },
     }),
-  },
-}))
+    execute: async () => [],
+  }
+  mockDb.transaction = (fn: (tx: unknown) => unknown) => fn(mockDb)
+  return {
+    ...(await importOriginal<typeof import('@/lib/server/db')>()),
+    db: mockDb,
+  }
+})
 
 import { importStatusSubscribersFromEmails } from '../status.subscription'
 
 beforeEach(() => {
   vi.clearAllMocks()
   mockUpsertReturning.mockResolvedValue([{ id: 'status_sub_1' }])
+  mockStateLimit.mockResolvedValue([])
 })
 
 describe('importStatusSubscribersFromEmails', () => {

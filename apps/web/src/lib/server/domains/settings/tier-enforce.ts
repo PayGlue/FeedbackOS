@@ -3,7 +3,16 @@ import { getAiBudgetStatus } from '../ai/ai-budget'
 import { aiAllowance, type AiCreditsState } from '@/lib/shared/billing/ai-credits'
 import { getTierLimits } from './tier-limits.service'
 import type { TierFeatureFlags } from './tier-limits.types'
-import { db, emailSendingDomains, isNull, sql, statusComponents } from '@/lib/server/db'
+import {
+  and,
+  channelAccounts,
+  db,
+  emailSendingDomains,
+  eq,
+  isNull,
+  sql,
+  statusComponents,
+} from '@/lib/server/db'
 
 interface EnforceCountLimitArgs {
   /** Null = unlimited. */
@@ -124,6 +133,37 @@ export async function enforceSendingDomainLimit(
       const [row] = await exec
         .select({ count: sql<number>`count(*)::int` })
         .from(emailSendingDomains)
+      return row?.count ?? 0
+    },
+  })
+}
+
+/**
+ * Refuses to create another inbound email route once the plan's
+ * `maxInboundEmailAddresses` limit is reached. Takes a transaction-scoped lock
+ * first, so the count and the insert the caller makes next in the same
+ * transaction cannot interleave with a concurrent creation.
+ */
+export async function enforceInboundEmailAddressLimit(
+  limit: number | null,
+  exec: Pick<typeof db, 'select' | 'execute'>
+): Promise<void> {
+  await exec.execute(sql`SELECT pg_advisory_xact_lock(hashtext('quackback:inbound_route_slot'))`)
+  await enforceCountLimit({
+    limit,
+    name: 'maxInboundEmailAddresses',
+    friendly: 'inbound email addresses',
+    currentCount: async () => {
+      const [row] = await exec
+        .select({ count: sql<number>`count(*)::int` })
+        .from(channelAccounts)
+        .where(
+          and(
+            eq(channelAccounts.role, 'inbound'),
+            eq(channelAccounts.channel, 'email'),
+            isNull(channelAccounts.deletedAt)
+          )
+        )
       return row?.count ?? 0
     },
   })

@@ -6,7 +6,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createId, type PrincipalId } from '@quackback/ids'
 import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
-import { eq, principal, statusSubscriptions, user } from '@/lib/server/db'
+import { eq, isNull, principal, statusSubscriptions, user } from '@/lib/server/db'
+import { TierLimitError } from '@/lib/server/errors/tier-limit-error'
 
 vi.mock('@/lib/server/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/server/db')>()),
@@ -19,6 +20,11 @@ import {
   subscribe,
   unsubscribe,
 } from '../status.subscription'
+
+const limits = vi.hoisted(() => ({ cap: null as number | null }))
+vi.mock('@/lib/server/domains/settings/tier-limits.service', () => ({
+  getTierLimits: async () => ({ maxStatusSubscribers: limits.cap }),
+}))
 
 const fixture = await createDbTestFixture({
   probe: async (db) => {
@@ -48,7 +54,6 @@ describe('admin subscribe paths (Postgres)', () => {
     await fixture.begin()
   })
   afterEach(fixture.rollback)
-  afterAll(fixture.close)
 
   it('adding someone who unsubscribed skips them and keeps the opt-out', async () => {
     const id = await person('optedout@example.com')
@@ -95,3 +100,125 @@ describe('admin subscribe paths (Postgres)', () => {
     expect((await subscription(id))?.unsubscribedAt).toBeNull()
   })
 })
+
+async function activeSubscriberCount(): Promise<number> {
+  const rows = await testDb
+    .select({ id: statusSubscriptions.id })
+    .from(statusSubscriptions)
+    .where(isNull(statusSubscriptions.unsubscribedAt))
+  return rows.length
+}
+
+describe('status subscriber cap (Postgres)', () => {
+  beforeEach(async () => {
+    expect(fixture.available).toBe(true)
+    limits.cap = null
+    await fixture.begin()
+  })
+  afterEach(fixture.rollback)
+
+  it('refuses a new self-serve subscriber once the cap is reached', async () => {
+    limits.cap = 2
+    const [a, b, c] = [
+      await person('a@example.com'),
+      await person('b@example.com'),
+      await person('c@example.com'),
+    ]
+    await subscribe(a, 'page', [], 'self_serve')
+    await subscribe(b, 'page', [], 'self_serve')
+
+    await expect(subscribe(c, 'page', [], 'self_serve')).rejects.toBeInstanceOf(TierLimitError)
+    expect(await subscription(c)).toBeUndefined()
+    expect(await activeSubscriberCount()).toBe(2)
+  })
+
+  it('lets an existing active subscriber change scope at the cap', async () => {
+    limits.cap = 1
+    const a = await person('a@example.com')
+    await subscribe(a, 'page', [], 'self_serve')
+
+    await expect(subscribe(a, 'page', [], 'self_serve')).resolves.toBeUndefined()
+    expect(await activeSubscriberCount()).toBe(1)
+  })
+
+  it('does not count opted-out rows against the cap', async () => {
+    limits.cap = 1
+    const a = await person('a@example.com')
+    const b = await person('b@example.com')
+    await subscribe(a, 'page', [], 'self_serve')
+    await unsubscribe(a)
+
+    await expect(subscribe(b, 'page', [], 'self_serve')).resolves.toBeUndefined()
+    expect(await activeSubscriberCount()).toBe(1)
+  })
+
+  it('refuses reactivating an opted-out person when the slot has been taken', async () => {
+    limits.cap = 1
+    const a = await person('a@example.com')
+    const b = await person('b@example.com')
+    await subscribe(a, 'page', [], 'self_serve')
+    await unsubscribe(a)
+    await subscribe(b, 'page', [], 'self_serve')
+
+    await expect(subscribe(a, 'page', [], 'self_serve')).rejects.toBeInstanceOf(TierLimitError)
+    expect((await subscription(a))?.unsubscribedAt).not.toBeNull()
+  })
+
+  it('never removes existing subscribers when the cap is lowered below them', async () => {
+    const ids = [
+      await person('a@example.com'),
+      await person('b@example.com'),
+      await person('c@example.com'),
+    ]
+    for (const id of ids) await subscribe(id, 'page', [], 'self_serve')
+    limits.cap = 1
+    const late = await person('late@example.com')
+
+    await expect(subscribe(late, 'page', [], 'self_serve')).rejects.toBeInstanceOf(TierLimitError)
+    expect(await activeSubscriberCount()).toBe(3)
+  })
+
+  it('refuses an admin add at the cap and leaves the list unchanged', async () => {
+    limits.cap = 1
+    const a = await person('a@example.com')
+    await subscribe(a, 'page', [], 'self_serve')
+    await person('fresh@example.com')
+
+    await expect(addStatusSubscriberByEmail('fresh@example.com')).rejects.toBeInstanceOf(
+      TierLimitError
+    )
+    expect(await activeSubscriberCount()).toBe(1)
+  })
+
+  it('imports a CSV only when every new subscriber fits, all or nothing', async () => {
+    limits.cap = 2
+    const a = await person('a@example.com')
+    await subscribe(a, 'page', [], 'self_serve')
+    const fresh1 = await person('fresh1@example.com')
+    await person('fresh2@example.com')
+
+    await expect(
+      importStatusSubscribersFromEmails(['fresh1@example.com', 'fresh2@example.com'])
+    ).rejects.toBeInstanceOf(TierLimitError)
+    expect(await subscription(fresh1)).toBeUndefined()
+    expect(await activeSubscriberCount()).toBe(1)
+  })
+
+  it('imports within the cap and still treats opted-out and unknown emails as before', async () => {
+    limits.cap = 3
+    const fresh = await person('fresh@example.com')
+    const optedOut = await person('optedout@example.com')
+    await subscribe(optedOut, 'page', [], 'self_serve')
+    await unsubscribe(optedOut)
+
+    const result = await importStatusSubscribersFromEmails([
+      'fresh@example.com',
+      'optedout@example.com',
+      'nobody@example.com',
+    ])
+    expect(result).toEqual({ imported: 1, skipped: 1, optedOut: 1, total: 3 })
+    expect(await subscription(fresh)).toMatchObject({ source: 'csv_import', unsubscribedAt: null })
+  })
+})
+
+afterAll(fixture.close)
