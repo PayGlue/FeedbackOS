@@ -118,3 +118,23 @@ it('shows shipped and closed ideas in a view, which the default feed leaves out'
   expect(await titles({ ...feed, view: 'mine' })).toEqual(['Closed', 'Open', 'Shipped'])
   expect(await titles({ ...feed, view: 'mine', statusSlugs: ['complete'] })).toEqual(['Shipped'])
 })
+
+it('finds a voted or followed idea that was merged into another, as the idea it went into', async () => {
+  const me = await person()
+  const other = await person()
+  const boardId = await board()
+  const survivor = await idea(boardId, other, 'Survivor')
+  const mergedAway = await idea(boardId, other, 'Merged away')
+  await testDb
+    .update(posts)
+    .set({ canonicalPostId: survivor, mergedAt: new Date() })
+    .where(eq(posts.id, mergedAway))
+  await testDb.insert(postVotes).values({ postId: mergedAway, principalId: me })
+  await testDb
+    .insert(postSubscriptions)
+    .values({ postId: mergedAway, principalId: me, reason: 'manual' })
+
+  const actor = actorFor(me)
+  expect(await titles({ actor, view: 'voted' })).toEqual(['Survivor'])
+  expect(await titles({ actor, view: 'following' })).toEqual(['Survivor'])
+})
