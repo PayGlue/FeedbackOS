@@ -53,8 +53,7 @@ export const Route = createFileRoute('/_portal/hc/$locale/articles/$idSlug/')({
     const portalMatch = matches.find((m) => (m.routeId as string) === '/_portal')
     // oxlint-disable-next-line @typescript-eslint/no-explicit-any
     const parentLoaderData = portalMatch?.loaderData as Record<string, any> | undefined
-    const workspaceName =
-      (parentLoaderData?.org as Record<string, string> | undefined)?.name ?? 'Help Center'
+    const workspaceName = (parentLoaderData?.workspaceName as string | undefined) ?? 'Help Center'
     const description =
       article.description ||
       (article.content ? stripMarkdownPreview(article.content, 160) : undefined)
