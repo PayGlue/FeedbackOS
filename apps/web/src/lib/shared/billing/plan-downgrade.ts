@@ -118,7 +118,7 @@ const RESOURCE: Record<PlanCapKey, { singular: string; plural: string; href: str
   maxStatusSubscribers: {
     singular: 'status subscriber',
     plural: 'status subscribers',
-    href: '/admin/status',
+    href: '/admin/status?view=subscribers',
   },
 }
 

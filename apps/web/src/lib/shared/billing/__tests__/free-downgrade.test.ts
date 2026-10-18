@@ -114,7 +114,7 @@ describe('planDowngradeIssues', () => {
         cap: 100,
         message: 'You have 101 out of 100 status subscribers',
         actionLabel: 'Remove 1 status subscriber',
-        href: '/admin/status',
+        href: '/admin/status?view=subscribers',
       },
     ])
   })
