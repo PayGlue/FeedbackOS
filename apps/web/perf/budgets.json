@@ -184,7 +184,7 @@
       "componentRenders": 455
     },
     "ui:admin-feedback-type-search": {
-      "dbQueries": 17,
+      "dbQueries": 19,
       "serverRequests": 2,
       "requests": 2,
       "jsRequests": 0,
