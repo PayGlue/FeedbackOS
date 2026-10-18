@@ -54,11 +54,16 @@ interface SubscriberSlots {
   active: number
 }
 
-async function lockSubscriberSlots(exec: StatusDb): Promise<SubscriberSlots> {
+/** The plan's subscriber cap, read before a transaction opens: the read uses
+ *  its own connection, which a transaction holding the only one would wait on. */
+async function subscriberLimit(): Promise<number | null> {
+  return (await getTierLimits()).maxStatusSubscribers
+}
+
+async function lockSubscriberSlots(exec: StatusDb, limit: number | null): Promise<SubscriberSlots> {
   await exec.execute(
     sql`SELECT pg_advisory_xact_lock(hashtext('quackback:status_subscriber_slot'))`
   )
-  const limit = (await getTierLimits()).maxStatusSubscribers
   if (limit === null) return { limit, active: 0 }
   const [row] = await exec
     .select({ count: sql<number>`count(*)::int` })
@@ -101,8 +106,9 @@ export async function subscribe(
   source: StatusSubscriptionSource
 ): Promise<void> {
   log.debug({ principal_id: principalId, scope, source }, 'status subscribe')
+  const limit = await subscriberLimit()
   await db.transaction(async (tx) => {
-    const slots = await lockSubscriberSlots(tx)
+    const slots = await lockSubscriberSlots(tx, limit)
     const state = await subscriptionState(tx, principalId)
     if (!state.active) admitNewSubscriber(slots)
     await tx
@@ -277,8 +283,10 @@ export async function addStatusSubscriberByEmail(email: string): Promise<{ subsc
     throw new NotFoundError('STATUS_SUBSCRIBER_NOT_FOUND', 'No matching user for that email')
   }
 
+  const limit = await subscriberLimit()
+
   return db.transaction(async (tx) => {
-    const slots = await lockSubscriberSlots(tx)
+    const slots = await lockSubscriberSlots(tx, limit)
     return { subscribed: await subscribeUnlessOptedOut(tx, row.principalId, 'admin', slots) }
   })
 }
@@ -301,8 +309,9 @@ export async function importStatusSubscribersFromEmails(
 
   // One transaction: a file that would take the workspace past its plan cap is
   // refused whole, so an admin never sees a partial import.
+  const limit = await subscriberLimit()
   return db.transaction(async (tx) => {
-    const slots = await lockSubscriberSlots(tx)
+    const slots = await lockSubscriberSlots(tx, limit)
     let imported = 0
     let optedOut = 0
     for (const email of normalized) {
