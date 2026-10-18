@@ -37,7 +37,7 @@ describe('describeEntitlementUpgrade', () => {
     expect(describeEntitlementUpgrade('webhooks').requiredPlan).toBe('pro')
     expect(describeEntitlementUpgrade('workflows').requiredPlan).toBe('business')
     expect(describeEntitlementUpgrade('mcpServer').requiredPlan).toBe('pro')
-    expect(describeEntitlementUpgrade('aiDrafts').requiredPlan).toBe('pro')
+    expect(describeEntitlementUpgrade('aiDrafts').requiredPlan).toBe('free')
     expect(describeEntitlementUpgrade('aiInsights').requiredPlan).toBe('pro')
   })
 })

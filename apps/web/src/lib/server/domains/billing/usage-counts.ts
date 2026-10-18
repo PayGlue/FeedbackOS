@@ -26,6 +26,8 @@ import {
   statusSubscriptions,
 } from '@/lib/server/db'
 import { getHelpCenterConfig } from '@/lib/server/domains/settings/settings.service'
+import { DEFAULT_HELP_CENTER_CONFIG } from '@/lib/server/domains/settings/settings.types'
+import { NotFoundError } from '@/lib/shared/errors'
 import { aiTokensThisWindow } from '@/lib/server/domains/ai/ai-budget'
 import { countSeatUsage } from '@/lib/server/domains/principals/seat-usage'
 import { emailsSentThisMonth } from '@/lib/server/email/email-budget'
@@ -88,7 +90,11 @@ export async function loadUsageCounts(): Promise<Record<string, number>> {
       .select({ count: sql<number>`count(*)::int` })
       .from(statusSubscriptions)
       .where(isNull(statusSubscriptions.unsubscribedAt)),
-    getHelpCenterConfig(),
+    // A workspace without a settings row only has the default language.
+    getHelpCenterConfig().catch((error: unknown) => {
+      if (error instanceof NotFoundError) return DEFAULT_HELP_CENTER_CONFIG
+      throw error
+    }),
   ])
   return {
     maxBoards: boardRow[0]?.count ?? 0,
