@@ -1,7 +1,6 @@
 /**
  * An article's tab title and social site name carry the workspace name. The
- * portal loader returns `workspaceName` (the removed `org` copy is gone), so
- * a title that reads `org` falls back to "Help Center" on every article.
+ * portal loader returns `workspaceName`; a missing name falls back to "Help Center".
  */
 import { describe, expect, it } from 'vitest'
 
