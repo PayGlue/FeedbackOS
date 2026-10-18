@@ -18,7 +18,7 @@ const mockSubscribeInsert = vi.fn()
 const mockUpsertReturning = vi.fn()
 
 const mockStateLimit = vi.fn()
-const mockExecute = vi.fn(async () => [])
+const mockExecute = vi.fn(async (..._args: unknown[]) => [])
 
 vi.mock('@/lib/server/domains/settings/tier-limits.service', () => ({
   // No cap: the slot lock still runs, the count does not.
