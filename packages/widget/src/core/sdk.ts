@@ -423,6 +423,9 @@ export function createSDK(): SDK {
           // Withdrawn consent also removes the stored device id.
           stopTracking()
           clearDeviceId()
+          // The panel keeps the id it was given for linking sessions to the
+          // device; a null tells it to drop it.
+          if (ready && bridge) bridge.send('quackback:device', null)
         }
         return
       case 'destroy':

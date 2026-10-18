@@ -153,4 +153,20 @@ describe('sdk host-page tracking', () => {
     expect(trackers).toHaveLength(1)
     expect(window.localStorage.getItem(DEVICE_KEY)).toBeNull()
   })
+
+  it('tracking(false) tells a ready panel to forget the device id', () => {
+    bakeConfig()
+    const postMessage = vi.fn()
+    vi.spyOn(HTMLIFrameElement.prototype, 'contentWindow', 'get').mockReturnValue({
+      postMessage,
+    } as unknown as Window)
+    const sdk = createSDK()
+    sdk.dispatch('init', { instanceUrl: ORIGIN })
+    window.dispatchEvent(
+      new MessageEvent('message', { origin: ORIGIN, data: { type: 'quackback:ready' } })
+    )
+    postMessage.mockClear()
+    sdk.dispatch('tracking', false)
+    expect(postMessage).toHaveBeenCalledWith({ type: 'quackback:device', data: null }, ORIGIN)
+  })
 })
