@@ -76,6 +76,7 @@ const tierFeatureFlagsSchema = z
     customColors: z.boolean().optional(),
     customCss: z.boolean().optional(),
     integrations: z.boolean().optional(),
+    visitorAnalytics: z.boolean().optional(),
   })
   .strict()
   .optional()

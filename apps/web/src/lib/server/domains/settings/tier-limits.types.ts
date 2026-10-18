@@ -24,6 +24,9 @@ export interface TierFeatureFlags {
   /** Connecting external tools (GitHub, Slack, Linear, Jira, etc.).
    *  All paid tiers on cloud; always on for self-hosters. */
   integrations: boolean
+  /** Host-page pageview counting and the widget's durable device id. Gates
+   *  both ingest and the widget config served to embeds. */
+  visitorAnalytics: boolean
 }
 
 /**
@@ -117,5 +120,6 @@ export const OSS_TIER_LIMITS: TierLimits = {
     customColors: true,
     customCss: true,
     integrations: true,
+    visitorAnalytics: true,
   },
 }
