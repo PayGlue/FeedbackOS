@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createId, type BoardId, type PrincipalId, type UserId } from '@quackback/ids'
 import { createDbTestFixture, testDb } from '@/lib/server/__tests__/db-test-fixture'
-import { boards, posts, principal, user } from '@/lib/server/db'
+import { and, eq } from 'drizzle-orm'
+import { boards, mergeSuggestions, posts, principal, user } from '@/lib/server/db'
 
 vi.mock('@/lib/server/db', async (original) => ({
   ...(await original<typeof import('@/lib/server/db')>()),
@@ -36,6 +37,14 @@ async function boardWith(
     await testDb.insert(posts).values({ boardId, principalId, title, content, voteCount: votes })
   }
   return boardId
+}
+
+async function postIn(boardId: BoardId, title: string) {
+  const [row] = await testDb
+    .select()
+    .from(posts)
+    .where(and(eq(posts.boardId, boardId), eq(posts.title, title)))
+  return row!.id
 }
 
 async function search(
@@ -103,4 +112,26 @@ it('lists newest first under best match when there is no search', async () => {
   const boardId = await boardWith([{ title: 'First' }, { title: 'Second' }])
   const titles = await search(boardId, '', 'relevance')
   expect(titles.sort()).toEqual(['First', 'Second'])
+})
+
+it('widens within the posts with pending duplicates when that filter is on', async () => {
+  const boardId = await boardWith([
+    { title: 'Zapier sync' },
+    { title: 'Zappier sync' },
+    { title: 'Webhooks' },
+  ])
+  // Only the misspelled post has a pending duplicate.
+  await testDb.insert(mergeSuggestions).values({
+    sourcePostId: await postIn(boardId, 'Zappier sync'),
+    targetPostId: await postIn(boardId, 'Webhooks'),
+    vectorScore: 0.9,
+    ftsScore: 0.5,
+    hybridScore: 0.8,
+    llmConfidence: 0.9,
+  })
+  const mode = async (pendingDuplicates: boolean) =>
+    (await withInboxSearchMode({ boardIds: [boardId], search: 'zapier' }, { pendingDuplicates }))
+      .searchMode
+  expect(await mode(false)).toBe('all')
+  expect(await mode(true)).toBe('similar')
 })

@@ -10,8 +10,11 @@ import { getMergeSuggestionCountsForPosts } from '@/lib/server/domains/merge-sug
 import { listInboxPosts } from './post.inbox'
 import { withInboxSearchMode } from './post.inbox.search'
 
-export async function listAdminInboxPage(params: Parameters<typeof listInboxPosts>[0]) {
-  const listParams = await withInboxSearchMode(params)
+export async function listAdminInboxPage(
+  params: Parameters<typeof listInboxPosts>[0],
+  options?: { pendingDuplicates?: boolean }
+) {
+  const listParams = await withInboxSearchMode(params, options)
   const page = await listInboxPosts(listParams)
   const duplicateCounts =
     page.items.length > 0
