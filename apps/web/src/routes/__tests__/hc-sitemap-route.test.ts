@@ -68,9 +68,12 @@ describe('help center sitemap origin', () => {
     ])
   })
 
-  it('keeps the configured base on the default host while a custom domain is verified', async () => {
+  it('redirects the default host to the verified custom domain, keeping the query', async () => {
     state.domain = { domain: 'help.acme.com', verifiedAt: '2026-10-01T00:00:00.000Z' }
-    const locs = await sitemapLocs('https://feedback.example.com/hc/sitemap.xml')
-    expect(locs[0]).toBe('https://feedback.example.com/hc')
+    const response = await GET({
+      request: new Request('https://feedback.example.com/hc/sitemap.xml?page=2'),
+    })
+    expect(response.status).toBe(301)
+    expect(response.headers.get('location')).toBe('https://help.acme.com/hc/sitemap.xml?page=2')
   })
 })

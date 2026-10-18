@@ -11,7 +11,7 @@ export const Route = createFileRoute('/hc/sitemap.xml')({
           { listPublicCategories, listPublicArticles },
           { listPublicCategoriesForLocale, listPublicArticlesForCategoryLocale },
           { buildHelpCenterSitemapUrls, buildHelpCenterSitemapUrlsMultiLocale },
-          { resolveHelpCenterBaseUrl },
+          { resolveHelpCenterBaseUrl, resolveHelpCenterDomainRedirect },
           { renderSitemap },
         ] = await Promise.all([
           import('@/lib/server/config'),
@@ -36,6 +36,23 @@ export const Route = createFileRoute('/hc/sitemap.xml')({
         }
 
         const url = new URL(request.url)
+
+        // The help center layout 301s every /hc/* request on the default host to
+        // a verified custom domain. This handler sits outside that layout, so it
+        // applies the same redirect, or crawlers would follow the listed URLs there.
+        const customDomainRedirect = resolveHelpCenterDomainRedirect({
+          domainConfig: helpCenterConfig.domain,
+          currentHost: url.host,
+          pathname: url.pathname,
+          search: url.search,
+        })
+        if (customDomainRedirect) {
+          return new Response(null, {
+            status: 301,
+            headers: { Location: customDomainRedirect, Vary: 'Host' },
+          })
+        }
+
         // The request reaches the app over http behind the TLS proxy, so its
         // origin is not the public one. Use the same base the canonical links
         // use: the verified custom domain when the request arrived on it, else
