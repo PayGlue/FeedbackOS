@@ -68,21 +68,22 @@ Drop this in your `<head>` and skip the install step entirely:
 
 ### Methods
 
-| Method                                        | Description                                                                |
-| --------------------------------------------- | -------------------------------------------------------------------------- |
-| `Quackback.init(options)`                     | Create launcher + iframe. `options.instanceUrl` required.                  |
-| `Quackback.identify(identity?)`               | Attribute activity to a user. Omit for anonymous.                          |
-| `Quackback.logout()`                          | Clear identity; widget stays visible in anonymous mode.                    |
-| `Quackback.open(options?)`                    | Open the panel; optional deep-link payload (see below).                    |
-| `Quackback.close()`                           | Close the panel.                                                           |
-| `Quackback.showLauncher()` / `hideLauncher()` | Toggle the floating button.                                                |
-| `Quackback.metadata(patch)`                   | Attach session context to submitted feedback. Pass `null` to remove a key. |
-| `Quackback.on(event, handler)`                | Subscribe to a widget event. Returns an unsubscribe function.              |
-| `Quackback.off(event, handler?)`              | Remove a specific handler, or all listeners for the event.                 |
-| `Quackback.destroy()`                         | Tear down all widget state and DOM.                                        |
-| `Quackback.isOpen()`                          | Whether the panel is currently visible.                                    |
-| `Quackback.getUser()`                         | The current identified user, or `null`.                                    |
-| `Quackback.isIdentified()`                    | `true` when a user is identified (non-anonymous).                          |
+| Method                                        | Description                                                                    |
+| --------------------------------------------- | ------------------------------------------------------------------------------ |
+| `Quackback.init(options)`                     | Create launcher + iframe. `options.instanceUrl` required.                      |
+| `Quackback.identify(identity?)`               | Attribute activity to a user. Omit for anonymous.                              |
+| `Quackback.logout()`                          | Clear identity; widget stays visible in anonymous mode.                        |
+| `Quackback.open(options?)`                    | Open the panel; optional deep-link payload (see below).                        |
+| `Quackback.close()`                           | Close the panel.                                                               |
+| `Quackback.showLauncher()` / `hideLauncher()` | Toggle the floating button.                                                    |
+| `Quackback.metadata(patch)`                   | Attach session context to submitted feedback. Pass `null` to remove a key.     |
+| `Quackback.tracking(enabled)`                 | Allow or stop host-page visitor analytics. `false` also removes the device id. |
+| `Quackback.on(event, handler)`                | Subscribe to a widget event. Returns an unsubscribe function.                  |
+| `Quackback.off(event, handler?)`              | Remove a specific handler, or all listeners for the event.                     |
+| `Quackback.destroy()`                         | Tear down all widget state and DOM.                                            |
+| `Quackback.isOpen()`                          | Whether the panel is currently visible.                                        |
+| `Quackback.getUser()`                         | The current identified user, or `null`.                                        |
+| `Quackback.isIdentified()`                    | `true` when a user is identified (non-anonymous).                              |
 
 ### `init` options
 
@@ -107,10 +108,22 @@ Quackback.init({
     'th' |
     'uk', // override auto-detect
   identity: { id, email, name } | { ssoToken }, // bundle identify into init
+  tracking: true, // false = no pageview beacons or device id until tracking(true)
 })
 ```
 
 Theme colors and tab visibility come from your Quackback admin (Admin → Settings → Widget).
+
+### Visitor analytics and consent
+
+When the instance has visitor analytics on, the widget reports host-page views and may keep a device id in the host page's `localStorage`. If your site asks visitors for analytics consent, start with `tracking: false` and switch it on once they accept:
+
+```ts
+Quackback.init({ instanceUrl, tracking: false })
+onAnalyticsConsent((granted) => Quackback.tracking(granted))
+```
+
+The launcher and panel work either way; only pageview tracking waits for consent.
 
 ### `identify` shapes
 

@@ -41,6 +41,13 @@ export interface InitOptions {
   locale?: (typeof WIDGET_LOCALES)[number] | (string & {})
   /** Bundle identity into init — shorthand for init + identify. */
   identity?: Identity
+  /**
+   * Set `tracking: false` to keep host-page visitor analytics off: no pageview
+   * beacons and no stored device id, for example until the visitor accepts
+   * analytics cookies. Turn it on later with `Quackback.tracking(true)`.
+   * Tracking runs only when the instance also enables visitor analytics.
+   */
+  tracking?: boolean
 }
 
 /**
