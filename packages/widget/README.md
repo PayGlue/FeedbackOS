@@ -108,7 +108,7 @@ Quackback.init({
     'th' |
     'uk', // override auto-detect
   identity: { id, email, name } | { ssoToken }, // bundle identify into init
-  tracking: true, // false = no pageview beacons or device id until tracking(true)
+  tracking: true, // false = no pageview beacons or new device id until tracking(true)
 })
 ```
 
@@ -123,7 +123,7 @@ Quackback.init({ instanceUrl, tracking: false })
 onAnalyticsConsent((granted) => Quackback.tracking(granted))
 ```
 
-The launcher and panel work either way; only pageview tracking waits for consent.
+The launcher and panel work either way; only pageview tracking waits for consent. Withdrawing with `tracking(false)` stops future pageviews and removes the stored device id; visits the instance already recorded stay in its analytics.
 
 ### `identify` shapes
 

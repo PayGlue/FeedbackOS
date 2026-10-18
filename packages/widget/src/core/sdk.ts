@@ -273,8 +273,9 @@ export function createSDK(): SDK {
   }
 
   function startTracking(): void {
-    if (!hostTracking || !analyticsConfig) return
-    tracker?.stop()
+    // A running tracker is left alone: restarting it would count the current
+    // page again.
+    if (!hostTracking || !analyticsConfig || tracker) return
     const deviceId = analyticsConfig.deviceTracking ? getOrCreateDeviceId() : null
     tracker = createTracker(analyticsConfig.instanceUrl, deviceId)
     tracker.start()
@@ -313,7 +314,9 @@ export function createSDK(): SDK {
         // Validate before destroy so a bad re-init leaves the working instance intact.
         if (config) dispatch('destroy')
         config = next
-        hostTracking = next.tracking !== false
+        // Only an explicit option changes the host's choice, so a withdrawal
+        // made before init, or before a re-init, is never silently undone.
+        if (next.tracking !== undefined) hostTracking = next.tracking
         placement = next.placement ?? 'right'
         createLauncherIfNeeded()
         // Preload the hidden panel iframe off the host page's critical path:

@@ -129,6 +129,28 @@ describe('sdk host-page tracking', () => {
     const sdk = createSDK()
     sdk.dispatch('init', { instanceUrl: ORIGIN })
     sdk.dispatch('tracking', true)
-    expect(trackers.filter((t) => t.stop.mock.calls.length === 0)).toHaveLength(1)
+    sdk.dispatch('tracking', true)
+    // A restarted tracker would beacon the current page again.
+    expect(trackers).toHaveLength(1)
+    expect(trackers[0].stop).not.toHaveBeenCalled()
+  })
+
+  it('tracking(false) before init holds through an init without the option', () => {
+    bakeConfig()
+    const sdk = createSDK()
+    sdk.dispatch('tracking', false)
+    sdk.dispatch('init', { instanceUrl: ORIGIN })
+    expect(trackers).toHaveLength(0)
+  })
+
+  it('a withdrawal holds through destroy and a later init without the option', () => {
+    bakeConfig()
+    const sdk = createSDK()
+    sdk.dispatch('init', { instanceUrl: ORIGIN })
+    sdk.dispatch('tracking', false)
+    sdk.dispatch('destroy')
+    sdk.dispatch('init', { instanceUrl: ORIGIN })
+    expect(trackers).toHaveLength(1)
+    expect(window.localStorage.getItem(DEVICE_KEY)).toBeNull()
   })
 })

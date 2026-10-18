@@ -43,9 +43,11 @@ export interface InitOptions {
   identity?: Identity
   /**
    * Set `tracking: false` to keep host-page visitor analytics off: no pageview
-   * beacons and no stored device id, for example until the visitor accepts
-   * analytics cookies. Turn it on later with `Quackback.tracking(true)`.
-   * Tracking runs only when the instance also enables visitor analytics.
+   * beacons and no new device id, for example until the visitor accepts
+   * analytics cookies. Turn it on later with `Quackback.tracking(true)`, or
+   * withdraw with `Quackback.tracking(false)`, which also removes a stored
+   * device id. Omitting the option keeps the host's last choice. Tracking runs
+   * only when the instance also enables visitor analytics.
    */
   tracking?: boolean
 }
