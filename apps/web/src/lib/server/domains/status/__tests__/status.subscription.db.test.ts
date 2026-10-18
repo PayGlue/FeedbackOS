@@ -17,6 +17,7 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
 import {
   addStatusSubscriberByEmail,
   importStatusSubscribersFromEmails,
+  removeStatusSubscriberByAdmin,
   subscribe,
   unsubscribe,
 } from '../status.subscription'
@@ -108,6 +109,65 @@ async function activeSubscriberCount(): Promise<number> {
     .where(isNull(statusSubscriptions.unsubscribedAt))
   return rows.length
 }
+
+describe('admin removal (Postgres)', () => {
+  beforeEach(async () => {
+    expect(fixture.available).toBe(true)
+    limits.cap = null
+    await fixture.begin()
+  })
+  afterEach(fixture.rollback)
+
+  it('unsubscribes an active subscriber and keeps the row', async () => {
+    const id = await person('removed@example.com')
+    await subscribe(id, 'page', [], 'self_serve')
+
+    expect(await removeStatusSubscriberByAdmin(id)).toEqual({ removed: true })
+    const row = await subscription(id)
+    expect(row).toBeDefined()
+    expect(row?.unsubscribedAt).not.toBeNull()
+    expect(row?.source).toBe('self_serve')
+  })
+
+  it('leaves an existing opt-out and its original time untouched', async () => {
+    const id = await person('optedout@example.com')
+    await subscribe(id, 'page', [], 'self_serve')
+    await unsubscribe(id)
+    const before = (await subscription(id))?.unsubscribedAt
+
+    expect(await removeStatusSubscriberByAdmin(id)).toEqual({ removed: false })
+    expect((await subscription(id))?.unsubscribedAt).toEqual(before)
+  })
+
+  it('reports nothing removed for a person with no subscription', async () => {
+    const id = await person('never@example.com')
+
+    expect(await removeStatusSubscriberByAdmin(id)).toEqual({ removed: false })
+    expect(await subscription(id)).toBeUndefined()
+  })
+
+  it('frees a slot at the cap so another person can subscribe', async () => {
+    limits.cap = 1
+    const [a, b] = [await person('a@example.com'), await person('b@example.com')]
+    await subscribe(a, 'page', [], 'self_serve')
+    await expect(subscribe(b, 'page', [], 'self_serve')).rejects.toBeInstanceOf(TierLimitError)
+
+    await removeStatusSubscriberByAdmin(a)
+    await expect(subscribe(b, 'page', [], 'self_serve')).resolves.toBeUndefined()
+    expect(await activeSubscriberCount()).toBe(1)
+  })
+
+  it('keeps the opt-out for admin adds, and lets the person re-subscribe themselves', async () => {
+    const id = await person('back@example.com')
+    await subscribe(id, 'page', [], 'self_serve')
+    await removeStatusSubscriberByAdmin(id)
+
+    expect(await addStatusSubscriberByEmail('back@example.com')).toEqual({ subscribed: false })
+
+    await subscribe(id, 'page', [], 'self_serve')
+    expect((await subscription(id))?.unsubscribedAt).toBeNull()
+  })
+})
 
 describe('status subscriber cap (Postgres)', () => {
   beforeEach(async () => {

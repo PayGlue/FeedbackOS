@@ -339,6 +339,20 @@ export async function importStatusSubscribersFromEmails(
   })
 }
 
+/** Admin "remove" on one subscriber from the list. Sets the same opt-out
+ *  `unsubscribe` sets and keeps the row, so the person's history and their own
+ *  re-subscribe path are unchanged. Someone already opted out is left alone
+ *  (their original opt-out time stays), and reports `{ removed: false }`. */
+export async function removeStatusSubscriberByAdmin(
+  principalId: PrincipalId
+): Promise<{ removed: boolean }> {
+  const state = await subscriptionState(db, principalId)
+  if (!state.active) return { removed: false }
+  await unsubscribe(principalId)
+  log.info({ principal_id: principalId }, 'status subscriber removed by admin')
+  return { removed: true }
+}
+
 /** Full unpaginated subscriber set for the admin CSV export — the same
  *  principal + user join the list read uses, minus the cursor/limit window. */
 export async function listAllStatusSubscribersForExport(): Promise<StatusSubscriptionExportRow[]> {
