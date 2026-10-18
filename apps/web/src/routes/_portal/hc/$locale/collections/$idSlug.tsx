@@ -12,7 +12,10 @@ import { buildCollectionPageJsonLd, buildBreadcrumbJsonLd } from '@/lib/shared/j
 import { CategoryIcon } from '@/components/help-center/category-icon'
 import { Avatar } from '@/components/ui/avatar'
 import { hcArticlePath, hcCollectionPath } from '@/lib/shared/help-center-url'
-import { helpCenterHeadPortal } from '@/components/help-center/help-center-head'
+import {
+  helpCenterAbsoluteUrl,
+  helpCenterHeadPortal,
+} from '@/components/help-center/help-center-head'
 import { useBaseUrl, useWorkspaceSettings } from '@/lib/client/hooks/use-root-context'
 
 const MAX_ARTICLES_SHOWN = 8
@@ -54,11 +57,14 @@ export const Route = createFileRoute('/_portal/hc/$locale/collections/$idSlug')(
     const { workspaceName, baseUrl } = helpCenterHeadPortal(matches)
     const pageTitle = `${category.name} - ${workspaceName}`
     const description = category.description || undefined
-    const canonicalUrl = `${baseUrl}${hcCollectionPath({
-      locale: params.locale,
-      urlId: category.urlId,
-      slug: category.slug,
-    })}`
+    const canonicalUrl = helpCenterAbsoluteUrl(
+      baseUrl,
+      hcCollectionPath({
+        locale: params.locale,
+        urlId: category.urlId,
+        slug: category.slug,
+      })
+    )
 
     return {
       meta: [
@@ -66,13 +72,13 @@ export const Route = createFileRoute('/_portal/hc/$locale/collections/$idSlug')(
         ...(description ? [{ name: 'description', content: description }] : []),
         { property: 'og:title', content: pageTitle },
         ...(description ? [{ property: 'og:description', content: description }] : []),
-        { property: 'og:url', content: canonicalUrl },
+        ...(canonicalUrl ? [{ property: 'og:url', content: canonicalUrl }] : []),
         { property: 'og:site_name', content: workspaceName },
         { name: 'twitter:card', content: 'summary' },
         { name: 'twitter:title', content: pageTitle },
         ...(description ? [{ name: 'twitter:description', content: description }] : []),
       ],
-      links: [{ rel: 'canonical', href: canonicalUrl }],
+      links: canonicalUrl ? [{ rel: 'canonical', href: canonicalUrl }] : [],
     }
   },
   component: CollectionPage,

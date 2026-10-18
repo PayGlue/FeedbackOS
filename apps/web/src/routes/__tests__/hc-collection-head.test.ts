@@ -68,4 +68,14 @@ describe('help center collection head', () => {
     const { meta } = headFor({ ...category, description: null })
     expect(meta?.find((m) => m.name === 'description')).toBeUndefined()
   })
+
+  it('omits the canonical and og:url when the request has no base URL', () => {
+    const { meta, links } = head({
+      loaderData: { category },
+      params: { locale: 'en', idSlug: '4-boards-portal' },
+      matches: [{ routeId: '/_portal', loaderData: { workspaceName: 'Acme' }, context: {} }],
+    })
+    expect(links).toEqual([])
+    expect(meta?.find((m) => m.property === 'og:url')).toBeUndefined()
+  })
 })

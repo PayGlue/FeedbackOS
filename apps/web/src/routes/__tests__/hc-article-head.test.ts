@@ -61,4 +61,13 @@ describe('help center article head', () => {
       href: 'https://feedback.example.com/hc/en/articles/150-mcp-reference',
     })
   })
+
+  it('omits the canonical when the request has no base URL', () => {
+    const { links } = head({
+      loaderData: { article },
+      params: { locale: 'en', idSlug: '150-mcp-reference' },
+      matches: [{ routeId: '/_portal', loaderData: { workspaceName: 'Acme' }, context: {} }],
+    })
+    expect(links).toEqual([])
+  })
 })

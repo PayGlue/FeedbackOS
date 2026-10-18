@@ -5,6 +5,7 @@ import { HelpCenterHeroSearch } from '@/components/help-center/help-center-searc
 import { HelpCenterCategoryGrid } from '@/components/help-center/help-center-category-grid'
 import { getTopLevelCategories } from '@/components/help-center/help-center-utils'
 import {
+  helpCenterAbsoluteUrl,
   helpCenterHeadMessages,
   helpCenterHeadPortal,
 } from '@/components/help-center/help-center-head'
@@ -74,6 +75,7 @@ export const Route = createFileRoute('/_portal/hc/$locale/')({
     if (!loaderData) return {}
     const { workspaceName, logoUrl } = loaderData
     const { baseUrl } = helpCenterHeadPortal(matches)
+    const canonicalUrl = helpCenterAbsoluteUrl(baseUrl, localizedHcPath(params.locale, '/hc'))
     const messages = helpCenterHeadMessages(matches)
     const { title, description } = landingCopy(
       loaderData.title,
@@ -89,7 +91,7 @@ export const Route = createFileRoute('/_portal/hc/$locale/')({
         { property: 'og:description', content: description },
         { property: 'og:image', content: logoUrl },
       ],
-      links: [{ rel: 'canonical', href: `${baseUrl}${localizedHcPath(params.locale, '/hc')}` }],
+      links: canonicalUrl ? [{ rel: 'canonical', href: canonicalUrl }] : [],
     }
   },
   component: LocaleHelpCenterLandingPage,

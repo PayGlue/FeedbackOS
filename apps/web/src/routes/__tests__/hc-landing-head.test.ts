@@ -100,4 +100,19 @@ describe('help center landing canonicals', () => {
       href: 'https://feedback.example.com/hc/de',
     })
   })
+
+  it('emits no canonical on either landing when the request has no base URL', () => {
+    const noBase = { routeId: '/_portal', loaderData: { workspaceName: 'Acme' }, context: {} }
+    const home = headOf(Landing)({
+      loaderData: { helpCenterConfig: null, workspaceName: 'Acme', logoUrl: null },
+      matches: [polishLayout, noBase],
+    })
+    const locale = headOf(LocaleLanding)({
+      loaderData: { title: null, description: null, workspaceName: 'Acme', logoUrl: null },
+      params: { locale: 'en' },
+      matches: [polishLayout, noBase],
+    })
+    expect(home.links).toEqual([])
+    expect(locale.links).toEqual([])
+  })
 })
