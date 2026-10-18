@@ -131,6 +131,8 @@ interface SearchResult {
 }
 
 const SIMILAR_SEARCH_CACHE_LIMIT = 40
+/** Shorter titles match too much to be similar to anything, as in the portal composer. */
+const SIMILAR_MIN_LENGTH = 5
 let similarSearchCacheVersion = INITIAL_SESSION_VERSION
 const similarSearchCache = new Map<string, SearchResult>()
 
@@ -355,7 +357,7 @@ function SimilarIdeas({
   useEffect(() => {
     if (similarDebounceRef.current) clearTimeout(similarDebounceRef.current)
     const q = value.trim()
-    if (!q) {
+    if (q.length < SIMILAR_MIN_LENGTH) {
       setSimilarPostResults(null)
       setIsSimilarSearching(false)
       return

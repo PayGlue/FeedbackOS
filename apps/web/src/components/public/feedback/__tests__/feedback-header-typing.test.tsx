@@ -194,6 +194,19 @@ describe('feedback header title', () => {
     }
   })
 
+  it('cuts a long draft to the title limit, so it can be submitted', async () => {
+    const scrollIntoView = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = vi.fn()
+    try {
+      renderHeader({ title: 'x'.repeat(250), key: 1 })
+      await screen.findByTestId('editor')
+      const field = screen.getByRole<HTMLInputElement>('textbox', { name: 'Feedback title' })
+      expect(field.value).toHaveLength(200)
+    } finally {
+      Element.prototype.scrollIntoView = scrollIntoView
+    }
+  })
+
   it('does not re-render the header per keystroke in the title', async () => {
     renderHeader()
     typeTitle('D')

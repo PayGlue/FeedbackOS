@@ -86,6 +86,18 @@ interface FeedbackContainerProps {
   facets?: PublicPostFacetCounts | null
 }
 
+/**
+ * Whether a signed-in visitor can post a new idea. On a board the composer is
+ * locked to that board, so it decides; on the whole feed any board will do.
+ */
+export function canPostTo(
+  boardPermissions: Record<string, { canSubmit: boolean }> | undefined,
+  lockedBoardId: string | undefined
+): boolean {
+  if (lockedBoardId) return !!boardPermissions?.[lockedBoardId]?.canSubmit
+  return Object.values(boardPermissions ?? {}).some((board) => board.canSubmit)
+}
+
 export function FeedbackContainer({
   workspaceName,
   workspaceSlug,
@@ -318,7 +330,7 @@ export function FeedbackContainer({
   // the title. Signed-out visitors get the composer's own sign-in path.
   const [draft, setDraft] = useState<{ title: string; key: number }>()
   const canStartIdea =
-    !isRealUser || Object.values(boardPermissions ?? {}).some((board) => board.canSubmit)
+    !isRealUser || canPostTo(boardPermissions, boardLocked ? boardIdForCreate : undefined)
 
   function handlePostCreated(postId: string): void {
     setTimeout(() => {
