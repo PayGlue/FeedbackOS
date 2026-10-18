@@ -61,10 +61,11 @@ async function subscriberLimit(): Promise<number | null> {
 }
 
 async function lockSubscriberSlots(exec: StatusDb, limit: number | null): Promise<SubscriberSlots> {
+  // No cap means nothing to count, so unlimited plans never serialize on the lock.
+  if (limit === null) return { limit, active: 0 }
   await exec.execute(
     sql`SELECT pg_advisory_xact_lock(hashtext('quackback:status_subscriber_slot'))`
   )
-  if (limit === null) return { limit, active: 0 }
   const [row] = await exec
     .select({ count: sql<number>`count(*)::int` })
     .from(statusSubscriptions)
