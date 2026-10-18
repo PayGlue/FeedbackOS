@@ -130,6 +130,18 @@ export async function fetchVotedPosts(): Promise<Set<string>> {
 // Query Hooks
 // ============================================================================
 
+/**
+ * The feed's first page, which carries its counts. It drops out of the cache
+ * once enough later pages have loaded (maxPages), so the last one seen holds
+ * until a new first page arrives.
+ */
+export function useFirstPage<T>(data: InfiniteData<T> | undefined): T | undefined {
+  const firstPage = data?.pageParams[0] === 1 ? data.pages[0] : undefined
+  const last = useRef(firstPage)
+  if (firstPage) last.current = firstPage
+  return last.current
+}
+
 export function usePublicPosts({
   filters,
   initialData,

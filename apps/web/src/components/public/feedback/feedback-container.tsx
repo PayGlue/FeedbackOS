@@ -25,6 +25,7 @@ import {
   flattenPublicPosts,
   publicPostsKeys,
   usePublicPosts,
+  useFirstPage,
   useVotedPosts,
 } from '@/lib/client/hooks/use-portal-posts-query'
 import { useChangePostStatusId } from '@/lib/client/mutations/posts'
@@ -212,7 +213,8 @@ export function FeedbackContainer({
   })
 
   // Filter panel counts ride on the first page of the feed.
-  const facetCounts = postsData?.pages[0]?.facets
+  const firstPage = useFirstPage(postsData)
+  const facetCounts = firstPage?.facets
 
   // A view the server ignores is not counted as on.
   const filterCount = activeFilterCount - (filters.view && !activeView ? 1 : 0)
