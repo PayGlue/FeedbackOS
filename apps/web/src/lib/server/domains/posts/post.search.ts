@@ -7,8 +7,9 @@
  * the words must match; when no post has them all, posts with at least half
  * of them will do (see resolvePostSearchMode). Half, not any one: a stray
  * common word ("post", "add") would otherwise match half the board. A query
- * written with search operators (quotes, a leading minus, OR) keeps its
- * meaning and is never widened.
+ * written with search operators (quotes, a leading minus, OR), or holding an
+ * email address, host or version the index keeps whole, goes to Postgres as
+ * written and is never widened.
  */
 import type { SQL } from 'drizzle-orm'
 import { posts, sql } from '@/lib/server/db'
@@ -19,8 +20,18 @@ export type PostSearchMode = 'all' | 'most'
 /** Words past this many are ignored: they only slow the query down. */
 const MAX_TERMS = 10
 
-/** Quotes, a leading minus, or a bare OR: the visitor wrote a query, not words. */
-const OPERATORS = /"|(^|\s)-\S|\sOR\s/
+/**
+ * Quotes, a leading minus, or a bare OR (in any case, as websearch_to_tsquery
+ * reads it): the visitor wrote a query, not words.
+ */
+const OPERATORS = /"|(^|\s)-\S|\sor\s/i
+
+/**
+ * An email address, host, path or version ("kaye@acme.io", "node.js",
+ * "v2.1"): the index holds it as one token, so split into words it would
+ * match nothing.
+ */
+const WHOLE_TOKEN = /[\p{L}\p{N}][@./:][\p{L}\p{N}]/u
 
 /**
  * The words in a search: runs of letters and digits, lowercased. Anything
@@ -31,13 +42,14 @@ export function searchTerms(search: string): string[] {
   return (search.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).slice(0, MAX_TERMS)
 }
 
-function usesOperators(search: string): boolean {
-  return OPERATORS.test(search)
+/** Whether Postgres should read the search as written: see OPERATORS and WHOLE_TOKEN. */
+function usesQuerySyntax(search: string): boolean {
+  return OPERATORS.test(search) || WHOLE_TOKEN.test(search)
 }
 
 /** Whether the half-the-words fallback can change anything for this search. */
 export function canWidenSearch(search: string | undefined): boolean {
-  return !!search && !usesOperators(search) && searchTerms(search).length > 1
+  return !!search && !usesQuerySyntax(search) && searchTerms(search).length > 1
 }
 
 /** One word as a prefix tsquery. A stop word ("the") comes back empty. */
@@ -47,7 +59,7 @@ function termQuery(term: string): SQL {
 
 /** The search as one tsquery: every word, or any word. Null when it has none. */
 function postSearchQuery(search: string, join: '&' | '|'): SQL | null {
-  if (usesOperators(search)) return sql`websearch_to_tsquery('english', ${search})`
+  if (usesQuerySyntax(search)) return sql`websearch_to_tsquery('english', ${search})`
   const terms = searchTerms(search)
   if (terms.length === 0) return null
   return sql`to_tsquery('english', ${terms.map((term) => `${term}:*`).join(` ${join} `)})`

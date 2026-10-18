@@ -105,6 +105,27 @@ it('keeps search operators: quotes, minus and OR', async () => {
   expect((await search(slug, 'slack OR email')).sort()).toEqual(['Email alerts', 'Slack alerts'])
 })
 
+it('reads a lowercase or as OR, as Postgres does', async () => {
+  const slug = await boardWith([
+    { title: 'Slack alerts' },
+    { title: 'Email alerts' },
+    { title: 'Slack email digest' },
+  ])
+  expect(await search(slug, 'slack or email')).toEqual(
+    expect.arrayContaining(['Email alerts', 'Slack alerts', 'Slack email digest'])
+  )
+})
+
+it('finds an email address, host or version as the index holds it', async () => {
+  const slug = await boardWith([
+    { title: 'Invites bounce', content: 'Sent to kaye@acme.io and it bounced' },
+    { title: 'SDK', content: 'Support node.js 22 and v2.1 of the API' },
+  ])
+  expect(await search(slug, 'kaye@acme.io')).toEqual(['Invites bounce'])
+  expect(await search(slug, 'node.js')).toEqual(['SDK'])
+  expect(await search(slug, 'v2.1')).toEqual(['SDK'])
+})
+
 it('treats punctuation as a word break and never errors on it', async () => {
   const slug = await boardWith([{ title: 'Zapier integration' }])
   expect(await search(slug, "zapier: & | ! ' (")).toEqual(['Zapier integration'])
