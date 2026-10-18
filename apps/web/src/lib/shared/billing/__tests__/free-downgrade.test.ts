@@ -168,8 +168,33 @@ describe('featuresDisabledOnFree', () => {
     )
   })
 
-  it('only lists disabled features when the target is Free', () => {
-    expect(featuresDisabledOnDowngrade('scale', 'pro')).toEqual([])
+  it('keeps Copilot drafts out of the Free warning, since Free includes them', () => {
+    for (const plan of ['pro', 'business', 'enterprise']) {
+      expect(featuresDisabledOnFree(plan).join(' ')).not.toMatch(/drafts/i)
+      expect(featuresDisabledOnFree(plan)).toContain('AI assistant and insights will be disabled')
+    }
+  })
+
+  it('warns that AI article translation stops when leaving Business or Enterprise', () => {
+    expect(featuresDisabledOnFree('business')).toContain('AI article translation will be disabled')
+    expect(featuresDisabledOnDowngrade('business', 'pro')).toContain(
+      'AI article translation will be disabled'
+    )
+    expect(featuresDisabledOnDowngrade('enterprise', 'pro')).toContain(
+      'AI article translation will be disabled'
+    )
+  })
+
+  it('names what a paid-to-paid downgrade loses, and nothing for an upgrade or the same plan', () => {
+    expect(featuresDisabledOnDowngrade('enterprise', 'business')).toEqual([
+      'Single sign-on will be disabled',
+      'The audit log will be disabled',
+    ])
+    expect(featuresDisabledOnDowngrade('business', 'pro')).toContain(
+      'Workflows and automations will be disabled'
+    )
+    expect(featuresDisabledOnDowngrade('pro', 'business')).toEqual([])
+    expect(featuresDisabledOnDowngrade('pro', 'pro')).toEqual([])
     expect(featuresDisabledOnDowngrade('scale', 'free').length).toBeGreaterThan(0)
   })
 })

@@ -122,32 +122,30 @@ const RESOURCE: Record<PlanCapKey, { singular: string; plural: string; href: str
   },
 }
 
-export const FREE_DISABLED_FEATURES: Record<string, string[]> = {
-  pro: [
-    'Custom domains will be disabled',
-    'AI assistant, drafts and insights will be disabled',
-    'API access will be revoked',
-    'Webhooks will be disabled',
-    'MCP access will be revoked',
-  ],
-  business: [
-    'Custom domains will be disabled',
-    'Workflows and automations will be disabled',
-    'AI assistant, drafts and insights will be disabled',
-    'API access will be revoked',
-    'Webhooks will be disabled',
-    'MCP access will be revoked',
-  ],
-  enterprise: [
-    'Custom domains will be disabled',
-    'Workflows and automations will be disabled',
-    'Single sign-on will be disabled',
-    'AI assistant, drafts and insights will be disabled',
-    'API access will be revoked',
-    'Webhooks will be disabled',
-    'MCP access will be revoked',
-    'The audit log will be disabled',
-  ],
+/**
+ * Plan features a downgrade can switch off, in display order, with the plans
+ * that include each. Copilot drafts are on every plan, so no downgrade loses
+ * them.
+ */
+const PLAN_FEATURES: ReadonlyArray<{ lost: string; plans: readonly PlanId[] }> = [
+  { lost: 'Custom domains will be disabled', plans: ['pro', 'business', 'enterprise'] },
+  { lost: 'Workflows and automations will be disabled', plans: ['business', 'enterprise'] },
+  { lost: 'Single sign-on will be disabled', plans: ['enterprise'] },
+  { lost: 'AI assistant and insights will be disabled', plans: ['pro', 'business', 'enterprise'] },
+  { lost: 'AI article translation will be disabled', plans: ['business', 'enterprise'] },
+  { lost: 'API access will be revoked', plans: ['pro', 'business', 'enterprise'] },
+  { lost: 'Webhooks will be disabled', plans: ['pro', 'business', 'enterprise'] },
+  { lost: 'MCP access will be revoked', plans: ['pro', 'business', 'enterprise'] },
+  { lost: 'The audit log will be disabled', plans: ['enterprise'] },
+]
+
+function featuresLost(fromPlanId: string, toPlanId: string): string[] {
+  const from = canonicalPlanId(fromPlanId)
+  const to = canonicalPlanId(toPlanId)
+  if (!isPlanId(from) || !isPlanId(to)) return []
+  return PLAN_FEATURES.filter(
+    (feature) => feature.plans.includes(from) && !feature.plans.includes(to)
+  ).map((feature) => feature.lost)
 }
 
 export function usedByKey(lines: readonly PlanUsageLine[]): Record<string, number> {
@@ -188,13 +186,14 @@ export function freeDowngradeIssues(used: Record<string, number>): PlanDowngrade
 }
 
 export function featuresDisabledOnFree(planId: string | null | undefined): string[] {
-  if (!planId) return FREE_DISABLED_FEATURES.business
-  return FREE_DISABLED_FEATURES[canonicalPlanId(planId)] ?? FREE_DISABLED_FEATURES.business
+  const from = planId ? canonicalPlanId(planId) : 'business'
+  return featuresLost(isPlanId(from) ? from : 'business', 'free')
 }
 
 export function featuresDisabledOnDowngrade(
   fromPlanId: string | null | undefined,
   toPlanId: string
 ): string[] {
-  return canonicalPlanId(toPlanId) === 'free' ? featuresDisabledOnFree(fromPlanId) : []
+  if (canonicalPlanId(toPlanId) === 'free') return featuresDisabledOnFree(fromPlanId)
+  return fromPlanId ? featuresLost(fromPlanId, toPlanId) : []
 }
