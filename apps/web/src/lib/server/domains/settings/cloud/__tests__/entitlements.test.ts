@@ -79,9 +79,17 @@ describe('isEntitled', () => {
     expect(isEntitled(config, 'auditLog')).toBe(false)
   })
 
-  it('grants nothing on the free plan', () => {
+  it('grants only AI drafts on the free plan', () => {
     const config = cloud({ plan: 'free' })
-    for (const key of ENTITLEMENT_KEYS) expect(isEntitled(config, key)).toBe(false)
+    const granted = ENTITLEMENT_KEYS.filter((key) => isEntitled(config, key))
+    expect(granted).toEqual(['aiDrafts'])
+  })
+
+  it('grants AI article translation from Business up, never on Free or Pro', () => {
+    expect(isEntitled(cloud({ plan: 'free' }), 'aiArticleTranslation')).toBe(false)
+    expect(isEntitled(cloud({ plan: 'pro' }), 'aiArticleTranslation')).toBe(false)
+    expect(isEntitled(cloud({ plan: 'business' }), 'aiArticleTranslation')).toBe(true)
+    expect(isEntitled(cloud({ plan: 'enterprise' }), 'aiArticleTranslation')).toBe(true)
   })
 
   it('lets an explicit override open a feature the plan does not include', () => {
@@ -143,7 +151,8 @@ describe('the refusal names the plan', () => {
     expect(err.message).toBe('Workflows are a Business feature. Upgrade to Business to enable it.')
   })
 
-  it.each(ENTITLEMENT_KEYS.filter((key) => key !== 'hideBranding'))(
+  // aiDrafts is the one entitlement Free includes, so it has no refusal to name.
+  it.each(ENTITLEMENT_KEYS.filter((key) => key !== 'hideBranding' && key !== 'aiDrafts'))(
     '%s refuses with a nameable plan from the free tier',
     (key) => {
       const err = buildRefusal(cloud({ plan: 'free' }), key)
@@ -250,6 +259,7 @@ describe('requireEntitlement against a configured workspace', () => {
       customDomain: true,
       sso: false,
       aiAssistant: true,
+      aiArticleTranslation: false,
       aiDrafts: true,
       aiInsights: true,
       workflows: false,
@@ -270,6 +280,7 @@ describe('requireEntitlement against a configured workspace', () => {
       customDomain: true,
       sso: false,
       aiAssistant: true,
+      aiArticleTranslation: true,
       aiDrafts: true,
       aiInsights: true,
       workflows: true,
