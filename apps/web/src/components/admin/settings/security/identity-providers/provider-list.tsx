@@ -116,7 +116,9 @@ function ProviderRow({
   // Persisted choice wins; infer from the discovery URL only for legacy rows.
   const kind = provider.kind ?? inferIdpKind(provider.discoveryUrl)
   const verifiedDomains = provider.domains.filter((d) => d.verifiedAt)
-  const isOnlyMethod = isOnlyWorkingMethod(provider, enabledMethodCount)
+  // Without the tier the count leaves identity providers out, so the guard
+  // would wrongly lock a stale provider on. Switching it off must stay possible.
+  const isOnlyMethod = tierEnabled && isOnlyWorkingMethod(provider, enabledMethodCount)
   // Without the tier a provider can be switched off but not switched on.
   const needsTierToEnable = !tierEnabled && !enabled
 

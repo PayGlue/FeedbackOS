@@ -300,6 +300,38 @@ describe('enable toggle on the list row', () => {
   })
 })
 
+describe('last-method guard depends on the SSO tier', () => {
+  // Without the tier the method count leaves identity providers out, so a
+  // count of 1 is the built-in or social method, not the SSO provider.
+  it('locks the last working method while the tier is on', () => {
+    renderSection(1)
+    const toggle = screen.getByRole('switch', { name: /enable acme sso/i })
+    expect(toggle).toBeDisabled()
+    expect(toggle.parentElement).toHaveAttribute(
+      'title',
+      'At least one sign-in method must stay enabled.'
+    )
+  })
+
+  it('lets a stale provider be switched off while the tier is off', async () => {
+    const qc = new QueryClient()
+    qc.setQueryData(['settings', 'identityProviders'], [buttonProvider, routedProvider])
+    render(
+      <QueryClientProvider client={qc}>
+        <IdentityProvidersSection tierEnabled={false} enabledMethodCount={1} />
+      </QueryClientProvider>
+    )
+    const toggle = screen.getByRole('switch', { name: /enable acme sso/i })
+    expect(toggle).not.toBeDisabled()
+    fireEvent.click(toggle)
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1))
+    expect(upsertSpy.mock.calls[0][0].data).toMatchObject({
+      id: routedProvider.id,
+      enabled: false,
+    })
+  })
+})
+
 describe('empty list', () => {
   it('shows the shared empty state with a New provider action', () => {
     const qc = new QueryClient()
