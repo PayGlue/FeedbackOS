@@ -43,23 +43,26 @@ export async function registerJiraWebhook(
     throw new Error('Invalid Jira project reference')
   }
 
-  const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      url: callbackUrl,
-      webhooks: [
-        {
-          jqlFilter: `project = ${projectRef}`,
-          events: ['jira:issue_updated'],
-        },
-      ],
-    }),
-  })
+  const response = await integrationFetch(
+    `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: callbackUrl,
+        webhooks: [
+          {
+            jqlFilter: `project = ${projectRef}`,
+            events: ['jira:issue_updated'],
+          },
+        ],
+      }),
+    }
+  )
 
   if (!response.ok) {
     const body = await response.text()
@@ -200,15 +203,18 @@ export async function deleteJiraWebhook(
   cloudId: string,
   webhookId: string
 ): Promise<void> {
-  const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ webhookIds: [Number(webhookId)] }),
-  })
+  const response = await integrationFetch(
+    `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ webhookIds: [Number(webhookId)] }),
+    }
+  )
   // A webhook Jira no longer has is already gone, which is what the caller wanted.
   if (!response.ok && response.status !== 404) {
     const body = await response.text().catch(() => '')

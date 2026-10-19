@@ -100,6 +100,17 @@ describe('jiraProjectRef', () => {
 })
 
 describe('registerJiraWebhook', () => {
+  it('bounds the registration with a timeout so a stalled Jira cannot hold the job', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ webhookRegistrationResult: [{ createdWebhookId: 99 }] }))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock)
+
+    await registerJiraWebhook('tok', 'cloud-1', 'https://tenant.example/hook', '10000')
+
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+  })
+
   it('registers with project = KEY and no secret field', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -183,6 +194,15 @@ describe('listJiraWebhookIds', () => {
 })
 
 describe('deleteJiraWebhook', () => {
+  it('bounds the delete with a timeout so a stalled Jira cannot hold the job', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock)
+
+    await deleteJiraWebhook('tok', 'cloud-1', '99')
+
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+  })
+
   it('rejects when Jira refuses the delete, so a caller can see the webhook is still there', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('boom', { status: 500 }))
 
