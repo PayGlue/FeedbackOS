@@ -58,6 +58,8 @@ const ERROR_PATTERN = `${ERROR_PREFIX.replace(/[\\%_]/g, '\\$&')}%`
 export interface JiraStatusSyncRow {
   id: IntegrationId
   config: Record<string, unknown>
+  /** When the grant the refresh will use was connected; a reconnect changes it. */
+  connectedAt: Date | null
 }
 
 export type RefreshOutcome = 'refreshed' | 'reregistered' | 'superseded'
@@ -103,6 +105,7 @@ async function readJiraStatusSyncRows(): Promise<JiraStatusSyncRow[]> {
     .select({
       id: integrations.id,
       config: integrations.config,
+      connectedAt: integrations.connectedAt,
     })
     .from(integrations)
     .where(and(eq(integrations.integrationType, 'jira'), eq(integrations.status, 'active')))
@@ -188,7 +191,7 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
         reported && reported.getTime() > now.getTime() ? reported : lifetimeFrom(now)
       const applied = await writeWebhookState(
         row.id,
-        { webhookId, cloudId },
+        { webhookId, cloudId, connectedAt: row.connectedAt },
         {
           expiresAt,
           retryAt: null,
@@ -218,7 +221,7 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
   try {
     applied = await writeWebhookState(
       row.id,
-      { webhookId, cloudId },
+      { webhookId, cloudId, connectedAt: row.connectedAt },
       {
         webhookId: created.webhookId,
         expiresAt: lifetimeFrom(now),
@@ -241,6 +244,7 @@ async function recordFailure(row: JiraStatusSyncRow, now: Date, err: unknown): P
   const expected = {
     webhookId: nonEmpty(row.config.externalWebhookId),
     cloudId: nonEmpty(row.config.cloudId),
+    connectedAt: row.connectedAt,
   }
   await writeWebhookState(row.id, expected, {
     retryAt: new Date(now.getTime() + RETRY_BACKOFF_MS),
@@ -278,12 +282,12 @@ function setOrRemove(config: Record<string, unknown>, key: string, value: Date |
  */
 async function writeWebhookState(
   integrationId: IntegrationId,
-  expected: { webhookId: string | null; cloudId: string | null },
+  expected: { webhookId: string | null; cloudId: string | null; connectedAt: Date | null },
   change: WebhookStateChange
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     const [current] = await tx
-      .select({ config: integrations.config })
+      .select({ config: integrations.config, connectedAt: integrations.connectedAt })
       .from(integrations)
       .where(eq(integrations.id, integrationId))
       .for('update')
@@ -293,6 +297,8 @@ async function writeWebhookState(
     if (nonEmpty(config.externalWebhookId) !== expected.webhookId) return false
     // A reconnect to another Jira site keeps the webhook id but not the site it lives on.
     if (nonEmpty(config.cloudId) !== expected.cloudId) return false
+    // A reconnect to the same site keeps both, but the work was done with the old grant.
+    if (current.connectedAt?.getTime() !== expected.connectedAt?.getTime()) return false
 
     const next: Record<string, unknown> = { ...config }
     if (change.webhookId !== undefined) next.externalWebhookId = change.webhookId

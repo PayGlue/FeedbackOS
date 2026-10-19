@@ -399,7 +399,7 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
       .set({ lastError: `${ERROR_PREFIX}recorded since the read`, lastErrorAt: new Date() })
       .where(eq(integrations.id, row.id))
     const rows: JiraStatusSyncRow[] = [
-      { id: row.id, config: row.config as Record<string, unknown> },
+      { id: row.id, config: row.config as Record<string, unknown>, connectedAt: row.connectedAt },
     ]
 
     stubJira()
@@ -418,10 +418,11 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     const healthyId = createId('integration') as IntegrationId
     const refreshed: string[] = []
     const rows: JiraStatusSyncRow[] = [
-      { id: failing.id, config: failing.config as Record<string, unknown> },
+      { id: failing.id, config: failing.config as Record<string, unknown>, connectedAt: null },
       {
         id: healthyId,
         config: { statusSyncEnabled: true, externalWebhookId: '7' },
+        connectedAt: null,
       },
     ]
 
@@ -528,6 +529,21 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     const config = await storedConfig(row.id)
     expect(config.externalWebhookId).toBe('42')
     expect(config).not.toHaveProperty('externalWebhookExpiresAt')
+  })
+
+  it('does not apply work done with the old grant after a reconnect to the same site', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    stubJira(async () => {
+      await testDb
+        .update(integrations)
+        .set({ connectedAt: new Date(Date.now() + 1000) })
+        .where(eq(integrations.id, row.id))
+      return jsonResponse({ expirationDate: Date.now() + 30 * DAY_MS, invalidWebhooks: [] })
+    })
+
+    await runJiraWebhookRefresh()
+
+    expect(await storedConfig(row.id)).not.toHaveProperty('externalWebhookExpiresAt')
   })
 
   it('does not apply a webhook change when the webhook was replaced during the refresh', async () => {
