@@ -375,17 +375,15 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
       .update(integrations)
       .set({ lastError: `${ERROR_PREFIX}old`, lastErrorAt: new Date() })
       .where(eq(integrations.id, row.id))
-    const rows: JiraStatusSyncRow[] = [
-      { id: row.id, config: row.config as Record<string, unknown> },
-    ]
-
-    await refreshDueJiraWebhooks(rows, new Date(), async () => {
+    stubJira(async () => {
       await testDb
         .update(integrations)
         .set({ lastError: 'Failed to register webhook: newer', lastErrorAt: new Date() })
         .where(eq(integrations.id, row.id))
-      return 'refreshed'
+      return jsonResponse({ expirationDate: Date.now() + 30 * DAY_MS, invalidWebhooks: [] })
     })
+
+    await runJiraWebhookRefresh()
 
     const [kept] = await testDb
       .select({ lastError: integrations.lastError })
@@ -404,7 +402,9 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
       { id: row.id, config: row.config as Record<string, unknown> },
     ]
 
-    await refreshDueJiraWebhooks(rows, new Date(), async () => 'refreshed')
+    stubJira()
+
+    await refreshDueJiraWebhooks(rows, new Date())
 
     const [cleared] = await testDb
       .select({ lastError: integrations.lastError })
@@ -461,6 +461,34 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     expect(JSON.parse(String(remove?.init.body))).toEqual({ webhookIds: [99] })
     const config = await storedConfig(row.id)
     expect(config.externalWebhookId).toBe('42')
+    expect(config).toHaveProperty('externalWebhookRetryAt')
+  })
+
+  it('stores the new expiry and clears its old error together, or neither', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    await testDb
+      .update(integrations)
+      .set({ lastError: `${ERROR_PREFIX}old`, lastErrorAt: new Date() })
+      .where(eq(integrations.id, row.id))
+    stubJira()
+    // Clearing the error fails the way a dropped connection would; the trigger lives
+    // inside the test transaction and is rolled back with it.
+    await testDb.execute(sql`
+      CREATE FUNCTION pg_temp.reject_clear() RETURNS trigger AS $$
+      BEGIN
+        IF OLD.last_error IS NOT NULL AND NEW.last_error IS NULL THEN
+          RAISE EXCEPTION 'connection reset';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`)
+    await testDb.execute(sql`
+      CREATE TRIGGER reject_clear BEFORE UPDATE ON integrations
+      FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_clear()`)
+
+    await runJiraWebhookRefresh()
+
+    const config = await storedConfig(row.id)
+    expect(config).not.toHaveProperty('externalWebhookExpiresAt')
     expect(config).toHaveProperty('externalWebhookRetryAt')
   })
 

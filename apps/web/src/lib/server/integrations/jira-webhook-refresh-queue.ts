@@ -154,7 +154,6 @@ export async function refreshDueJiraWebhooks(
     try {
       const outcome = await refresh(row, now)
       summary[outcome] += 1
-      if (outcome !== 'superseded') await clearRefreshError(row.id)
     } catch (err) {
       summary.failed += 1
       log.error({ err, integration_id: row.id }, 'jira webhook refresh failed')
@@ -164,18 +163,6 @@ export async function refreshDueJiraWebhooks(
     }
   }
   return summary
-}
-
-/**
- * Clears the error a failed refresh recorded, and only that error. The condition is
- * part of the write itself: a status-sync write during the refresh's remote calls
- * can have replaced the error, and the replacement is not this job's to clear.
- */
-async function clearRefreshError(integrationId: IntegrationId): Promise<void> {
-  await db
-    .update(integrations)
-    .set({ lastError: null, lastErrorAt: null, updatedAt: new Date() })
-    .where(and(eq(integrations.id, integrationId), like(integrations.lastError, ERROR_PATTERN)))
 }
 
 async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<RefreshOutcome> {
@@ -199,7 +186,11 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
       const reported = refreshed.expiresAt
       const expiresAt =
         reported && reported.getTime() > now.getTime() ? reported : lifetimeFrom(now)
-      const applied = await writeWebhookState(row.id, webhookId, { expiresAt, retryAt: null })
+      const applied = await writeWebhookState(row.id, webhookId, {
+        expiresAt,
+        retryAt: null,
+        clearRefreshError: true,
+      })
       return applied ? 'refreshed' : 'superseded'
     }
   }
@@ -225,6 +216,7 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
       webhookId: created.webhookId,
       expiresAt: lifetimeFrom(now),
       retryAt: null,
+      clearRefreshError: true,
     })
   } catch (err) {
     await discard()
@@ -251,6 +243,13 @@ interface WebhookStateChange {
   retryAt?: Date | null
   /** Recorded with the state, under the same row lock, so it cannot land after a newer write. */
   lastError?: string
+  /**
+   * Clears the error an earlier failed refresh recorded, and only that error, in the
+   * same transaction as the state it vouches for. A status-sync write during the
+   * refresh's remote calls can have replaced the error, and that one is not this
+   * job's to clear.
+   */
+  clearRefreshError?: boolean
 }
 
 function setOrRemove(config: Record<string, unknown>, key: string, value: Date | null | undefined) {
@@ -295,6 +294,12 @@ async function writeWebhookState(
         }),
       })
       .where(eq(integrations.id, integrationId))
+    if (change.clearRefreshError) {
+      await tx
+        .update(integrations)
+        .set({ lastError: null, lastErrorAt: null })
+        .where(and(eq(integrations.id, integrationId), like(integrations.lastError, ERROR_PATTERN)))
+    }
     return true
   })
 }
