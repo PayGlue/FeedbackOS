@@ -29,16 +29,21 @@ export function plainText(node: HeadingNode | null | undefined): string {
   return node.content?.map(plainText).join('') ?? ''
 }
 
-/** Every heading in a document, in document order, wherever it nests. */
-export function collectHeadings<T extends HeadingNode>(root: { content?: T[] }): T[] {
+/**
+ * Every heading in a document, in document order, wherever it nests. The root
+ * counts too, so a bare heading node (serialized without a doc around it) keeps
+ * its id.
+ */
+export function collectHeadings<T extends HeadingNode>(root: {
+  type?: string
+  content?: T[]
+}): T[] {
   const headings: T[] = []
-  const visit = (nodes: T[] | undefined) => {
-    for (const node of nodes ?? []) {
-      if (node.type === 'heading') headings.push(node)
-      else visit(node.content as T[] | undefined)
-    }
+  const visit = (node: HeadingNode) => {
+    if (node.type === 'heading') headings.push(node as T)
+    else for (const child of node.content ?? []) visit(child)
   }
-  visit(root.content)
+  visit(root)
   return headings
 }
 
