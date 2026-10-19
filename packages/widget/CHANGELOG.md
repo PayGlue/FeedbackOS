@@ -1,5 +1,9 @@
 # @quackback/widget
 
+## Unreleased
+
+- `tracking: false` on `init` keeps host-page visitor analytics off (no pageview beacons, no new device id), and `Quackback.tracking(true | false)` switches it at runtime, so a site can wait for analytics consent while the launcher stays available. `tracking(false)` also removes the stored device id. A withdrawal made before `init` holds, and `init` without the option keeps the last choice.
+
 ## 0.1.6 - 2026-08-31
 
 - The config.json install ping now includes `?sdk=<version>` so the instance can tell an npm/file embed is behind and prompt an update on the widget settings page.

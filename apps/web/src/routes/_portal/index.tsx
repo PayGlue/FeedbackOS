@@ -16,7 +16,9 @@ import { useSessionContext, useWorkspaceSettings } from '@/lib/client/hooks/use-
 const searchSchema = z.object({
   board: z.string().optional(),
   search: z.string().optional(),
-  sort: z.enum(['top', 'new', 'trending']).optional().catch('trending').default('trending'),
+  // No schema default: the router would write it into the URL and redirect a bare
+  // "/" to "/?sort=trending". An absent sort is trending wherever the feed reads it.
+  sort: z.enum(['top', 'new', 'trending']).optional().catch('trending'),
   status: z.array(z.string()).optional(),
   tagIds: z.array(z.string()).optional(),
   minVotes: z.coerce.number().int().min(1).optional(),

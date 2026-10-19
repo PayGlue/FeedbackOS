@@ -45,7 +45,8 @@ import {
   useBrandingState,
   FONT_OPTIONS,
 } from '@/components/admin/settings/branding/use-branding-state'
-import { primaryPresetIds, themePresets, type ThemeConfig } from '@/lib/shared/theme'
+import type { ThemeConfig } from '@/lib/shared/theme'
+import { primaryPresetIds, themePresets } from '@/lib/shared/theme/presets'
 import { useUpdatePortalConfig } from '@/lib/client/mutations/settings'
 import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 import { UpgradeModal } from '@/components/admin/upgrade'
