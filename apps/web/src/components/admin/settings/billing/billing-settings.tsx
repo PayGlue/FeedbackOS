@@ -476,6 +476,7 @@ function UsageCard(props: {
               valueText={`${formatNumber(emails.used)} of ${formatNumber(emails.limit)}`}
               used={emails.used}
               limit={emails.limit}
+              note={emails.used >= emails.limit ? <EmailsPausedNotice resetsOn={reset} /> : null}
             />
           </div>
         ) : null}
@@ -506,6 +507,26 @@ function UsageCard(props: {
       </div>
     </section>
   )
+}
+
+/** The line under the emails meter once the month's allowance is used up. */
+export function EmailsPausedNotice(props: { resetsOn: string | null }) {
+  const intl = useIntl()
+  const text = props.resetsOn
+    ? intl.formatMessage(
+        {
+          id: 'admin.billing.emailsPausedUntilResetDate',
+          defaultMessage:
+            'Changelog and status page emails are paused until your allowance resets on {date}. Sign-in and support emails still send.',
+        },
+        { date: props.resetsOn }
+      )
+    : intl.formatMessage({
+        id: 'admin.billing.emailsPausedUntilReset',
+        defaultMessage:
+          'Changelog and status page emails are paused until your allowance resets. Sign-in and support emails still send.',
+      })
+  return <>{text}</>
 }
 
 function AddOnsCard(props: {

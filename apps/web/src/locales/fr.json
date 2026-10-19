@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "L’utilisation de l’IA pour cette période est épuisée. La traduction continue de fonctionner. Passez à une offre supérieure pour en avoir davantage.",
   "admin.helpCenter.autoTranslatePaused": "En pause : utilisation de l’IA épuisée pour cette période. Passez à une offre supérieure pour en avoir davantage.",
   "admin.billing.aiResets": "Réinitialisation le {date}",
+  "admin.billing.emailsPausedUntilReset": "Les e-mails des nouveautés et de la page d'état sont suspendus jusqu'à la réinitialisation de votre quota. Les e-mails de connexion et d'assistance continuent d'être envoyés.",
+  "admin.billing.emailsPausedUntilResetDate": "Les e-mails des nouveautés et de la page d'état sont suspendus jusqu'à la réinitialisation de votre quota, le {date}. Les e-mails de connexion et d'assistance continuent d'être envoyés.",
   "admin.auditLog.via.api": "par l'API",
   "admin.auditLog.via.mcp": "par MCP",
   "admin.auditLog.via.assistant": "par l'assistant",

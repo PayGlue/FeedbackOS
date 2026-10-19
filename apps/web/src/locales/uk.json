@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "Використання ШІ за цей період вичерпано. Переклад і далі працює. Перейдіть на тариф вище, щоб отримати більше.",
   "admin.helpCenter.autoTranslatePaused": "Призупинено: використання ШІ за цей період вичерпано. Перейдіть на тариф вище, щоб отримати більше.",
   "admin.billing.aiResets": "Оновлюється {date}",
+  "admin.billing.emailsPausedUntilReset": "Розсилку журналу змін і сторінки статусу призупинено до скидання ліміту. Листи для входу та підтримки й далі надсилаються.",
+  "admin.billing.emailsPausedUntilResetDate": "Розсилку журналу змін і сторінки статусу призупинено до скидання ліміту {date}. Листи для входу та підтримки й далі надсилаються.",
   "admin.auditLog.via.api": "через API",
   "admin.auditLog.via.mcp": "через MCP",
   "admin.auditLog.via.assistant": "через асистента",

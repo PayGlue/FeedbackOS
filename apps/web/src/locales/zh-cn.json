@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "本周期的 AI 用量已用完，翻译仍可继续使用。升级套餐即可获得更多。",
   "admin.helpCenter.autoTranslatePaused": "已暂停：本周期的 AI 用量已用完。升级套餐即可获得更多。",
   "admin.billing.aiResets": "{date} 重置",
+  "admin.billing.emailsPausedUntilReset": "更新日志和状态页邮件已暂停，直至配额重置。登录和支持邮件仍会正常发送。",
+  "admin.billing.emailsPausedUntilResetDate": "更新日志和状态页邮件已暂停，直至 {date} 配额重置。登录和支持邮件仍会正常发送。",
   "admin.auditLog.via.api": "通过 API",
   "admin.auditLog.via.mcp": "通过 MCP",
   "admin.auditLog.via.assistant": "通过助手",

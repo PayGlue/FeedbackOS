@@ -205,6 +205,8 @@
   "admin.inbox.translationOverAllowance": "การใช้ AI ของรอบนี้หมดแล้ว แต่ยังแปลภาษาได้ต่อ อัปเกรดแพ็กเกจของคุณเพื่อใช้งานเพิ่ม",
   "admin.helpCenter.autoTranslatePaused": "หยุดชั่วคราว: การใช้ AI ของรอบนี้หมดแล้ว อัปเกรดแพ็กเกจของคุณเพื่อใช้งานเพิ่ม",
   "admin.billing.aiResets": "รีเซ็ต {date}",
+  "admin.billing.emailsPausedUntilReset": "อีเมลจากบันทึกการเปลี่ยนแปลงและหน้าสถานะจะหยุดชั่วคราวจนกว่าโควตาจะรีเซ็ต อีเมลสำหรับเข้าสู่ระบบและฝ่ายสนับสนุนยังคงส่งตามปกติ",
+  "admin.billing.emailsPausedUntilResetDate": "อีเมลจากบันทึกการเปลี่ยนแปลงและหน้าสถานะจะหยุดชั่วคราวจนกว่าโควตาจะรีเซ็ต {date} อีเมลสำหรับเข้าสู่ระบบและฝ่ายสนับสนุนยังคงส่งตามปกติ",
   "admin.auditLog.via.api": "ผ่าน API",
   "admin.auditLog.via.mcp": "ผ่าน MCP",
   "admin.auditLog.via.assistant": "ผ่านผู้ช่วย",

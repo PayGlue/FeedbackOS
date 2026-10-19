@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "本週期的 AI 用量已用盡，翻譯仍可繼續使用。升級方案即可獲得更多。",
   "admin.helpCenter.autoTranslatePaused": "已暫停：本週期的 AI 用量已用盡。升級方案即可獲得更多。",
   "admin.billing.aiResets": "{date} 重設",
+  "admin.billing.emailsPausedUntilReset": "更新日誌和狀態頁面郵件已暫停，直到配額重設。登入和支援郵件仍會正常寄出。",
+  "admin.billing.emailsPausedUntilResetDate": "更新日誌和狀態頁面郵件已暫停，直到 {date} 配額重設。登入和支援郵件仍會正常寄出。",
   "admin.auditLog.via.api": "透過 API",
   "admin.auditLog.via.mcp": "透過 MCP",
   "admin.auditLog.via.assistant": "透過助手",

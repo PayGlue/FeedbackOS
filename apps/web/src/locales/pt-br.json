@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "O uso de IA deste período acabou. A tradução continua funcionando. Faça upgrade do seu plano para ter mais.",
   "admin.helpCenter.autoTranslatePaused": "Pausado: o uso de IA deste período acabou. Faça upgrade do seu plano para ter mais.",
   "admin.billing.aiResets": "Reinicia em {date}",
+  "admin.billing.emailsPausedUntilReset": "Os e-mails de changelog e da página de status estão pausados até que sua cota seja redefinida. Os e-mails de login e de suporte continuam sendo enviados.",
+  "admin.billing.emailsPausedUntilResetDate": "Os e-mails de changelog e da página de status estão pausados até que sua cota seja redefinida em {date}. Os e-mails de login e de suporte continuam sendo enviados.",
   "admin.auditLog.via.api": "pela API",
   "admin.auditLog.via.mcp": "pelo MCP",
   "admin.auditLog.via.assistant": "pelo assistente",

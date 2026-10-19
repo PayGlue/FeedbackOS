@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "Wykorzystanie AI w tym okresie zostało wyczerpane. Tłumaczenie nadal działa. Ulepsz swój plan, aby uzyskać więcej.",
   "admin.helpCenter.autoTranslatePaused": "Wstrzymano: wykorzystanie AI w tym okresie zostało wyczerpane. Ulepsz swój plan, aby uzyskać więcej.",
   "admin.billing.aiResets": "Odnowienie {date}",
+  "admin.billing.emailsPausedUntilReset": "E-maile z listy zmian i ze strony statusu są wstrzymane do czasu odnowienia limitu. E-maile logowania i wsparcia nadal są wysyłane.",
+  "admin.billing.emailsPausedUntilResetDate": "E-maile z listy zmian i ze strony statusu są wstrzymane do odnowienia limitu {date}. E-maile logowania i wsparcia nadal są wysyłane.",
   "admin.auditLog.via.api": "przez API",
   "admin.auditLog.via.mcp": "przez MCP",
   "admin.auditLog.via.assistant": "przez asystenta",

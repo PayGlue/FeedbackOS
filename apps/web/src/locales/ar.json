@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "تم استهلاك استخدام الذكاء الاصطناعي لهذه الفترة. تستمر الترجمة في العمل. قم بترقية خطتك للحصول على المزيد.",
   "admin.helpCenter.autoTranslatePaused": "متوقف مؤقتًا: تم استهلاك استخدام الذكاء الاصطناعي لهذه الفترة. قم بترقية خطتك للحصول على المزيد.",
   "admin.billing.aiResets": "يُعاد التعيين في {date}",
+  "admin.billing.emailsPausedUntilReset": "رسائل آخر المستجدات وصفحة الحالة متوقفة مؤقتًا حتى تتم إعادة تعيين حصتك. رسائل تسجيل الدخول والدعم ما زالت تُرسل.",
+  "admin.billing.emailsPausedUntilResetDate": "رسائل آخر المستجدات وصفحة الحالة متوقفة مؤقتًا حتى تتم إعادة تعيين حصتك في {date}. رسائل تسجيل الدخول والدعم ما زالت تُرسل.",
   "admin.auditLog.via.api": "عبر API",
   "admin.auditLog.via.mcp": "عبر MCP",
   "admin.auditLog.via.assistant": "عبر المساعد",

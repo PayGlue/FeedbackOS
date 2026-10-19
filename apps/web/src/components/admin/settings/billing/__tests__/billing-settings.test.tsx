@@ -6,7 +6,7 @@ import { IntlProvider } from 'react-intl'
 import de from '@/locales/de.json'
 import type { BillingCatalogue } from '@/lib/server/control-plane/client'
 import type { BillingProjectionOverview } from '@/lib/server/domains/billing/projection-overview'
-import { BillingPlansView } from '../billing-settings'
+import { BillingPlansView, EmailsPausedNotice } from '../billing-settings'
 
 const catalogue: BillingCatalogue = {
   version: 1,
@@ -484,5 +484,40 @@ describe('the monthly reset date', () => {
     vi.setSystemTime(new Date(now))
     renderView({ usage: [{ key: 'emailsPerMonth', label: 'emails', used: 1840, limit: 10_000 }] })
     expect(screen.getByText(`Monthly meters reset ${label}`)).toBeInTheDocument()
+  })
+})
+
+describe('the emails allowance notice', () => {
+  it('says emails are paused until the reset once the month allowance is used up', () => {
+    renderView({
+      usage: [{ key: 'emailsPerMonth', label: 'emails', used: 10_000, limit: 10_000 }],
+    })
+    expect(screen.getByText('10,000 of 10,000')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /^Changelog and status page emails are paused until your allowance resets on [A-Z][a-z]{2} 1\. Sign-in and support emails still send\.$/
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('shows no pause notice while the month allowance has room left', () => {
+    renderView({
+      usage: [{ key: 'emailsPerMonth', label: 'emails', used: 1840, limit: 10_000 }],
+    })
+    expect(screen.getByText('1,840 of 10,000')).toBeInTheDocument()
+    expect(screen.queryByText(/paused until your allowance/)).not.toBeInTheDocument()
+  })
+
+  it('leaves the date out when the reset is not known', () => {
+    render(
+      <IntlProvider locale="en" messages={{}}>
+        <EmailsPausedNotice resetsOn={null} />
+      </IntlProvider>
+    )
+    expect(
+      screen.getByText(
+        'Changelog and status page emails are paused until your allowance resets. Sign-in and support emails still send.'
+      )
+    ).toBeInTheDocument()
   })
 })

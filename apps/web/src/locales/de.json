@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "Die KI-Nutzung für diesen Zeitraum ist aufgebraucht. Die Übersetzung läuft weiter. Upgrade deinen Tarif für mehr.",
   "admin.helpCenter.autoTranslatePaused": "Pausiert: KI-Nutzung für diesen Zeitraum aufgebraucht. Upgrade deinen Tarif für mehr.",
   "admin.billing.aiResets": "Wird am {date} zurückgesetzt",
+  "admin.billing.emailsPausedUntilReset": "Neuigkeiten- und Statusseiten-E-Mails sind pausiert, bis dein Kontingent zurückgesetzt wird. Anmelde- und Support-E-Mails werden weiterhin gesendet.",
+  "admin.billing.emailsPausedUntilResetDate": "Neuigkeiten- und Statusseiten-E-Mails sind pausiert, bis dein Kontingent am {date} zurückgesetzt wird. Anmelde- und Support-E-Mails werden weiterhin gesendet.",
   "admin.auditLog.via.api": "über die API",
   "admin.auditLog.via.mcp": "über MCP",
   "admin.auditLog.via.assistant": "über den Assistenten",

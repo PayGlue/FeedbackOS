@@ -191,6 +191,8 @@
   "admin.inbox.translationOverAllowance": "Het AI-gebruik voor deze periode is op. Vertalen blijft werken. Upgrade je abonnement voor meer.",
   "admin.helpCenter.autoTranslatePaused": "Gepauzeerd: AI-gebruik voor deze periode is op. Upgrade je abonnement voor meer.",
   "admin.billing.aiResets": "Wordt gereset op {date}",
+  "admin.billing.emailsPausedUntilReset": "E-mails van de changelog en de statuspagina zijn gepauzeerd tot je limiet wordt gereset. E-mails voor inloggen en support worden nog steeds verstuurd.",
+  "admin.billing.emailsPausedUntilResetDate": "E-mails van de changelog en de statuspagina zijn gepauzeerd tot je limiet op {date} wordt gereset. E-mails voor inloggen en support worden nog steeds verstuurd.",
   "admin.auditLog.via.api": "via de API",
   "admin.auditLog.via.mcp": "via de MCP-server",
   "admin.auditLog.via.assistant": "via de assistent",
