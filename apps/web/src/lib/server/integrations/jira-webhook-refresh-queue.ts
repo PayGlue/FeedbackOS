@@ -28,7 +28,7 @@
  *   retried hourly rather than on every tick.
  */
 import type { IntegrationId } from '@quackback/ids'
-import { and, db, eq, integrations } from '@/lib/server/db'
+import { and, db, eq, integrations, like } from '@/lib/server/db'
 import { logger } from '@/lib/server/logger'
 import { dueWithin, registerWorkspaceDeadline } from '@/lib/server/jobs/deadlines'
 import {
@@ -39,11 +39,7 @@ import {
   registerJiraWebhook,
 } from '@/integrations/jira/server/webhook-registration'
 import { getIntegrationAuth } from './token-refresh'
-import {
-  buildWebhookCallbackUrl,
-  clearIntegrationLastError,
-  recordIntegrationLastError,
-} from './webhook-registration'
+import { buildWebhookCallbackUrl, recordIntegrationLastError } from './webhook-registration'
 
 const log = logger.child({ component: 'jira-webhook-refresh' })
 
@@ -56,11 +52,12 @@ const REFRESH_LEAD_MS = 10 * DAY_MS
 const RETRY_BACKOFF_MS = 60 * 60_000
 /** Prefixes the error this job records, so it can clear only its own. */
 const ERROR_PREFIX = 'Webhook refresh failed: '
+/** The `LIKE` pattern that matches only the errors this job records. */
+const ERROR_PATTERN = `${ERROR_PREFIX.replace(/[\\%_]/g, '\\$&')}%`
 
 export interface JiraStatusSyncRow {
   id: IntegrationId
   config: Record<string, unknown>
-  lastError: string | null
 }
 
 export type RefreshOutcome = 'refreshed' | 'reregistered' | 'superseded'
@@ -106,7 +103,6 @@ async function readJiraStatusSyncRows(): Promise<JiraStatusSyncRow[]> {
     .select({
       id: integrations.id,
       config: integrations.config,
-      lastError: integrations.lastError,
     })
     .from(integrations)
     .where(and(eq(integrations.integrationType, 'jira'), eq(integrations.status, 'active')))
@@ -158,9 +154,7 @@ export async function refreshDueJiraWebhooks(
     try {
       const outcome = await refresh(row, now)
       summary[outcome] += 1
-      if (outcome !== 'superseded' && row.lastError?.startsWith(ERROR_PREFIX)) {
-        await clearIntegrationLastError(row.id)
-      }
+      if (outcome !== 'superseded') await clearRefreshError(row.id)
     } catch (err) {
       summary.failed += 1
       log.error({ err, integration_id: row.id }, 'jira webhook refresh failed')
@@ -170,6 +164,18 @@ export async function refreshDueJiraWebhooks(
     }
   }
   return summary
+}
+
+/**
+ * Clears the error a failed refresh recorded, and only that error. The condition is
+ * part of the write itself: a status-sync write during the refresh's remote calls
+ * can have replaced the error, and the replacement is not this job's to clear.
+ */
+async function clearRefreshError(integrationId: IntegrationId): Promise<void> {
+  await db
+    .update(integrations)
+    .set({ lastError: null, lastErrorAt: null, updatedAt: new Date() })
+    .where(and(eq(integrations.id, integrationId), like(integrations.lastError, ERROR_PATTERN)))
 }
 
 async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<RefreshOutcome> {

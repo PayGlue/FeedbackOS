@@ -369,16 +369,59 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     expect(kept.lastError).toBe('Failed to register webhook: other')
   })
 
+  it('keeps an error another write records while the refresh is out on the network', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    await testDb
+      .update(integrations)
+      .set({ lastError: `${ERROR_PREFIX}old`, lastErrorAt: new Date() })
+      .where(eq(integrations.id, row.id))
+    const rows: JiraStatusSyncRow[] = [
+      { id: row.id, config: row.config as Record<string, unknown> },
+    ]
+
+    await refreshDueJiraWebhooks(rows, new Date(), async () => {
+      await testDb
+        .update(integrations)
+        .set({ lastError: 'Failed to register webhook: newer', lastErrorAt: new Date() })
+        .where(eq(integrations.id, row.id))
+      return 'refreshed'
+    })
+
+    const [kept] = await testDb
+      .select({ lastError: integrations.lastError })
+      .from(integrations)
+      .where(eq(integrations.id, row.id))
+    expect(kept.lastError).toBe('Failed to register webhook: newer')
+  })
+
+  it('clears its own error even when the row it was read from showed none', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    await testDb
+      .update(integrations)
+      .set({ lastError: `${ERROR_PREFIX}recorded since the read`, lastErrorAt: new Date() })
+      .where(eq(integrations.id, row.id))
+    const rows: JiraStatusSyncRow[] = [
+      { id: row.id, config: row.config as Record<string, unknown> },
+    ]
+
+    await refreshDueJiraWebhooks(rows, new Date(), async () => 'refreshed')
+
+    const [cleared] = await testDb
+      .select({ lastError: integrations.lastError })
+      .from(integrations)
+      .where(eq(integrations.id, row.id))
+    expect(cleared.lastError).toBeNull()
+  })
+
   it('does not let one failing integration stop the others in the same pass', async () => {
     const failing = await seedJira({ externalWebhookExpiresAt: null })
     const healthyId = createId('integration') as IntegrationId
     const refreshed: string[] = []
     const rows: JiraStatusSyncRow[] = [
-      { id: failing.id, config: failing.config as Record<string, unknown>, lastError: null },
+      { id: failing.id, config: failing.config as Record<string, unknown> },
       {
         id: healthyId,
         config: { statusSyncEnabled: true, externalWebhookId: '7' },
-        lastError: null,
       },
     ]
 
