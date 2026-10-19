@@ -1,8 +1,96 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { registerJiraWebhook } from '../webhook-registration'
+import { jiraProjectRef, refreshJiraWebhooks, registerJiraWebhook } from '../webhook-registration'
 
 beforeEach(() => {
   vi.restoreAllMocks()
+})
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+describe('refreshJiraWebhooks', () => {
+  it('extends the webhook with PUT to the refresh endpoint and returns the new expiry', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ expirationDate: 1_800_000_000_000, invalidWebhooks: [] }))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock)
+
+    const result = await refreshJiraWebhooks('tok', 'cloud-1', ['42'])
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.atlassian.com/ex/jira/cloud-1/rest/api/3/webhook/refresh')
+    expect(init.method).toBe('PUT')
+    expect(init.headers.Authorization).toBe('Bearer tok')
+    expect(JSON.parse(init.body)).toEqual({ webhookIds: [42] })
+    expect(result).toEqual({ expiresAt: new Date(1_800_000_000_000), invalidWebhookIds: [] })
+  })
+
+  it('reads an ISO expiry date from the response', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ expirationDate: '2026-12-01T00:00:00.000Z' })
+    )
+
+    const result = await refreshJiraWebhooks('tok', 'cloud-1', ['42'])
+
+    expect(result.expiresAt?.toISOString()).toBe('2026-12-01T00:00:00.000Z')
+  })
+
+  it('reports the ids Jira could not refresh as invalid', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ expirationDate: 1_800_000_000_000, invalidWebhooks: [42] })
+    )
+
+    const result = await refreshJiraWebhooks('tok', 'cloud-1', ['42'])
+
+    expect(result.invalidWebhookIds).toEqual(['42'])
+  })
+
+  it('treats a 404 as every requested webhook being gone', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ errorMessages: [] }, 404))
+
+    const result = await refreshJiraWebhooks('tok', 'cloud-1', ['42'])
+
+    expect(result).toEqual({ expiresAt: null, invalidWebhookIds: ['42'] })
+  })
+
+  it('leaves the expiry unknown when the response carries no usable date', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ expirationDate: 'soon' }))
+
+    const result = await refreshJiraWebhooks('tok', 'cloud-1', ['42'])
+
+    expect(result.expiresAt).toBeNull()
+    expect(result.invalidWebhookIds).toEqual([])
+  })
+
+  it('throws with the status code on other failures so the caller can retry later', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ message: 'nope' }, 401))
+
+    await expect(refreshJiraWebhooks('tok', 'cloud-1', ['42'])).rejects.toThrow(
+      'Jira API error 401'
+    )
+  })
+
+  it('refuses a webhook id that is not numeric before sending anything', async () => {
+    const fetchMock = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock)
+
+    await expect(refreshJiraWebhooks('tok', 'cloud-1', ['42; drop'])).rejects.toThrow(
+      'Invalid Jira webhook ID'
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('jiraProjectRef', () => {
+  it('takes the project half of the stored project:issueType composite', () => {
+    expect(jiraProjectRef('10000:10004')).toBe('10000')
+    expect(jiraProjectRef('PROJ')).toBe('PROJ')
+    expect(jiraProjectRef(undefined)).toBe('')
+  })
 })
 
 describe('registerJiraWebhook', () => {
