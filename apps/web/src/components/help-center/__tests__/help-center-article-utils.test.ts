@@ -298,4 +298,24 @@ describe('extractHeadings with repeated heading text', () => {
     expect(rendered).toEqual(['notes', 'notes-1', 'notes-2'])
     expect(extractHeadings(mixed).map((heading) => heading.id)).toEqual(['notes-1', 'notes-2'])
   })
+
+  const setupDoc = {
+    type: 'doc',
+    content: [h(2, 'Setup'), h(2, 'Setup'), h(2, 'Setup-1')],
+  }
+
+  it('keeps a unique heading natural anchor when repeats precede it', () => {
+    expect(extractHeadings(setupDoc).map((heading) => heading.id)).toEqual([
+      'setup',
+      'setup-2',
+      'setup-1',
+    ])
+  })
+
+  it('renders the same anchors in the article HTML for that case', () => {
+    const html = generateContentHTML(setupDoc as JSONContent)
+    const rendered = [...html.matchAll(/ id="([^"]+)"/g)].map((match) => match[1])
+    expect(rendered).toEqual(['setup', 'setup-2', 'setup-1'])
+    expect(extractHeadings(setupDoc).map((heading) => heading.id)).toEqual(rendered)
+  })
 })

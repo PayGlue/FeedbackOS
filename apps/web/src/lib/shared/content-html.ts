@@ -22,19 +22,12 @@ import {
   sanitizeOrderedListStart,
   extractYoutubeId,
 } from '@/lib/shared/utils/sanitize'
-import { createHeadingIds } from './heading-ids'
+import { collectHeadings, createHeadingIds } from './heading-ids'
 
 // Emoji nodes carry their Unicode character; reading never needs the dataset.
 
 export function generateContentHTML(content: JSONContent): string {
-  function extractPlainText(node: JSONContent): string {
-    if (!node) return ''
-    if (node.type === 'text') return node.text ?? ''
-    if (Array.isArray(node.content)) return node.content.map(extractPlainText).join('')
-    return ''
-  }
-
-  const headingId = createHeadingIds()
+  const headingIds = createHeadingIds(collectHeadings(content))
 
   function renderNode(node: JSONContent): string {
     if (!node) return ''
@@ -52,7 +45,7 @@ export function generateContentHTML(content: JSONContent): string {
         const rawLevel = Number(node.attrs?.level)
         const level = [1, 2, 3, 4, 5, 6].includes(rawLevel) ? rawLevel : 2
         const headingContent = node.content?.map(renderNode).join('') ?? ''
-        const id = headingId(extractPlainText(node))
+        const id = headingIds.get(node) ?? ''
         const idAttr = id ? ` id="${escapeHtmlAttr(id)}"` : ''
         return `<h${level}${idAttr}>${headingContent}</h${level}>`
       }

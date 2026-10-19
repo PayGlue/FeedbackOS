@@ -3,7 +3,7 @@
  * Extracted for testability — no React dependencies.
  */
 
-import { createHeadingIds } from '@/lib/shared/heading-ids'
+import { collectHeadings, createHeadingIds, plainText } from '@/lib/shared/heading-ids'
 
 // =============================================================================
 // Types
@@ -26,40 +26,25 @@ interface TipTapNode {
   attrs?: Record<string, unknown>
 }
 
-function extractTextFromNode(node: TipTapNode | null | undefined): string {
-  if (!node) return ''
-  if (node.type === 'text') return node.text ?? ''
-  if (Array.isArray(node.content)) {
-    return node.content.map(extractTextFromNode).join('')
-  }
-  return ''
-}
-
 export function extractHeadings(
   contentJson: { type?: string; content?: TipTapNode[] } | null | undefined
 ): TocHeading[] {
   if (!contentJson || !Array.isArray(contentJson.content)) return []
 
-  const headings: TocHeading[] = []
-  // Every heading takes an id in document order, as the article HTML does, so
-  // repeated text gets the same suffix in both places. Only H2 and H3 are listed.
-  const headingId = createHeadingIds()
-
-  const visit = (nodes: TipTapNode[]) => {
-    for (const node of nodes) {
-      if (node.type === 'heading') {
-        const text = extractTextFromNode(node).trim()
-        const id = headingId(text)
-        const level = node.attrs?.level
-        if (id && (level === 2 || level === 3)) headings.push({ id, text, level })
-        continue
-      }
-      if (Array.isArray(node.content)) visit(node.content)
+  // Ids come from every heading in document order, as the article HTML assigns
+  // them, so repeated text gets the same suffix in both places. Only H2 and H3
+  // are listed.
+  const headings = collectHeadings(contentJson)
+  const ids = createHeadingIds(headings)
+  const listed: TocHeading[] = []
+  for (const node of headings) {
+    const id = ids.get(node)
+    const level = node.attrs?.level
+    if (id && (level === 2 || level === 3)) {
+      listed.push({ id, text: plainText(node).trim(), level })
     }
   }
-  visit(contentJson.content)
-
-  return headings
+  return listed
 }
 
 // =============================================================================
