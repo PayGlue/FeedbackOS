@@ -101,7 +101,7 @@ export interface WidgetUser {
 export interface EventMap {
   ready: Record<string, never>
   open: {
-    view?: 'home' | 'new-post' | 'changelog' | 'help' | 'messages' | 'tickets'
+    view?: 'home' | 'new-post' | 'changelog' | 'help' | 'chat' | 'messages' | 'tickets'
     postId?: string
     articleId?: string
     entryId?: string
