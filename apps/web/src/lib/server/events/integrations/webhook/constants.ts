@@ -130,7 +130,7 @@ export const WEBHOOK_EVENT_CONFIG = [
   {
     id: 'conversation.status_changed',
     label: 'Conversation Status Changed',
-    description: 'When a conversation moves between open, pending, and closed',
+    description: 'When a conversation moves between open, snoozed, and closed',
   },
   {
     id: 'conversation.assigned',
