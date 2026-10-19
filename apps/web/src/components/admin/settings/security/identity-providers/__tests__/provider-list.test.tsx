@@ -210,6 +210,41 @@ describe('plan gate', () => {
     expect(screen.queryByRole('link', { name: /new provider/i })).toBeNull()
     expect(screen.getByText(/Single sign-on is an Enterprise feature/)).toBeTruthy()
   })
+
+  function renderWithoutTier() {
+    const qc = new QueryClient()
+    qc.setQueryData(['settings', 'identityProviders'], [buttonProvider, routedProvider])
+    return render(
+      <QueryClientProvider client={qc}>
+        <IdentityProvidersSection tierEnabled={false} enabledMethodCount={5} />
+      </QueryClientProvider>
+    )
+  }
+
+  it('still lists existing providers so an enabled one can be switched off', async () => {
+    renderWithoutTier()
+    expect(screen.getByText('Acme SSO')).toBeTruthy()
+    fireEvent.click(screen.getByRole('switch', { name: /enable acme sso/i }))
+    await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1))
+    expect(upsertSpy.mock.calls[0][0].data).toMatchObject({
+      id: routedProvider.id,
+      enabled: false,
+    })
+  })
+
+  it('locks the switch of a disabled provider, since turning it on needs the tier', () => {
+    renderWithoutTier()
+    const toggle = screen.getByRole('switch', { name: /enable customer login/i })
+    expect(toggle).toBeDisabled()
+    fireEvent.click(toggle)
+    expect(upsertSpy).not.toHaveBeenCalled()
+  })
+
+  it('omits the Configure link without the tier', () => {
+    renderWithoutTier()
+    expect(screen.getByText('Acme SSO')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /configure acme sso/i })).toBeNull()
+  })
 })
 
 describe('links to the provider pages', () => {
