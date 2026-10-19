@@ -557,11 +557,11 @@ function AddOnsCard(props: {
   )
 }
 
+/** The calendar-month meters reset at 00:00 UTC on the 1st, so name that day in UTC. */
 function nextMonthResetLabel(format: LocalDateFormatter): string {
-  const date = new Date()
-  date.setUTCDate(1)
-  date.setUTCMonth(date.getUTCMonth() + 1)
-  return format(date, { month: 'short', day: 'numeric' })
+  const now = new Date()
+  const reset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+  return format(reset, { month: 'short', day: 'numeric', timeZone: 'UTC' })
 }
 
 function PlanCard(props: {

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IntlProvider } from 'react-intl'
 import de from '@/locales/de.json'
 import type { BillingCatalogue } from '@/lib/server/control-plane/client'
@@ -460,5 +460,29 @@ describe('BillingPlansView', () => {
     expect(within(usage as HTMLElement).queryByText('Seats')).not.toBeInTheDocument()
     expect(screen.queryByText('AI tokens this month')).not.toBeInTheDocument()
     expect(screen.queryByText('Boards')).not.toBeInTheDocument()
+  })
+})
+
+describe('the monthly reset date', () => {
+  const originalTz = process.env.TZ
+
+  afterEach(() => {
+    vi.useRealTimers()
+    if (originalTz === undefined) delete process.env.TZ
+    else process.env.TZ = originalTz
+  })
+
+  // The allowance resets at 00:00 UTC on the 1st, so the label names that
+  // day in every viewer's zone: 2 am UTC on the 19th is still the 31st in Los
+  // Angeles, and 11:30 pm UTC on the 31st is already the 1st in Tokyo.
+  it.each([
+    ['America/Los_Angeles', '2026-10-19T02:00:00.000Z', 'Nov 1'],
+    ['Asia/Tokyo', '2026-10-31T23:30:00.000Z', 'Nov 1'],
+  ])('names the reset day in UTC for a viewer in %s', (zone, now, label) => {
+    process.env.TZ = zone
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(now))
+    renderView({ usage: [{ key: 'emailsPerMonth', label: 'emails', used: 1840, limit: 10_000 }] })
+    expect(screen.getByText(`Monthly meters reset ${label}`)).toBeInTheDocument()
   })
 })
