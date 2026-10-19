@@ -49,9 +49,9 @@
  * they cannot disagree:
  *
  * 1. `dueWithin()` gates the cron — is the next deadline inside the next slot?
- * 2. `earliestWorkspaceDeadline()` tells a **detaching** tier when to come back, so
- *    a workspace that has gone quiet with a deadline pending still wakes for it
- *    rather than waiting out the rescan interval.
+ * 2. `earliestWorkspaceDeadline()` tells the worker when a **parked** workspace has
+ *    clock-driven work, so it is woken for that work rather than for a poll. Work
+ *    due within one refresh pass keeps a loop awake; later work only sets the wake.
  *
  * A provider that threw, or one that has not been registered, is treated as
  * "due now". That is the fail-safe direction: the cost of a wrong `now` is a
@@ -131,9 +131,9 @@ export async function dueWithin(
  * The earliest deadline across every registered queue for this workspace, rounded
  * up to the next whole minute.
  *
- * What a detaching loop records so it knows when to come back. Null means no
- * clock-driven work exists at all, which is the only state in which sleeping
- * until the safety-net rescan is the whole answer.
+ * What the worker records when it parks a workspace, so the refresh wakes it in
+ * time. Null means no clock-driven work exists at all, and the workspace is woken
+ * only by a request.
  *
  * ## The rounding is load-bearing, and it was found by measurement
  *
