@@ -62,6 +62,8 @@ import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'job-deadlines' })
 
+const MINUTE_MS = 60_000
+
 /**
  * The earliest instant this workspace has due work of one kind, or null when it has
  * none at all. Runs inside a workspace scope.
@@ -159,6 +161,28 @@ export async function earliestWorkspaceDeadline(now = Date.now()): Promise<Date 
   }
   if (earliest === null) return null
   return nextMinuteBoundaryAfter(Math.max(now, earliest.getTime()))
+}
+
+/**
+ * How far ahead of a parked workspace's clock-driven work the worker wakes it.
+ *
+ * The loop must be running before the slot that spends the work, not merely before
+ * the work falls due, because a loop adopts the slot it starts in rather than running
+ * it. That slot is the first one to start once the deadline's gate opens, a minute
+ * before the deadline (`dueWithin` looks one slot ahead). The spread offset can put
+ * a slot start right at the gate, so the loop must be up by then. The lead covers:
+ * - that minute, which the gate opens early;
+ * - one refresh interval, since the wake is taken on a refresh pass;
+ * - the minute that rounding can add to the wake instant;
+ * - one more minute, for a refresh pass that runs long.
+ */
+export function clockWakeLeadMs(refreshIntervalMs: number): number {
+  return refreshIntervalMs + 3 * MINUTE_MS
+}
+
+/** Is a parked workspace's next clock-driven work inside its wake lead at `nowMs`? */
+export function withinWakeLead(wakeAtMs: number, nowMs: number, leadMs: number): boolean {
+  return wakeAtMs <= nowMs + leadMs
 }
 
 /** The next whole minute strictly after `ms`. Never returns the current one. */

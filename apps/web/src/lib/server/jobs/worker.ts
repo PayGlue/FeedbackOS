@@ -43,7 +43,7 @@ import {
   markStandingWork,
   resetDormancyMarks,
 } from '@/lib/server/workspaces/activity'
-import { earliestWorkspaceDeadline } from './deadlines'
+import { clockWakeLeadMs, earliestWorkspaceDeadline, withinWakeLead } from './deadlines'
 import { catchUpDormantUsageReports } from './dormant-usage-report'
 import {
   enqueueUsageReport,
@@ -73,11 +73,11 @@ const log = logger.child({ component: 'job-worker' })
 const WORKSPACE_REFRESH_MS = 60_000
 
 /**
- * How far ahead of its clock-driven work a workspace counts as due. It is the refresh
- * cadence: a parked workspace is considered once per refresh pass, so a wake taken by
- * the pass before its work falls due has a loop running when the work does.
+ * How far ahead of its clock-driven work a workspace counts as due, so a parked
+ * workspace's loop is running before the cron slot that spends the work. The lead
+ * and why it is this long are in `deadlines.ts`.
  */
-const WAKE_LEAD_MS = WORKSPACE_REFRESH_MS
+const WAKE_LEAD_MS = clockWakeLeadMs(WORKSPACE_REFRESH_MS)
 
 /** Sentinel workspace id for a single-workspace install. Never a real workspace id. */
 const SINGLE = '__single__'
@@ -508,13 +508,13 @@ function clockWorkAt(instants: ReadonlyArray<Date | null>, now: number): ClockWo
     if (at === null) continue
     if (nextAt === null || at.getTime() < nextAt) nextAt = at.getTime()
   }
-  return { standing: nextAt !== null && nextAt <= now + WAKE_LEAD_MS, nextAt }
+  return { standing: nextAt !== null && withinWakeLead(nextAt, now, WAKE_LEAD_MS), nextAt }
 }
 
 /** Is a parked workspace's clock-driven work due inside the refresh pass that is asking? */
 function clockWakeDue(workspaceKey: string, now: number): boolean {
   const at = scheduledWakes.get(workspaceKey)
-  return at !== undefined && at <= now + WAKE_LEAD_MS
+  return at !== undefined && withinWakeLead(at, now, WAKE_LEAD_MS)
 }
 
 /**
