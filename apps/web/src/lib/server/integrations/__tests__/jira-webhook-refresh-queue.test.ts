@@ -13,7 +13,7 @@ vi.mock('@/lib/server/integrations/webhook-registration', async (original) => ({
   buildWebhookCallbackUrl: (provider: string) =>
     `https://tenant.example/api/integrations/${provider}/webhook`,
 }))
-import { integrations, eq } from '@/lib/server/db'
+import { integrations, eq, sql } from '@/lib/server/db'
 import { encryptSecrets } from '../encryption'
 import {
   isJiraWebhookRefreshDue,
@@ -434,6 +434,34 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     expect(refreshed).toEqual(['7'])
     expect(summary).toEqual({ due: 2, refreshed: 1, reregistered: 0, superseded: 0, failed: 1 })
     expect((await storedConfig(failing.id)).externalWebhookRetryAt).toBeDefined()
+  })
+
+  it('deletes the replacement it created when saving it fails, and records a retry', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    const calls = stubJira(() =>
+      jsonResponse({ expirationDate: Date.now(), invalidWebhooks: [42] })
+    )
+    // Saving the replacement fails the way a dropped connection would; the trigger lives
+    // inside the test transaction and is rolled back with it.
+    await testDb.execute(sql`
+      CREATE FUNCTION pg_temp.reject_replacement() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.config->>'externalWebhookId' = '99' THEN RAISE EXCEPTION 'connection reset'; END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`)
+    await testDb.execute(sql`
+      CREATE TRIGGER reject_replacement BEFORE UPDATE ON integrations
+      FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_replacement()`)
+
+    await runJiraWebhookRefresh()
+
+    const remove = calls.find(
+      (call) => call.url.endsWith('/rest/api/3/webhook') && call.init.method === 'DELETE'
+    )
+    expect(JSON.parse(String(remove?.init.body))).toEqual({ webhookIds: [99] })
+    const config = await storedConfig(row.id)
+    expect(config.externalWebhookId).toBe('42')
+    expect(config).toHaveProperty('externalWebhookRetryAt')
   })
 
   it('does not apply a webhook change when the webhook was replaced during the refresh', async () => {

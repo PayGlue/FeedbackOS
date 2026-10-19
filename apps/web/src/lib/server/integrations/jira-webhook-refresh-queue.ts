@@ -212,16 +212,27 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
     buildWebhookCallbackUrl('jira'),
     jiraProjectRef(auth.config.channelId)
   )
-  const applied = await writeWebhookState(row.id, webhookId, {
-    webhookId: created.webhookId,
-    expiresAt: lifetimeFrom(now),
-    retryAt: null,
-  })
+  // Jira caps an app's dynamic webhooks, so a replacement that is not stored, whether
+  // a newer write won or the save failed, is deleted rather than left registered.
+  const accessToken = auth.accessToken
+  const discard = () =>
+    deleteJiraWebhook(accessToken, cloudId, created.webhookId).catch((err) =>
+      log.warn({ err, integration_id: row.id }, 'could not delete an unsaved jira webhook')
+    )
+  let applied: boolean
+  try {
+    applied = await writeWebhookState(row.id, webhookId, {
+      webhookId: created.webhookId,
+      expiresAt: lifetimeFrom(now),
+      retryAt: null,
+    })
+  } catch (err) {
+    await discard()
+    throw err
+  }
   if (applied) return 'reregistered'
 
-  await deleteJiraWebhook(auth.accessToken, cloudId, created.webhookId).catch((err) =>
-    log.warn({ err, integration_id: row.id }, 'could not delete a superseded jira webhook')
-  )
+  await discard()
   return 'superseded'
 }
 
