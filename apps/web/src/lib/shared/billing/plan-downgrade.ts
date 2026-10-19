@@ -49,7 +49,7 @@ export const PLAN_NUMERIC_CAPS: Record<
   business: {
     maxBoards: null,
     maxPosts: null,
-    maxTeamSeats: null,
+    maxTeamSeats: 20,
     maxStatusComponents: 25,
     maxCustomRoles: 5,
     maxSendingDomains: 3,

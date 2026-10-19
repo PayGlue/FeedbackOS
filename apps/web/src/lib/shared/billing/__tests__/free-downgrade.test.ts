@@ -198,3 +198,12 @@ describe('featuresDisabledOnFree', () => {
     expect(featuresDisabledOnDowngrade('scale', 'free').length).toBeGreaterThan(0)
   })
 })
+
+describe('seat cap on Business', () => {
+  it('blocks a downgrade to Business with more than its 20 included seats', () => {
+    expect(planDowngradeIssues({ maxTeamSeats: 21 }, 'business')).toEqual([
+      expect.objectContaining({ key: 'maxTeamSeats', used: 21, cap: 20 }),
+    ])
+    expect(planDowngradeIssues({ maxTeamSeats: 20 }, 'business')).toEqual([])
+  })
+})
