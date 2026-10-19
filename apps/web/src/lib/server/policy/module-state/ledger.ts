@@ -1101,6 +1101,21 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
   },
   {
     file: 'apps/web/src/lib/server/jobs/worker.ts',
+    name: 'scheduledWakes',
+    category: 'workspace-scoped-key',
+    keyedBy: 'workspaceKey',
+    reason:
+      'The next instant each parked workspace has clock-driven work, as the probe that parked it ' +
+      'found it, so the refresh pass can start that workspace loop when the work falls due. One ' +
+      'entry per parked workspace, deleted when the loop wakes or the workspace leaves the active ' +
+      'set. Per-process and safe to lose on restart: the dormancy marks are in memory too, so a ' +
+      'boot treats every idle workspace as unprobed and re-learns the schedule with one probe each. ' +
+      'Each replica holds the schedule for the loops it runs, so replicas never need to agree on it. ' +
+      'A wrong entry costs one extra probe if it is early, and delays that workspace clock-driven ' +
+      'work until the stored instant if it is late.',
+  },
+  {
+    file: 'apps/web/src/lib/server/jobs/worker.ts',
     name: 'running',
     category: 'process-lifetime',
     owner: 'Piece 6 (saas/queue-lease)',
