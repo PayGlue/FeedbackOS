@@ -186,11 +186,15 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
       const reported = refreshed.expiresAt
       const expiresAt =
         reported && reported.getTime() > now.getTime() ? reported : lifetimeFrom(now)
-      const applied = await writeWebhookState(row.id, webhookId, {
-        expiresAt,
-        retryAt: null,
-        clearRefreshError: true,
-      })
+      const applied = await writeWebhookState(
+        row.id,
+        { webhookId, cloudId },
+        {
+          expiresAt,
+          retryAt: null,
+          clearRefreshError: true,
+        }
+      )
       return applied ? 'refreshed' : 'superseded'
     }
   }
@@ -212,12 +216,16 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
     )
   let applied: boolean
   try {
-    applied = await writeWebhookState(row.id, webhookId, {
-      webhookId: created.webhookId,
-      expiresAt: lifetimeFrom(now),
-      retryAt: null,
-      clearRefreshError: true,
-    })
+    applied = await writeWebhookState(
+      row.id,
+      { webhookId, cloudId },
+      {
+        webhookId: created.webhookId,
+        expiresAt: lifetimeFrom(now),
+        retryAt: null,
+        clearRefreshError: true,
+      }
+    )
   } catch (err) {
     await discard()
     throw err
@@ -230,7 +238,11 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
 
 async function recordFailure(row: JiraStatusSyncRow, now: Date, err: unknown): Promise<void> {
   const message = err instanceof Error ? err.message : String(err)
-  await writeWebhookState(row.id, nonEmpty(row.config.externalWebhookId), {
+  const expected = {
+    webhookId: nonEmpty(row.config.externalWebhookId),
+    cloudId: nonEmpty(row.config.cloudId),
+  }
+  await writeWebhookState(row.id, expected, {
     retryAt: new Date(now.getTime() + RETRY_BACKOFF_MS),
     lastError: `${ERROR_PREFIX}${message}`,
   })
@@ -261,11 +273,12 @@ function setOrRemove(config: Record<string, unknown>, key: string, value: Date |
 /**
  * Apply a change only while the webhook it was computed from is still the stored
  * one and status sync is still on. Returns false when nothing was written, so a
- * refresh that raced a reconnect or a disable cannot resurrect the old state.
+ * refresh that raced a reconnect (to the same or another Jira site) or a disable cannot
+ * resurrect the old state.
  */
 async function writeWebhookState(
   integrationId: IntegrationId,
-  expectedWebhookId: string | null,
+  expected: { webhookId: string | null; cloudId: string | null },
   change: WebhookStateChange
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
@@ -277,7 +290,9 @@ async function writeWebhookState(
     if (!current) return false
     const config = (current.config ?? {}) as Record<string, unknown>
     if (config.statusSyncEnabled !== true) return false
-    if (nonEmpty(config.externalWebhookId) !== expectedWebhookId) return false
+    if (nonEmpty(config.externalWebhookId) !== expected.webhookId) return false
+    // A reconnect to another Jira site keeps the webhook id but not the site it lives on.
+    if (nonEmpty(config.cloudId) !== expected.cloudId) return false
 
     const next: Record<string, unknown> = { ...config }
     if (change.webhookId !== undefined) next.externalWebhookId = change.webhookId

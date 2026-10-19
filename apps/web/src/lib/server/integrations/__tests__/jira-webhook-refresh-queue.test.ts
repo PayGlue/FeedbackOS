@@ -492,6 +492,44 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     expect(config).toHaveProperty('externalWebhookRetryAt')
   })
 
+  it('does not store a refreshed expiry when the integration moved to another Jira site', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    stubJira(async () => {
+      await testDb
+        .update(integrations)
+        .set({ config: { ...(await storedConfig(row.id)), cloudId: 'cloud-2' } })
+        .where(eq(integrations.id, row.id))
+      return jsonResponse({ expirationDate: Date.now() + 30 * DAY_MS, invalidWebhooks: [] })
+    })
+
+    await runJiraWebhookRefresh()
+
+    const config = await storedConfig(row.id)
+    expect(config.cloudId).toBe('cloud-2')
+    expect(config).not.toHaveProperty('externalWebhookExpiresAt')
+  })
+
+  it('deletes a replacement registered on a Jira site the integration has since left', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    const calls = stubJira(async () => {
+      await testDb
+        .update(integrations)
+        .set({ config: { ...(await storedConfig(row.id)), cloudId: 'cloud-2' } })
+        .where(eq(integrations.id, row.id))
+      return jsonResponse({ expirationDate: Date.now(), invalidWebhooks: [42] })
+    })
+
+    await runJiraWebhookRefresh()
+
+    const remove = calls.find(
+      (call) => call.url.endsWith('/rest/api/3/webhook') && call.init.method === 'DELETE'
+    )
+    expect(remove?.url).toContain('/ex/jira/cloud-1/')
+    const config = await storedConfig(row.id)
+    expect(config.externalWebhookId).toBe('42')
+    expect(config).not.toHaveProperty('externalWebhookExpiresAt')
+  })
+
   it('does not apply a webhook change when the webhook was replaced during the refresh', async () => {
     const row = await seedJira({ externalWebhookExpiresAt: null })
     stubJira(async () => {
