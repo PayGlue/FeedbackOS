@@ -472,9 +472,9 @@ describe('the monthly reset date', () => {
     else process.env.TZ = originalTz
   })
 
-  // The allowance resets at 00:00 UTC on the 1st, so the label names that
-  // day in every viewer's zone: 2 am UTC on the 19th is still the 31st in Los
-  // Angeles, and 11:30 pm UTC on the 31st is already the 1st in Tokyo.
+  // The allowance resets at 00:00 UTC on the 1st. That instant is still the
+  // 31st in Los Angeles and already the 1st in Tokyo, so the label names the
+  // UTC day in every viewer's zone.
   it.each([
     ['America/Los_Angeles', '2026-10-19T02:00:00.000Z', 'Nov 1'],
     ['Asia/Tokyo', '2026-10-31T23:30:00.000Z', 'Nov 1'],
