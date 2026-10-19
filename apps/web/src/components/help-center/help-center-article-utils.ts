@@ -3,6 +3,8 @@
  * Extracted for testability — no React dependencies.
  */
 
+import { createHeadingIds } from '@/lib/shared/heading-ids'
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -16,13 +18,6 @@ export interface TocHeading {
 // =============================================================================
 // extractHeadings — walks TipTap JSON and pulls out H2/H3 headings
 // =============================================================================
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
 
 interface TipTapNode {
   type?: string
@@ -46,21 +41,23 @@ export function extractHeadings(
   if (!contentJson || !Array.isArray(contentJson.content)) return []
 
   const headings: TocHeading[] = []
+  // Every heading takes an id in document order, as the article HTML does, so
+  // repeated text gets the same suffix in both places. Only H2 and H3 are listed.
+  const headingId = createHeadingIds()
 
-  for (const node of contentJson.content) {
-    if (node.type !== 'heading') continue
-    const level = node.attrs?.level
-    if (level !== 2 && level !== 3) continue
-
-    const text = extractTextFromNode(node).trim()
-    if (!text) continue
-
-    headings.push({
-      id: slugify(text),
-      text,
-      level,
-    })
+  const visit = (nodes: TipTapNode[]) => {
+    for (const node of nodes) {
+      if (node.type === 'heading') {
+        const text = extractTextFromNode(node).trim()
+        const id = headingId(text)
+        const level = node.attrs?.level
+        if (id && (level === 2 || level === 3)) headings.push({ id, text, level })
+        continue
+      }
+      if (Array.isArray(node.content)) visit(node.content)
+    }
   }
+  visit(contentJson.content)
 
   return headings
 }
