@@ -15,10 +15,7 @@ const catalogue: BillingCatalogue = {
   recommendedPlanId: 'pro',
   brandingRemoval: { monthlyCents: 5900, annualCents: 59000 },
   aiIncludedCentsPerMonth: { free: 0, pro: 1000, business: 3000, enterprise: 10000 },
-  aiTopUpPackCents: 1000,
   aiBlendedCentsPerMTok: 500,
-  emailTopUpPackCents: 1000,
-  emailTopUpPackUnits: 10_000,
   plans: [
     {
       id: 'free',
@@ -187,7 +184,7 @@ describe('BillingPlansView', () => {
     expect(screen.getByText('Emails')).toBeInTheDocument()
     expect(screen.getByText('Changelog and status-page mail this month.')).toBeInTheDocument()
     expect(screen.getByText('1,840 of 10,000')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Top up' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Top up' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Add-ons' })).toBeInTheDocument()
     expect(screen.getByText('Remove Quackback branding')).toBeInTheDocument()
     const addBranding = screen.getByRole('button', { name: 'Add' })
@@ -415,21 +412,25 @@ describe('BillingPlansView', () => {
     expect(document.querySelector('form input[name="billingPeriod"]')).toHaveValue('monthly')
   })
 
-  it('hides Top up when pack prices are missing', () => {
-    const { aiTopUpPackCents: _ai, emailTopUpPackCents: _email, ...rest } = catalogue
+  it('offers no top-up on any usage meter, even when the emails meter is at its limit', () => {
     renderView({
-      catalogue: rest,
-      usage: [{ key: 'emailsPerMonth', label: 'emails', used: 1840, limit: 10_000 }],
+      usage: [{ key: 'emailsPerMonth', label: 'emails', used: 10_000, limit: 10_000 }],
     })
+    expect(screen.getByText('Emails')).toBeInTheDocument()
+    expect(screen.getByText('AI usage')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Top up' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('hides email Top up when emails are unlimited', () => {
+  it('still shows purchased AI extra credit on the AI usage meter', () => {
     renderView({
-      usage: [{ key: 'emailsPerMonth', label: 'emails', used: 1840, limit: null }],
+      overview: {
+        ...paidOverview,
+        ai: { includedCents: 3000, usedCents: 3000, extraCents: 1000, resetsAt: null },
+      },
     })
-    expect(screen.queryByText('Emails')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Top up' })).toHaveLength(1)
+    expect(screen.getByText('Included usage is used first, then extra credit.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Top up' })).not.toBeInTheDocument()
   })
 
   it('shows API requests and finite plan limits for the current subscription', () => {

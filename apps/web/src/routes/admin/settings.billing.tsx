@@ -20,7 +20,6 @@ const BILLING_ERROR_COPY: Record<string, string> = {
   over_plan_limits: 'Remove anything that is over the new plan before switching.',
   already_on_plan: 'You are already on this plan.',
   already_on_addon: 'Branding removal is already on this workspace.',
-  price_changed: 'The pack price just changed. Check the new price and try again.',
   not_on_addon: 'Branding removal is not on this workspace.',
   unavailable: 'That billing action is not available right now.',
   invalid: 'That billing request was not valid. Try again from this page.',

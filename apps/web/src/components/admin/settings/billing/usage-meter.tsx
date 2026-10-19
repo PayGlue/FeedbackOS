@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/shared/utils'
 
@@ -8,7 +7,6 @@ export function UsageMeter(props: {
   valueText: string
   used: number
   limit: number
-  action?: ReactNode
 }) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-10">
@@ -17,7 +15,6 @@ export function UsageMeter(props: {
         {props.description ? (
           <div className="mt-0.5 text-[12px] text-muted-foreground">{props.description}</div>
         ) : null}
-        {props.action ? <div className="mt-2">{props.action}</div> : null}
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <Progress
