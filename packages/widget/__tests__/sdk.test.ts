@@ -255,6 +255,17 @@ describe('sdk', () => {
     spy.mockRestore()
   })
 
+  it('open event carries the messages and tickets views', () => {
+    stubIframe()
+    const sdk = createSDK()
+    sdk.dispatch('init', { instanceUrl: ORIGIN })
+    const seen: Array<{ view?: string }> = []
+    sdk.dispatch('on', 'open', (payload: { view?: string }) => seen.push(payload))
+    sdk.dispatch('open', { view: 'messages' })
+    sdk.dispatch('open', { view: 'tickets' })
+    expect(seen.map((payload) => payload.view)).toEqual(['messages', 'tickets'])
+  })
+
   it('metadata merges and sends to iframe', () => {
     const { postMessage, spy } = stubIframe()
     const sdk = createSDK()
