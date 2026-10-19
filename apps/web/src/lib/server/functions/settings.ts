@@ -825,6 +825,8 @@ const updateWidgetConfigSchema = z.object({
   position: z.enum(['bottom-right', 'bottom-left']).optional(),
   launcherGreeting: z.string().max(120).optional(),
   launcherLabel: z.string().max(60).optional(),
+  visitorAnalytics: z.boolean().optional(),
+  visitorDeviceTracking: z.boolean().optional(),
   tabs: z
     .object({
       feedback: z.boolean().optional(),

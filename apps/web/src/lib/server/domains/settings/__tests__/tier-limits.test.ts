@@ -432,3 +432,37 @@ describe('Free AI allowance', () => {
     expect(effective.aiTokensPerMonth).toBe(400_000)
   })
 })
+
+describe('visitorAnalytics plan feature', () => {
+  const beforeExpiry = new Date('2026-08-14T12:00:00.000Z')
+  const atExpiry = new Date('2026-08-15T00:00:00.000Z')
+
+  it('is on for self-hosted installs with no tier-limits row', () => {
+    expect(OSS_TIER_LIMITS.features.visitorAnalytics).toBe(true)
+    expect(mergeTierLimits(null).features.visitorAnalytics).toBe(true)
+  })
+
+  it.each(['free', 'pro', 'business', 'enterprise'] as const)(
+    'is included on the %s plan, so existing cloud workspaces keep counting',
+    (plan) => {
+      const projection: BillingProjection = { ...PROJECTION, effectivePlan: plan }
+      expect(
+        resolveEffectiveTierLimits(null, projection, beforeExpiry).features.visitorAnalytics
+      ).toBe(true)
+    }
+  )
+
+  it('stays on after a projection expires back to Free', () => {
+    const effective = resolveEffectiveTierLimits(null, PROJECTION, atExpiry)
+    expect(effective.features.visitorAnalytics).toBe(true)
+  })
+
+  it('can be switched off by an operator tier-limits row', () => {
+    const effective = resolveEffectiveTierLimits(
+      { features: { visitorAnalytics: false } },
+      PROJECTION,
+      beforeExpiry
+    )
+    expect(effective.features.visitorAnalytics).toBe(false)
+  })
+})

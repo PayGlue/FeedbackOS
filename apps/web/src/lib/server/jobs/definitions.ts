@@ -390,6 +390,24 @@ export const JOB_DEFINITIONS: readonly JobDefinition[] = [
       ),
   },
   {
+    // Jira expires a status-sync webhook 30 days after it was last extended.
+    // A per-minute cron gated on a refresh being due, the same shape as
+    // snooze-sweep: the gate is shut for every workspace whose webhook is not
+    // inside its refresh window, so nothing is enqueued and an idle workspace is
+    // woken only at the instant its refresh falls due (see deadlines.ts).
+    name: 'jira-webhook-refresh',
+    cron: '* * * * *',
+    maxAttempts: 3,
+    handler: () =>
+      import('@/lib/server/integrations/jira-webhook-refresh-queue').then(
+        (m) => m.runJiraWebhookRefresh
+      ),
+    cronEnabled: () =>
+      import('@/lib/server/integrations/jira-webhook-refresh-queue').then((m) =>
+        m.isJiraWebhookRefreshDue()
+      ),
+  },
+  {
     // Drains one job-owned outbox row. The row is written in emit()'s
     // transaction so rollback leaves nothing.
     name: 'event-dispatch',
