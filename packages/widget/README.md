@@ -129,6 +129,8 @@ Quackback.open() // home
 Quackback.open({ view: 'new-post', title: 'Bug:', body: '...', board: 'bugs' }) // pre-filled form
 Quackback.open({ view: 'changelog' }) // changelog feed
 Quackback.open({ view: 'help', query: 'pricing' }) // help search
+Quackback.open({ view: 'messages' }) // messenger conversations
+Quackback.open({ view: 'tickets' }) // the visitor's tickets, or messages when unavailable
 Quackback.open({ postId: 'post_01h...' }) // specific post
 Quackback.open({ articleId: 'article_01h...' }) // help article TypeID or slug
 ```

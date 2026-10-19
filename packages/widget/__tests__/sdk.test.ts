@@ -237,6 +237,24 @@ describe('sdk', () => {
     spy.mockRestore()
   })
 
+  it('open forwards the messages and tickets views to the iframe', () => {
+    const { postMessage, spy } = stubIframe()
+    const sdk = createSDK()
+    sdk.dispatch('init', { instanceUrl: ORIGIN })
+    fireReady()
+    sdk.dispatch('open', { view: 'messages' })
+    expect(postMessage).toHaveBeenLastCalledWith(
+      { type: 'quackback:open', data: { view: 'messages' } },
+      ORIGIN
+    )
+    sdk.dispatch('open', { view: 'tickets' })
+    expect(postMessage).toHaveBeenLastCalledWith(
+      { type: 'quackback:open', data: { view: 'tickets' } },
+      ORIGIN
+    )
+    spy.mockRestore()
+  })
+
   it('metadata merges and sends to iframe', () => {
     const { postMessage, spy } = stubIframe()
     const sdk = createSDK()

@@ -62,6 +62,8 @@ export type Identity =
  * - `{ view: 'changelog', entryId? }` opens the changelog, optionally to one entry
  * - `{ view: 'help', query? }` opens help, optionally with search prefilled
  * - `{ view: 'chat' }` opens the live chat view
+ * - `{ view: 'messages' }` opens the messenger conversations view, when it is enabled
+ * - `{ view: 'tickets' }` opens the visitor's tickets list, or messages when that is unavailable
  * - `{ postId }` deep-links to a specific post
  * - `{ articleId }` deep-links to a help article (`article_…` TypeID or slug;
  *   stored `kb_article_…` ids also resolve)
@@ -80,6 +82,8 @@ export type OpenOptions =
   | { view: 'changelog'; entryId?: string }
   | { view: 'help'; query?: string }
   | { view: 'chat' }
+  | { view: 'messages' }
+  | { view: 'tickets' }
   | { postId: string }
   | { articleId: string }
 

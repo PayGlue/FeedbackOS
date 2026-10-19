@@ -1,5 +1,9 @@
 # @quackback/widget
 
+## Unreleased
+
+- `Quackback.open` types now include `{ view: 'messages' }` and `{ view: 'tickets' }`, the two views the iframe already accepts.
+
 ## 0.1.6 - 2026-08-31
 
 - The config.json install ping now includes `?sdk=<version>` so the instance can tell an npm/file embed is behind and prompt an update on the widget settings page.
