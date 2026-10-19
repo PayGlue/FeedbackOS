@@ -39,7 +39,7 @@ import {
   registerJiraWebhook,
 } from '@/integrations/jira/server/webhook-registration'
 import { getIntegrationAuth } from './token-refresh'
-import { buildWebhookCallbackUrl, recordIntegrationLastError } from './webhook-registration'
+import { buildWebhookCallbackUrl } from './webhook-registration'
 
 const log = logger.child({ component: 'jira-webhook-refresh' })
 
@@ -227,10 +227,10 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
 
 async function recordFailure(row: JiraStatusSyncRow, now: Date, err: unknown): Promise<void> {
   const message = err instanceof Error ? err.message : String(err)
-  const applied = await writeWebhookState(row.id, nonEmpty(row.config.externalWebhookId), {
+  await writeWebhookState(row.id, nonEmpty(row.config.externalWebhookId), {
     retryAt: new Date(now.getTime() + RETRY_BACKOFF_MS),
+    lastError: `${ERROR_PREFIX}${message}`,
   })
-  if (applied) await recordIntegrationLastError(row.id, `${ERROR_PREFIX}${message}`)
 }
 
 interface WebhookStateChange {
@@ -238,6 +238,8 @@ interface WebhookStateChange {
   /** `null` removes the stored value; `undefined` leaves it alone. */
   expiresAt?: Date | null
   retryAt?: Date | null
+  /** Recorded with the state, under the same row lock, so it cannot land after a newer write. */
+  lastError?: string
 }
 
 function setOrRemove(config: Record<string, unknown>, key: string, value: Date | null | undefined) {
@@ -273,7 +275,14 @@ async function writeWebhookState(
     setOrRemove(next, 'externalWebhookRetryAt', change.retryAt)
     await tx
       .update(integrations)
-      .set({ config: next, updatedAt: new Date() })
+      .set({
+        config: next,
+        updatedAt: new Date(),
+        ...(change.lastError !== undefined && {
+          lastError: change.lastError.slice(0, 1000),
+          lastErrorAt: new Date(),
+        }),
+      })
       .where(eq(integrations.id, integrationId))
     return true
   })
