@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
+  deleteJiraWebhook,
   jiraProjectRef,
   listJiraWebhookIds,
   refreshJiraWebhooks,
@@ -178,5 +179,19 @@ describe('listJiraWebhookIds', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ message: 'nope' }, 500))
 
     await expect(listJiraWebhookIds('tok', 'cloud-1')).rejects.toThrow('Jira API error 500')
+  })
+})
+
+describe('deleteJiraWebhook', () => {
+  it('rejects when Jira refuses the delete, so a caller can see the webhook is still there', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('boom', { status: 500 }))
+
+    await expect(deleteJiraWebhook('tok', 'cloud-1', '99')).rejects.toThrow('Jira API error 500')
+  })
+
+  it('resolves when Jira no longer has the webhook', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))
+
+    await expect(deleteJiraWebhook('tok', 'cloud-1', '99')).resolves.toBeUndefined()
   })
 })

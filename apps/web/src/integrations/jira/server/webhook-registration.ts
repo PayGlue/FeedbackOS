@@ -200,7 +200,7 @@ export async function deleteJiraWebhook(
   cloudId: string,
   webhookId: string
 ): Promise<void> {
-  await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`, {
+  const response = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/webhook`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -209,4 +209,9 @@ export async function deleteJiraWebhook(
     },
     body: JSON.stringify({ webhookIds: [Number(webhookId)] }),
   })
+  // A webhook Jira no longer has is already gone, which is what the caller wanted.
+  if (!response.ok && response.status !== 404) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Jira API error ${response.status}: ${body}`)
+  }
 }
