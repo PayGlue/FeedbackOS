@@ -189,15 +189,11 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
       const reported = refreshed.expiresAt
       const expiresAt =
         reported && reported.getTime() > now.getTime() ? reported : lifetimeFrom(now)
-      const applied = await writeWebhookState(
-        row.id,
-        { webhookId, cloudId, connectedAt: row.connectedAt },
-        {
-          expiresAt,
-          retryAt: null,
-          clearRefreshError: true,
-        }
-      )
+      const applied = await writeWebhookState(row.id, expectedInputs(row, webhookId, cloudId), {
+        expiresAt,
+        retryAt: null,
+        clearRefreshError: true,
+      })
       return applied ? 'refreshed' : 'superseded'
     }
   }
@@ -219,16 +215,12 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
     )
   let applied: boolean
   try {
-    applied = await writeWebhookState(
-      row.id,
-      { webhookId, cloudId, connectedAt: row.connectedAt },
-      {
-        webhookId: created.webhookId,
-        expiresAt: lifetimeFrom(now),
-        retryAt: null,
-        clearRefreshError: true,
-      }
-    )
+    applied = await writeWebhookState(row.id, expectedInputs(row, webhookId, cloudId), {
+      webhookId: created.webhookId,
+      expiresAt: lifetimeFrom(now),
+      retryAt: null,
+      clearRefreshError: true,
+    })
   } catch (err) {
     await discard()
     throw err
@@ -241,15 +233,39 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
 
 async function recordFailure(row: JiraStatusSyncRow, now: Date, err: unknown): Promise<void> {
   const message = err instanceof Error ? err.message : String(err)
-  const expected = {
-    webhookId: nonEmpty(row.config.externalWebhookId),
-    cloudId: nonEmpty(row.config.cloudId),
+  await writeWebhookState(
+    row.id,
+    expectedInputs(row, nonEmpty(row.config.externalWebhookId), nonEmpty(row.config.cloudId)),
+    {
+      retryAt: new Date(now.getTime() + RETRY_BACKOFF_MS),
+      lastError: `${ERROR_PREFIX}${message}`,
+    }
+  )
+}
+
+/**
+ * Everything a refresh's work was computed from. A reconnect (to the same or another
+ * site) or a project change can land while the refresh is out on the network and keep
+ * the webhook id, so the guarded write compares all of them, not the id alone.
+ */
+interface RefreshInputs {
+  webhookId: string | null
+  cloudId: string | null
+  projectRef: string
+  connectedAt: Date | null
+}
+
+function expectedInputs(
+  row: JiraStatusSyncRow,
+  webhookId: string | null,
+  cloudId: string | null
+): RefreshInputs {
+  return {
+    webhookId,
+    cloudId,
+    projectRef: jiraProjectRef(row.config.channelId),
     connectedAt: row.connectedAt,
   }
-  await writeWebhookState(row.id, expected, {
-    retryAt: new Date(now.getTime() + RETRY_BACKOFF_MS),
-    lastError: `${ERROR_PREFIX}${message}`,
-  })
 }
 
 interface WebhookStateChange {
@@ -282,7 +298,7 @@ function setOrRemove(config: Record<string, unknown>, key: string, value: Date |
  */
 async function writeWebhookState(
   integrationId: IntegrationId,
-  expected: { webhookId: string | null; cloudId: string | null; connectedAt: Date | null },
+  expected: RefreshInputs,
   change: WebhookStateChange
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
@@ -295,9 +311,8 @@ async function writeWebhookState(
     const config = (current.config ?? {}) as Record<string, unknown>
     if (config.statusSyncEnabled !== true) return false
     if (nonEmpty(config.externalWebhookId) !== expected.webhookId) return false
-    // A reconnect to another Jira site keeps the webhook id but not the site it lives on.
     if (nonEmpty(config.cloudId) !== expected.cloudId) return false
-    // A reconnect to the same site keeps both, but the work was done with the old grant.
+    if (jiraProjectRef(config.channelId) !== expected.projectRef) return false
     if (current.connectedAt?.getTime() !== expected.connectedAt?.getTime()) return false
 
     const next: Record<string, unknown> = { ...config }

@@ -546,6 +546,28 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     expect(await storedConfig(row.id)).not.toHaveProperty('externalWebhookExpiresAt')
   })
 
+  it('deletes a replacement registered for a Jira project the integration has since left', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    const calls = stubJira(async () => {
+      await testDb
+        .update(integrations)
+        .set({ config: { ...(await storedConfig(row.id)), channelId: '20000:20004' } })
+        .where(eq(integrations.id, row.id))
+      return jsonResponse({ expirationDate: Date.now(), invalidWebhooks: [42] })
+    })
+
+    await runJiraWebhookRefresh()
+
+    expect(
+      calls.some(
+        (call) => call.url.endsWith('/rest/api/3/webhook') && call.init.method === 'DELETE'
+      )
+    ).toBe(true)
+    const config = await storedConfig(row.id)
+    expect(config.externalWebhookId).toBe('42')
+    expect(config).not.toHaveProperty('externalWebhookExpiresAt')
+  })
+
   it('does not apply a webhook change when the webhook was replaced during the refresh', async () => {
     const row = await seedJira({ externalWebhookExpiresAt: null })
     stubJira(async () => {
