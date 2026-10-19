@@ -54,7 +54,7 @@ const INCLUDED_FROM: Partial<Record<EntitlementKey, PlanId>> = {
   customDomain: 'pro',
   aiAssistant: 'pro',
   aiDrafts: 'free',
-  apiAccess: 'pro',
+  apiAccess: 'free',
   mcpServer: 'pro',
   webhooks: 'pro',
   aiInsights: 'pro',
@@ -152,10 +152,10 @@ describe('what each plan includes', () => {
         key,
         off: true,
       })
-      // Free includes drafting and nothing else from the catalogue.
+      // Free includes drafting and the REST API, and nothing else from the catalogue.
       expect({ key, free: isEntitled(on('free'), key) }).toEqual({
         key,
-        free: key === 'aiDrafts',
+        free: key === 'aiDrafts' || key === 'apiAccess',
       })
     }
   })
@@ -164,6 +164,11 @@ describe('what each plan includes', () => {
 describe('the levels the price list moved', () => {
   // One test per correction. Each states the level it moved FROM as well as
   // the one it moved to, so a catalogue that simply granted more would fail.
+
+  it('includes the REST API on every plan, Free included', () => {
+    expect(isEntitled(on('free'), 'apiAccess')).toBe(true)
+    expect(isEntitled(on('pro'), 'apiAccess')).toBe(true)
+  })
 
   it('includes the MCP server from Pro, the cheapest paid plan', () => {
     expect(isEntitled(on('free'), 'mcpServer')).toBe(false)

@@ -246,7 +246,7 @@ export const PLAN_CATALOGUE: Record<PlanId, PlanDefinition> = {
     article: 'a',
     name: 'Free',
     rank: 0,
-    grants: ['aiDrafts'],
+    grants: ['aiDrafts', 'apiAccess'],
   },
   pro: {
     id: 'pro',

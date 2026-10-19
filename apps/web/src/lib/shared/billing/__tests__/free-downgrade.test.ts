@@ -168,6 +168,15 @@ describe('featuresDisabledOnFree', () => {
     )
   })
 
+  it('never warns that API access is revoked, since every plan includes the REST API', () => {
+    for (const plan of ['pro', 'business', 'enterprise']) {
+      expect(featuresDisabledOnFree(plan)).not.toContain('API access will be revoked')
+    }
+    expect(featuresDisabledOnDowngrade('enterprise', 'pro')).not.toContain(
+      'API access will be revoked'
+    )
+  })
+
   it('keeps Copilot drafts out of the Free warning, since Free includes them', () => {
     for (const plan of ['pro', 'business', 'enterprise']) {
       expect(featuresDisabledOnFree(plan).join(' ')).not.toMatch(/drafts/i)

@@ -47,6 +47,12 @@ describe('describeEntitlementUpgrade for a feature every plan includes', () => {
     expect(description.requiredPlan).toBeNull()
     expect(description.body).toMatch(/Contact us/)
   })
+
+  it('treats the REST API the same way, since Free includes it', () => {
+    const description = describeEntitlementUpgrade('apiAccess')
+    expect(description.requiredPlan).toBeNull()
+    expect(description.body).toMatch(/Contact us/)
+  })
 })
 
 describe('isPlanRefusal', () => {

@@ -124,8 +124,8 @@ const RESOURCE: Record<PlanCapKey, { singular: string; plural: string; href: str
 
 /**
  * Plan features a downgrade can switch off, in display order, with the plans
- * that include each. Copilot drafts are on every plan, so no downgrade loses
- * them.
+ * that include each. Copilot drafts and the REST API are on every plan, so no
+ * downgrade loses them.
  */
 const PLAN_FEATURES: ReadonlyArray<{ lost: string; plans: readonly PlanId[] }> = [
   { lost: 'Custom domains will be disabled', plans: ['pro', 'business', 'enterprise'] },
@@ -133,7 +133,6 @@ const PLAN_FEATURES: ReadonlyArray<{ lost: string; plans: readonly PlanId[] }> =
   { lost: 'Single sign-on will be disabled', plans: ['enterprise'] },
   { lost: 'AI assistant and insights will be disabled', plans: ['pro', 'business', 'enterprise'] },
   { lost: 'AI article translation will be disabled', plans: ['business', 'enterprise'] },
-  { lost: 'API access will be revoked', plans: ['pro', 'business', 'enterprise'] },
   { lost: 'Webhooks will be disabled', plans: ['pro', 'business', 'enterprise'] },
   { lost: 'MCP access will be revoked', plans: ['pro', 'business', 'enterprise'] },
   { lost: 'The audit log will be disabled', plans: ['enterprise'] },
