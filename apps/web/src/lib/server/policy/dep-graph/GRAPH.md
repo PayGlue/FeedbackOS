@@ -178,6 +178,7 @@ Edges (141):
 - settings-registry -> settings
 - sla -> office-hours
 - sla -> settings
+- status -> settings
 - subscriptions -> changelog
 - subscriptions -> posts
 - subscriptions -> status

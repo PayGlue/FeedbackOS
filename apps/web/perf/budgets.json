@@ -443,11 +443,11 @@
       "componentRenders": 434
     },
     "sweep:doc:admin:/admin/settings/billing": {
-      "dbQueries": 17,
+      "dbQueries": 20,
       "htmlKB": 66.7
     },
     "sweep:ui:admin:/admin/settings/billing": {
-      "dbQueries": 17,
+      "dbQueries": 20,
       "serverRequests": 1,
       "requests": 106,
       "jsRequests": 102,
