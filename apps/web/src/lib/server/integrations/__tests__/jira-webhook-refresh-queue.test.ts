@@ -123,18 +123,24 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
     return row.config as Record<string, unknown>
   }
 
-  /** Records every Jira call and answers the refresh and create endpoints with the given bodies. */
+  /**
+   * Records every Jira call and answers the refresh, list and create endpoints with
+   * the given bodies. Jira ignores an unknown id on refresh, so the list is what says
+   * whether the webhook is still there; by default it lists webhook 42.
+   */
   function stubJira(
     refresh: () => Response | Promise<Response> = () =>
       jsonResponse({ expirationDate: Date.now() + 30 * DAY_MS, invalidWebhooks: [] }),
     create: () => Response = () =>
-      jsonResponse({ webhookRegistrationResult: [{ createdWebhookId: 99 }] })
+      jsonResponse({ webhookRegistrationResult: [{ createdWebhookId: 99 }] }),
+    list: () => Response = () => jsonResponse({ values: [{ id: 42 }], isLast: true })
   ) {
     const calls: Array<{ url: string; init: RequestInit }> = []
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
       calls.push({ url, init: init ?? {} })
       if (url.endsWith('/rest/api/3/webhook/refresh')) return refresh()
+      if (url.includes('/rest/api/3/webhook?')) return list()
       if (url.endsWith('/rest/api/3/webhook')) return create()
       throw new Error(`unexpected Jira call: ${url}`)
     })
@@ -151,12 +157,13 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
 
     await runJiraWebhookRefresh()
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].url).toBe(
       'https://api.atlassian.com/ex/jira/cloud-1/rest/api/3/webhook/refresh'
     )
     expect(calls[0].init.method).toBe('PUT')
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ webhookIds: [42] })
+    expect(calls[1].url).toContain('/rest/api/3/webhook?')
     const config = await storedConfig(row.id)
     expect(config.externalWebhookId).toBe('42')
     expect(config.externalWebhookExpiresAt).toBe(new Date(expiresAt).toISOString())
@@ -215,6 +222,67 @@ describe.skipIf(!fixture.available)('Jira webhook refresh job', () => {
       Date.now() + 29 * DAY_MS
     )
     expect(config.statusSyncEnabled).toBe(true)
+  })
+
+  it('records the refreshed expiry when Jira still lists the webhook', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    const expiresAt = Date.now() + 30 * DAY_MS
+    const calls = stubJira(
+      () => jsonResponse({ expirationDate: expiresAt, invalidWebhooks: [] }),
+      undefined,
+      () => jsonResponse({ values: [{ id: 7 }, { id: 42 }], isLast: true })
+    )
+
+    await runJiraWebhookRefresh()
+
+    expect(calls.some((call) => call.url.endsWith('/rest/api/3/webhook'))).toBe(false)
+    const config = await storedConfig(row.id)
+    expect(config.externalWebhookId).toBe('42')
+    expect(config.externalWebhookExpiresAt).toBe(new Date(expiresAt).toISOString())
+  })
+
+  it('registers a replacement when Jira silently ignored the refresh and no longer lists the webhook', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    // Jira answers 200 with no invalid ids for an id it does not know.
+    const calls = stubJira(
+      () => jsonResponse({ expirationDate: Date.now() + 30 * DAY_MS, invalidWebhooks: [] }),
+      undefined,
+      () => jsonResponse({ values: [{ id: 7 }], isLast: true })
+    )
+
+    await runJiraWebhookRefresh()
+
+    expect(calls.some((call) => call.url.endsWith('/rest/api/3/webhook'))).toBe(true)
+    const config = await storedConfig(row.id)
+    expect(config.externalWebhookId).toBe('99')
+    expect(config.statusSyncEnabled).toBe(true)
+    expect(new Date(String(config.externalWebhookExpiresAt)).getTime()).toBeGreaterThan(
+      Date.now() + 29 * DAY_MS
+    )
+  })
+
+  it('records a retry and no expiry when the webhook list cannot be read', async () => {
+    const row = await seedJira({ externalWebhookExpiresAt: null })
+    const calls = stubJira(
+      () => jsonResponse({ expirationDate: Date.now() + 30 * DAY_MS, invalidWebhooks: [] }),
+      undefined,
+      () => jsonResponse({ message: 'boom' }, 500)
+    )
+
+    await runJiraWebhookRefresh()
+
+    expect(calls.some((call) => call.url.endsWith('/rest/api/3/webhook'))).toBe(false)
+    const config = await storedConfig(row.id)
+    expect(config.externalWebhookId).toBe('42')
+    expect(config).not.toHaveProperty('externalWebhookExpiresAt')
+    expect(new Date(String(config.externalWebhookRetryAt)).getTime()).toBeGreaterThan(
+      Date.now() + 50 * 60_000
+    )
+    const [integration] = await testDb
+      .select({ lastError: integrations.lastError })
+      .from(integrations)
+      .where(eq(integrations.id, row.id))
+    expect(integration.lastError).toContain(`${ERROR_PREFIX}Jira API error 500`)
   })
 
   it('does not believe a reported expiry that is not in the future', async () => {

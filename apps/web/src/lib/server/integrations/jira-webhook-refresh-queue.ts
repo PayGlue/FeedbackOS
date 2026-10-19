@@ -4,7 +4,9 @@
  * Atlassian expires a dynamic webhook 30 days after it was created or last
  * refreshed, and nothing else extends it. Left alone, status sync stops with no
  * error surfaced anywhere, so each webhook is refreshed ten days before its
- * expiry, and a replacement is registered when Jira reports the webhook gone.
+ * expiry. Jira ignores an unknown id on refresh, so a refresh is only believed
+ * once the webhook list shows the webhook, and a replacement is registered when
+ * it does not.
  *
  * ## Scheduling
  *
@@ -32,6 +34,7 @@ import { dueWithin, registerWorkspaceDeadline } from '@/lib/server/jobs/deadline
 import {
   deleteJiraWebhook,
   jiraProjectRef,
+  listJiraWebhookIds,
   refreshJiraWebhooks,
   registerJiraWebhook,
 } from '@/integrations/jira/server/webhook-registration'
@@ -178,7 +181,13 @@ async function refreshJiraWebhook(row: JiraStatusSyncRow, now: Date): Promise<Re
 
   if (webhookId) {
     const refreshed = await refreshJiraWebhooks(auth.accessToken, cloudId, [webhookId])
-    if (!refreshed.invalidWebhookIds.includes(webhookId)) {
+    // Jira ignores an id it does not recognise and still answers with success, so a
+    // refresh that reports no invalid id is only believed once the webhook list shows
+    // it. A list that cannot be read throws here, and the caller records a retry.
+    const listed =
+      !refreshed.invalidWebhookIds.includes(webhookId) &&
+      (await listJiraWebhookIds(auth.accessToken, cloudId)).has(webhookId)
+    if (listed) {
       // An expiry that is not in the future would make the webhook due on every
       // tick, so it is not believed; the documented lifetime is used instead.
       const reported = refreshed.expiresAt

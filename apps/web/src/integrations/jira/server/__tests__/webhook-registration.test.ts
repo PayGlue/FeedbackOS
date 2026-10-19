@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { jiraProjectRef, refreshJiraWebhooks, registerJiraWebhook } from '../webhook-registration'
+import {
+  jiraProjectRef,
+  listJiraWebhookIds,
+  refreshJiraWebhooks,
+  registerJiraWebhook,
+} from '../webhook-registration'
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -145,5 +150,33 @@ describe('registerJiraWebhook', () => {
     await expect(
       registerJiraWebhook('tok', 'cloud-1', 'https://app.example.com/hook', 'PROJ OR 1=1')
     ).rejects.toThrow('Invalid Jira project reference')
+  })
+})
+
+describe('listJiraWebhookIds', () => {
+  it('reads every page of the webhook list and returns each id as a string', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ values: [{ id: 1 }, { id: 2 }], isLast: false }))
+      .mockResolvedValueOnce(jsonResponse({ values: [{ id: 42 }], isLast: true }))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(fetchMock)
+
+    const ids = await listJiraWebhookIds('tok', 'cloud-1')
+
+    expect([...ids].sort()).toEqual(['1', '2', '42'])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [firstUrl, firstInit] = fetchMock.mock.calls[0]
+    expect(firstUrl).toBe(
+      'https://api.atlassian.com/ex/jira/cloud-1/rest/api/3/webhook?startAt=0&maxResults=100'
+    )
+    expect(firstInit.method).toBe('GET')
+    expect(firstInit.headers.Authorization).toBe('Bearer tok')
+    expect(fetchMock.mock.calls[1][0]).toContain('startAt=100')
+  })
+
+  it('throws when Jira cannot list the webhooks, so no refresh is taken as proven', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ message: 'nope' }, 500))
+
+    await expect(listJiraWebhookIds('tok', 'cloud-1')).rejects.toThrow('Jira API error 500')
   })
 })
