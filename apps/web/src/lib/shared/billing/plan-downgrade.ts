@@ -113,7 +113,7 @@ const RESOURCE: Record<PlanCapKey, { singular: string; plural: string; href: str
   maxHelpCenterLocales: {
     singular: 'help center language',
     plural: 'help center languages',
-    href: '/admin/settings/help-center',
+    href: '/admin/settings/help-center?tab=domains-languages',
   },
   maxStatusSubscribers: {
     singular: 'status subscriber',

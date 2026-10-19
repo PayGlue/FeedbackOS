@@ -100,7 +100,7 @@ describe('planDowngradeIssues', () => {
         cap: 3,
         message: 'You have 5 out of 3 help center languages',
         actionLabel: 'Remove 2 help center languages',
-        href: '/admin/settings/help-center',
+        href: '/admin/settings/help-center?tab=domains-languages',
       },
     ])
   })
