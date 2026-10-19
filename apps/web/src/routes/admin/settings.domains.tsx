@@ -118,7 +118,7 @@ function DomainsSettingsPage() {
     >
       {!cloudEnabled || !allowed ? (
         <p className="text-sm text-muted-foreground">
-          Custom domains are available only in a Quackback Cloud workspace.
+          Custom domains are not enabled for this workspace.
         </p>
       ) : (
         <>
