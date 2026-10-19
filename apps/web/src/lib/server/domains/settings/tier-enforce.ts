@@ -190,7 +190,7 @@ export async function enforceAiTokenBudget(): Promise<void> {
     message:
       status.cap === 0
         ? 'AI features are not included on your plan. Upgrade to enable them.'
-        : `You've used your AI token budget for ${period} (${status.used.toLocaleString()} of ${status.cap.toLocaleString()}). Upgrade to increase it.`,
+        : `AI usage for ${period} is used up. Upgrade your plan for more.`,
   })
 }
 
@@ -226,7 +226,11 @@ export async function emailBudgetAvailable(): Promise<boolean> {
   }
 }
 
-/** Pre-compose gate for billable outbound mail. Null = unlimited. */
+/**
+ * Pre-compose gate for broadcast mail (changelog and status-page sends), the
+ * only classes that draw on the monthly allowance. Sign-in, security,
+ * invitation and inbox mail never call this. Null = unlimited.
+ */
 export async function enforceEmailBudget(): Promise<void> {
   const limits = await getTierLimits()
   if (limits.emailsPerMonth === null) return
@@ -240,6 +244,6 @@ export async function enforceEmailBudget(): Promise<void> {
     message:
       limits.emailsPerMonth === 0
         ? 'Outbound email is not included on your plan. Upgrade to enable it.'
-        : `You've reached your email budget for this month (${used.toLocaleString()} of ${limits.emailsPerMonth.toLocaleString()}). Upgrade to increase it.`,
+        : 'Email sending for this month is used up. Upgrade your plan for more.',
   })
 }
