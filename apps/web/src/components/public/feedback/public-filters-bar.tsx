@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import {
   Squares2X2Icon,
@@ -8,8 +8,7 @@ import {
   ChatBubbleLeftRightIcon,
   UserIcon,
   UserGroupIcon,
-  PlusIcon,
-  ChevronRightIcon,
+  ChevronDownIcon,
   EyeIcon,
 } from '@heroicons/react/24/solid'
 import { cn } from '@/lib/shared/utils'
@@ -19,15 +18,6 @@ import { useTeamMembers } from '@/lib/client/hooks/use-team-members'
 import { useSegments } from '@/lib/client/hooks/use-segments-queries'
 import type { TeamMember } from '@/lib/shared/types'
 import type { SegmentListItem } from '@/lib/client/hooks/use-segments-queries'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { FilterChip, type FilterOption } from '@/components/shared/filter-chip'
 import type { PublicFeedbackFilters } from '@/lib/shared/types'
 import { PUBLIC_FEED_VIEWS, type PublicFeedView } from '@/lib/shared/types/filters'
@@ -44,6 +34,7 @@ import {
   STATUS_CATEGORY_ORDER,
   STATUS_GROUP_LABELS,
 } from './public-filters-bar-defaults'
+import { FilterPill, MoreButton } from './filter-pill'
 
 interface FilterBarBoard {
   id: string
@@ -51,7 +42,6 @@ interface FilterBarBoard {
   name: string
 }
 
-type FilterCategory = 'votes' | 'date' | 'response' | 'owner' | 'segment'
 type ChipType =
   'view' | 'board' | 'status' | 'tags' | 'votes' | 'date' | 'response' | 'owner' | 'segment'
 
@@ -68,11 +58,11 @@ const DATE_PRESET_LABELS: Record<DatePresetValue, { id: string; defaultMessage: 
 const RESPONDED_LABELS: Record<RespondedValue, { id: string; defaultMessage: string }> = {
   responded: {
     id: 'portal.feedback.filter.response.responded',
-    defaultMessage: 'Has team response',
+    defaultMessage: 'Replied',
   },
   unresponded: {
     id: 'portal.feedback.filter.response.unresponded',
-    defaultMessage: 'Awaiting team response',
+    defaultMessage: 'Awaiting reply',
   },
 }
 
@@ -187,283 +177,218 @@ export function PublicFiltersBar({
   )
 }
 
-interface AddFilterButtonProps {
+interface MoreFiltersProps {
   filters: PublicFeedbackFilters
   setFilters: (updates: Partial<PublicFeedbackFilters>) => void
+  /** Bigger pills in the phone sheet. */
+  size?: 'sm' | 'md'
+}
+
+/** Team members listed before the rest fold behind "N more". */
+const OWNERS_SHOWN = 8
+
+/**
+ * The panel offers fewer, wider steps than the chips accept, so each group
+ * fits one row. A link with another value still applies and shows its chip.
+ */
+const PANEL_DATE_PRESETS = DATE_PRESETS.filter((p) => p.daysAgo > 0)
+const PANEL_VOTE_THRESHOLDS = [10, 50, 100] as const
+
+function MoreGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div role="group" aria-label={label}>
+      <p className="px-1 pb-1.5 text-xs text-muted-foreground">{label}</p>
+      <div className="flex flex-wrap gap-1.5 px-1">{children}</div>
+    </div>
+  )
 }
 
 /**
- * Dashed "+ Add filter" pill for the less common filters (votes, date, team
- * response), at the foot of the filter panel.
+ * The less common filters (team response, date and votes, plus owner and
+ * segment for the team) folded under "More filters" at the foot of the
+ * panel. It starts open when one of them is on, so nothing applied hides.
+ * Each group holds one pick; picking the lit pill again clears it.
  */
-export function PublicFiltersAddButton({ filters, setFilters }: AddFilterButtonProps) {
+export function PublicMoreFilters({ filters, setFilters, size = 'sm' }: MoreFiltersProps) {
   const intl = useIntl()
-  const [open, setOpen] = useState(false)
-  const [activeCategory, setActiveCategory] = useState<FilterCategory | null>(null)
+  const contentId = useId()
   const { members, segments } = useTeamOnlyFilterOptions()
+  const onCount =
+    [filters.responded, filters.dateFrom, filters.minVotes, filters.owner].filter(Boolean).length +
+    (filters.segmentIds?.length ? 1 : 0)
+  const [open, setOpen] = useState(onCount > 0)
+  const [allOwnersShown, setAllOwnersShown] = useState(false)
 
-  const closePopover = () => {
-    setOpen(false)
-    setActiveCategory(null)
-  }
-
-  // Team-only categories are hidden entirely for non-privileged callers (empty
-  // option lists) and also hide individually when their option query is empty.
-  const showOwnerCategory = members.length > 0
-  const showSegmentCategory = segments.length > 0
-
-  const categories = useMemo<{ key: FilterCategory; label: string; icon: IconComponent }[]>(() => {
-    // Board, status and tags live in the filter panel; this menu holds the rest.
-    const list: { key: FilterCategory; label: string; icon: IconComponent }[] = []
-    list.push(
-      {
-        key: 'votes',
-        label: intl.formatMessage({
-          id: 'portal.feedback.filter.category.votes',
-          defaultMessage: 'Vote count',
-        }),
-        icon: ArrowTrendingUpIcon,
-      },
-      {
-        key: 'date',
-        label: intl.formatMessage({
-          id: 'portal.feedback.filter.category.date',
-          defaultMessage: 'Created date',
-        }),
-        icon: CalendarIcon,
-      },
-      {
-        key: 'response',
-        label: intl.formatMessage({
-          id: 'portal.feedback.filter.category.response',
-          defaultMessage: 'Team response',
-        }),
-        icon: ChatBubbleLeftRightIcon,
-      }
-    )
-    // Team-only categories, appended last and amber-tinted in the menu so they
-    // read as internal. Only rendered for post.view_private holders (the option
-    // lists are empty otherwise).
-    if (showOwnerCategory) {
-      list.push({
-        key: 'owner',
-        label: intl.formatMessage({
-          id: 'portal.feedback.filter.category.owner',
-          defaultMessage: 'Owner',
-        }),
-        icon: UserIcon,
-      })
-    }
-    if (showSegmentCategory) {
-      list.push({
-        key: 'segment',
-        label: intl.formatMessage({
-          id: 'portal.feedback.filter.category.segment',
-          defaultMessage: 'Segment',
-        }),
-        icon: UserGroupIcon,
-      })
-    }
-    return list
-  }, [intl, showOwnerCategory, showSegmentCategory])
+  const pickedDate = DATE_PRESETS.find((p) => getDateFromDaysAgo(p.daysAgo) === filters.dateFrom)
+  const shownMembers = allOwnersShown
+    ? members
+    : members.filter((m, i) => i < OWNERS_SHOWN || m.id === filters.owner)
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(isOpen) => {
-        setOpen(isOpen)
-        if (!isOpen) setActiveCategory(null)
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
+    <div className="px-3 py-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-1 py-2 text-sm font-medium text-foreground/80 hover:text-foreground"
+      >
+        {intl.formatMessage({ id: 'portal.feedback.filter.more', defaultMessage: 'More filters' })}
+        {onCount > 0 && (
+          <span className="rounded-full bg-foreground px-1.5 text-[11px] font-semibold leading-4 text-background tabular-nums">
+            {onCount}
+          </span>
+        )}
+        <ChevronDownIcon
+          aria-hidden
           className={cn(
-            'inline-flex items-center gap-1 px-2 py-0.5',
-            'rounded-full text-xs',
-            'border border-dashed border-muted-foreground/40',
-            'text-muted-foreground hover:text-foreground',
-            'hover:border-muted-foreground hover:bg-muted/30',
-            'transition-colors'
+            'ms-auto size-3.5 text-muted-foreground transition-transform',
+            open && 'rotate-180'
           )}
-        >
-          <PlusIcon className="h-3 w-3" />
-          <FormattedMessage id="portal.feedback.filter.addFilter" defaultMessage="Add filter" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-48 p-0">
-        {activeCategory === null ? (
-          <div className="py-1">
-            {categories.map((category) => {
-              const Icon = category.icon
-              const isInternal = category.key === 'owner' || category.key === 'segment'
-              return (
-                <button
-                  key={category.key}
-                  type="button"
-                  onClick={() => setActiveCategory(category.key)}
-                  className={cn(
-                    'w-full flex items-center justify-between gap-2 px-2.5 py-1.5',
-                    'text-xs text-left',
-                    'hover:bg-muted/50 transition-colors',
-                    isInternal && 'text-amber-700 dark:text-amber-500'
-                  )}
-                  aria-label={category.label}
-                >
-                  <span className="flex items-center gap-2">
-                    <Icon
-                      className={cn(
-                        'h-3.5 w-3.5',
-                        isInternal ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground'
-                      )}
-                    />
-                    {category.label}
-                  </span>
-                  <ChevronRightIcon className="h-3 w-3 text-muted-foreground" />
-                </button>
-              )
+        />
+      </button>
+      {open && (
+        <div id={contentId} className="space-y-3 pb-3 pt-1">
+          <MoreGroup
+            label={intl.formatMessage({
+              id: 'portal.feedback.filter.category.response',
+              defaultMessage: 'Team response',
             })}
-          </div>
-        ) : (
-          <div>
-            <button
-              type="button"
-              onClick={() => setActiveCategory(null)}
-              className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground border-b border-border/50"
-            >
-              <ChevronRightIcon className="h-2.5 w-2.5 rotate-180" />
-              <FormattedMessage id="portal.feedback.filter.back" defaultMessage="Back" />
-            </button>
-            <Command>
-              {/* Hide the search input for short, fixed-preset lists where
-                  filtering adds no value (votes / date / response). */}
-              {(activeCategory === 'owner' || activeCategory === 'segment') && (
-                <CommandInput
-                  placeholder={intl.formatMessage({
-                    id: 'portal.feedback.filter.search',
-                    defaultMessage: 'Search…',
+          >
+            {RESPONDED_OPTIONS.map(({ value }) => (
+              <FilterPill
+                key={value}
+                size={size}
+                pressed={filters.responded === value}
+                onClick={() =>
+                  setFilters({ responded: filters.responded === value ? undefined : value })
+                }
+              >
+                {intl.formatMessage(RESPONDED_LABELS[value])}
+              </FilterPill>
+            ))}
+          </MoreGroup>
+          <MoreGroup
+            label={intl.formatMessage({
+              id: 'portal.feedback.filter.date.postedWithin',
+              defaultMessage: 'Posted in the last',
+            })}
+          >
+            {PANEL_DATE_PRESETS.map((preset) => (
+              <FilterPill
+                key={preset.value}
+                size={size}
+                pressed={pickedDate?.value === preset.value}
+                onClick={() =>
+                  setFilters({
+                    dateFrom:
+                      pickedDate?.value === preset.value
+                        ? undefined
+                        : getDateFromDaysAgo(preset.daysAgo),
+                  })
+                }
+              >
+                {intl.formatMessage(
+                  {
+                    id: 'portal.feedback.filter.date.days',
+                    defaultMessage: '{count, plural, one {# day} other {# days}}',
+                  },
+                  { count: preset.daysAgo }
+                )}
+              </FilterPill>
+            ))}
+          </MoreGroup>
+          <MoreGroup
+            label={intl.formatMessage({
+              id: 'portal.feedback.filter.category.votes',
+              defaultMessage: 'Vote count',
+            })}
+          >
+            {PANEL_VOTE_THRESHOLDS.map((value) => (
+              <FilterPill
+                key={value}
+                size={size}
+                pressed={filters.minVotes === value}
+                onClick={() =>
+                  setFilters({ minVotes: filters.minVotes === value ? undefined : value })
+                }
+              >
+                {intl.formatNumber(value)}+
+              </FilterPill>
+            ))}
+          </MoreGroup>
+          {(members.length > 0 || segments.length > 0) && (
+            <div className="space-y-3 rounded-lg bg-amber-50 p-2 dark:bg-amber-500/10">
+              <p className="px-1 text-xs font-medium text-amber-800 dark:text-amber-400">
+                {intl.formatMessage({
+                  id: 'portal.feedback.filter.internal.tooltip',
+                  defaultMessage: 'Only your team sees this',
+                })}
+              </p>
+              {members.length > 0 && (
+                <MoreGroup
+                  label={intl.formatMessage({
+                    id: 'portal.feedback.filter.category.owner',
+                    defaultMessage: 'Owner',
                   })}
-                />
-              )}
-              <CommandList>
-                <CommandEmpty>
-                  <FormattedMessage
-                    id="portal.feedback.filter.noResults"
-                    defaultMessage="No results."
-                  />
-                </CommandEmpty>
-
-                {activeCategory === 'votes' && (
-                  <CommandGroup>
-                    {VOTE_THRESHOLDS.map((t) => (
-                      <CommandItem
-                        key={t.value}
-                        value={votesLabel(intl, t.value)}
-                        onSelect={() => {
-                          setFilters({ minVotes: t.value })
-                          closePopover()
-                        }}
-                      >
-                        {votesLabel(intl, t.value)}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-
-                {activeCategory === 'date' && (
-                  <CommandGroup>
-                    {DATE_PRESETS.map((p) => (
-                      <CommandItem
-                        key={p.value}
-                        value={intl.formatMessage(DATE_PRESET_LABELS[p.value])}
-                        onSelect={() => {
-                          setFilters({ dateFrom: getDateFromDaysAgo(p.daysAgo) })
-                          closePopover()
-                        }}
-                      >
-                        {intl.formatMessage(DATE_PRESET_LABELS[p.value])}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-
-                {activeCategory === 'response' && (
-                  <CommandGroup>
-                    {RESPONDED_OPTIONS.map((opt) => (
-                      <CommandItem
-                        key={opt.value}
-                        value={intl.formatMessage(RESPONDED_LABELS[opt.value])}
-                        onSelect={() => {
-                          setFilters({ responded: opt.value })
-                          closePopover()
-                        }}
-                      >
-                        {intl.formatMessage(RESPONDED_LABELS[opt.value])}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-
-                {activeCategory === 'owner' && (
-                  <CommandGroup>
-                    <CommandItem
-                      value={intl.formatMessage({
+                >
+                  {[
+                    {
+                      id: 'unassigned',
+                      label: intl.formatMessage({
                         id: 'portal.feedback.filter.owner.unassigned',
                         defaultMessage: 'Unassigned',
-                      })}
-                      onSelect={() => {
-                        setFilters({ owner: 'unassigned' })
-                        closePopover()
+                      }),
+                    },
+                    ...shownMembers.map((m) => ({ id: m.id, label: m.name || m.email || m.id })),
+                  ].map(({ id, label }) => (
+                    <FilterPill
+                      key={id}
+                      size={size}
+                      title={label}
+                      pressed={filters.owner === id}
+                      onClick={() => setFilters({ owner: filters.owner === id ? undefined : id })}
+                    >
+                      {label}
+                    </FilterPill>
+                  ))}
+                  {members.length > shownMembers.length && (
+                    <MoreButton
+                      hidden={members.length - shownMembers.length}
+                      onClick={() => setAllOwnersShown(true)}
+                    />
+                  )}
+                </MoreGroup>
+              )}
+              {segments.length > 0 && (
+                <MoreGroup
+                  label={intl.formatMessage({
+                    id: 'portal.feedback.filter.category.segment',
+                    defaultMessage: 'Segment',
+                  })}
+                >
+                  {segments.map((segment) => (
+                    <FilterPill
+                      key={segment.id}
+                      size={size}
+                      color={segment.color}
+                      title={segment.name}
+                      pressed={filters.segmentIds?.includes(segment.id) ?? false}
+                      onClick={() => {
+                        const next = toggleItem(filters.segmentIds, segment.id)
+                        setFilters({ segmentIds: next?.length ? next : undefined })
                       }}
                     >
-                      <span className="text-muted-foreground">
-                        <FormattedMessage
-                          id="portal.feedback.filter.owner.unassigned"
-                          defaultMessage="Unassigned"
-                        />
-                      </span>
-                    </CommandItem>
-                    {members.map((member) => (
-                      <CommandItem
-                        key={member.id}
-                        value={member.name || member.email || member.id}
-                        onSelect={() => {
-                          setFilters({ owner: member.id })
-                          closePopover()
-                        }}
-                      >
-                        {member.name || member.email}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-
-                {activeCategory === 'segment' && (
-                  <CommandGroup>
-                    {segments.map((segment) => (
-                      <CommandItem
-                        key={segment.id}
-                        value={segment.name}
-                        onSelect={() => {
-                          setFilters({ segmentIds: toggleItem(filters.segmentIds, segment.id) })
-                          closePopover()
-                        }}
-                      >
-                        <span
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{ backgroundColor: segment.color }}
-                        />
-                        {segment.name}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-              </CommandList>
-            </Command>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+                      {segment.name}
+                    </FilterPill>
+                  ))}
+                </MoreGroup>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -646,7 +571,6 @@ function buildActiveChips(args: {
       id: String(t.value),
       label: votesLabel(intl, t.value),
     }))
-    const matched = VOTE_THRESHOLDS.find((t) => t.value === filters.minVotes)
     chips.push({
       key: 'minVotes',
       type: 'votes',
@@ -654,7 +578,7 @@ function buildActiveChips(args: {
         id: 'portal.feedback.filter.chip.votes',
         defaultMessage: 'Min votes:',
       }),
-      value: matched ? votesLabel(intl, matched.value) : `${filters.minVotes}+`,
+      value: `${intl.formatNumber(filters.minVotes)}+`,
       valueId: String(filters.minVotes),
       options: opts,
       onChange: (id) => setFilters({ minVotes: parseInt(id, 10) }),

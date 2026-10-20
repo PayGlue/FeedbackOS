@@ -10,23 +10,20 @@ test.describe('Public Post List — chip filters', () => {
     await expect(page.getByRole('region', { name: 'Active filters' })).toHaveCount(0)
   })
 
-  test('Filter → Vote count → 5+ filters posts and adds a chip', async ({ page }) => {
-    await page.getByRole('button', { name: /^add filter$/i }).click()
-    await page.getByRole('button', { name: /^Vote count$/i }).click()
-    await page.getByRole('option', { name: '5+ votes', exact: true }).click()
+  test('More filters → 10+ votes filters posts and adds a chip', async ({ page }) => {
+    await page.getByRole('button', { name: /^more filters$/i }).click()
+    await page.getByRole('button', { name: '10+', exact: true }).click()
 
-    await expect(page).toHaveURL(/[?&]minVotes=5/, { timeout: 5000 })
+    await expect(page).toHaveURL(/[?&]minVotes=10/, { timeout: 5000 })
     await expect(page.getByText(/min votes:/i)).toBeVisible()
   })
 
   test('Clear all wipes filters', async ({ page }) => {
-    await page.getByRole('button', { name: /^add filter$/i }).click()
-    await page.getByRole('button', { name: /^Vote count$/i }).click()
-    await page.getByRole('option', { name: '5+ votes', exact: true }).click()
-
-    await page.getByRole('button', { name: /^add filter$/i }).click()
-    await page.getByRole('button', { name: /^Created date$/i }).click()
-    await page.getByRole('option', { name: /last 7 days/i }).click()
+    await page.getByRole('button', { name: /^more filters$/i }).click()
+    await page.getByRole('button', { name: '10+', exact: true }).click()
+    await expect(page).toHaveURL(/[?&]minVotes=10/, { timeout: 5000 })
+    await page.getByRole('button', { name: '7 days', exact: true }).click()
+    await expect(page).toHaveURL(/[?&]dateFrom=/, { timeout: 5000 })
 
     await page.getByRole('button', { name: /clear all/i }).click()
 
@@ -48,11 +45,11 @@ test.describe('Public Post List — chip filters', () => {
 
     await expect(page).toHaveURL(/[?&]search=/, { timeout: 5000 })
     await expect(page.getByRole('link', { name: title, exact: true })).toBeVisible()
-    // The panel ticks every status while searching.
+    // Search looks past the default scope without any status picked.
     await expect(
       page
         .getByRole('group', { name: 'Status', exact: true })
-        .getByRole('checkbox', { name: /Complete/ })
-    ).toBeChecked()
+        .getByRole('button', { name: /^Complete/ })
+    ).toHaveAttribute('aria-pressed', 'false')
   })
 })

@@ -12,7 +12,7 @@ import { PortalFilterPanel } from '@/components/public/feedback/portal-filter-pa
 import { PortalFilterSheet } from '@/components/public/feedback/portal-filter-sheet'
 import { FeedbackToolbar } from '@/components/public/feedback/feedback-toolbar'
 import {
-  PublicFiltersAddButton,
+  PublicMoreFilters,
   PublicFiltersBar,
 } from '@/components/public/feedback/public-filters-bar'
 import { usePublicFilters } from '@/components/public/feedback/use-public-filters'
@@ -233,7 +233,13 @@ export function FeedbackContainer({
       counts={facetCounts}
       showViews={isRealUser}
       layout={layout}
-      footer={<PublicFiltersAddButton filters={filters} setFilters={setFilters} />}
+      footer={
+        <PublicMoreFilters
+          filters={filters}
+          setFilters={setFilters}
+          size={layout === 'sheet' ? 'md' : 'sm'}
+        />
+      }
     />
   )
 
@@ -399,7 +405,7 @@ export function FeedbackContainer({
             currentSearch={activeSearch}
             onSearchChange={handleSearchChange}
             filterButton={
-              <div className="md:hidden">
+              <div className="lg:hidden">
                 <PortalFilterSheet activeCount={filterCount} footer={poweredBy}>
                   {filterPanel('sheet')}
                 </PortalFilterSheet>

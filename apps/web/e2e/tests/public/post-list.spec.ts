@@ -999,7 +999,7 @@ test.describe('Post List - Filter Result Verification', () => {
     await page.waitForLoadState('networkidle')
 
     const status = page.getByRole('group', { name: 'Status', exact: true })
-    await status.getByRole('checkbox').first().click()
+    await status.getByRole('button').first().click()
     await expect(page).toHaveURL(/[?&]status=/, { timeout: 5000 })
     await page.waitForLoadState('networkidle')
     const filteredCount = await postCards.count()

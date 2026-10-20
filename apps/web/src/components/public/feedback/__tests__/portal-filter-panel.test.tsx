@@ -77,73 +77,67 @@ describe('PortalFilterPanel', () => {
     expect(setFilters).toHaveBeenCalledWith({ board: 'bugs' })
   })
 
+  it('folds boards past six behind "N more", keeping the picked one listed', () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({
+      id: `b${i}`,
+      slug: `board-${i}`,
+      name: `Board ${i}`,
+    }))
+    renderPanel({ boards: many, filters: { sort: 'trending', board: 'board-8' } })
+    const list = section('Boards')
+    expect(within(list).queryByRole('button', { name: 'Board 7' })).not.toBeInTheDocument()
+    expect(within(list).getByRole('button', { name: 'Board 8' })).toBeInTheDocument()
+    fireEvent.click(within(list).getByRole('button', { name: '2 more' }))
+    expect(within(list).getByRole('button', { name: 'Board 7' })).toBeInTheDocument()
+  })
+
   it('hides Boards when there is only one board', () => {
     renderPanel({ boards: [boards[0]!] })
     expect(screen.queryByRole('group', { name: 'Boards' })).not.toBeInTheDocument()
   })
 
-  it('ticks what the feed shows: the active statuses by default', () => {
+  const statusPill = (name: string) =>
+    within(section('Status')).getByRole('button', { name: new RegExp(`^${name}`) })
+
+  it('lights no status by default, while the feed shows its default scope', () => {
     renderPanel()
-    expect(screen.getByRole('checkbox', { name: /Open/ })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Planned/ })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Complete/ })).not.toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Closed/ })).not.toBeChecked()
+    for (const pill of within(section('Status')).getAllByRole('button')) {
+      expect(pill).toHaveAttribute('aria-pressed', 'false')
+    }
   })
 
-  it('ticks every status while searching, since search looks everywhere', () => {
-    renderPanel({ filters: { sort: 'trending', search: 'dark' } })
-    for (const box of screen.getAllByRole('checkbox')) expect(box).toBeChecked()
-  })
-
-  it('adds a status to the default scope when ticked', () => {
+  it('narrows to a status on the first pick', () => {
     const { setFilters } = renderPanel()
-    fireEvent.click(screen.getByRole('checkbox', { name: /Complete/ }))
-    expect(setFilters).toHaveBeenCalledWith({ status: ['open', 'planned', 'complete'] })
-  })
-
-  it('drops a status from the default scope when unticked', () => {
-    const { setFilters } = renderPanel()
-    fireEvent.click(screen.getByRole('checkbox', { name: /Open/ }))
-    expect(setFilters).toHaveBeenCalledWith({ status: ['planned'] })
-  })
-
-  it('keeps the URL clean when the pick matches the default again', () => {
-    const { setFilters } = renderPanel({
-      filters: { sort: 'trending', status: ['open', 'planned', 'complete'] },
-    })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Complete/ }))
-    expect(setFilters).toHaveBeenCalledWith({ status: undefined })
-  })
-
-  it('"Only" shows just that status', () => {
-    const { setFilters } = renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: 'Show only Complete' }))
+    fireEvent.click(statusPill('Complete'))
     expect(setFilters).toHaveBeenCalledWith({ status: ['complete'] })
   })
 
   it('adds a status to the ones already picked, in workspace order', () => {
     const { setFilters } = renderPanel({ filters: { sort: 'trending', status: ['complete'] } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Open/ }))
+    expect(statusPill('Complete')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(statusPill('Open'))
     expect(setFilters).toHaveBeenCalledWith({ status: ['open', 'complete'] })
   })
 
   it('understands statuses named by id in the URL', () => {
     renderPanel({ filters: { sort: 'trending', status: ['s3'] } })
-    expect(screen.getByRole('checkbox', { name: /Complete/ })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Open/ })).not.toBeChecked()
+    expect(statusPill('Complete')).toHaveAttribute('aria-pressed', 'true')
+    expect(statusPill('Open')).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('goes back to the default when the last status is unticked', () => {
+  it('goes back to the default when the last status is unpicked', () => {
     const { setFilters } = renderPanel({ filters: { sort: 'trending', status: ['closed'] } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Closed/ }))
+    fireEvent.click(statusPill('Closed'))
     expect(setFilters).toHaveBeenCalledWith({ status: undefined })
   })
 
-  it('groups statuses as Active, Complete and Closed with counts', () => {
-    renderPanel()
-    const status = section('Status')
-    expect(within(status).getByText('Active')).toBeInTheDocument()
-    expect(within(status).getByText('9')).toBeInTheDocument()
+  it('lists statuses active first, then complete, then closed, with counts', () => {
+    renderPanel({ statuses: [...statuses].reverse() })
+    const names = within(section('Status'))
+      .getAllByRole('button')
+      .map((pill) => pill.getAttribute('title'))
+    expect(names).toEqual(['Planned', 'Open', 'Complete', 'Closed'])
+    expect(statusPill('Complete')).toHaveTextContent('9')
   })
 
   it('toggles tags and hides the section with fewer than two tags', () => {
@@ -157,7 +151,7 @@ describe('PortalFilterPanel', () => {
 
   it('shows no number for a row with no posts', () => {
     renderPanel({ counts: { ...counts, statuses: { ...counts.statuses, closed: 0 } } })
-    expect(screen.getByRole('checkbox', { name: 'Closed' })).toBeInTheDocument()
+    expect(within(section('Status')).getByRole('button', { name: 'Closed' })).toBeInTheDocument()
   })
 
   it('leaves out tags on no visible post, unless picked', () => {
@@ -180,7 +174,7 @@ describe('PortalFilterPanel', () => {
     renderPanel({ tags: many, counts: undefined })
     const list = section('Tags')
     expect(within(list).queryByRole('button', { name: 'Tag 14' })).not.toBeInTheDocument()
-    fireEvent.click(within(list).getByRole('button', { name: '3 more' }))
+    fireEvent.click(within(list).getByRole('button', { name: '7 more' }))
     expect(within(list).getByRole('button', { name: 'Tag 14' })).toBeInTheDocument()
   })
 

@@ -1,6 +1,4 @@
 import type { MessageDescriptor } from 'react-intl'
-import type { PostStatusEntity } from '@/lib/shared/db-types'
-import { feedShowsActiveOnly } from '@/lib/shared/types/filters'
 
 export {
   VOTE_THRESHOLDS,
@@ -27,18 +25,4 @@ export const STATUS_GROUP_LABELS: Record<
   active: { id: 'portal.feedback.filter.statusGroup.active', defaultMessage: 'Active' },
   complete: { id: 'portal.feedback.filter.statusGroup.complete', defaultMessage: 'Complete' },
   closed: { id: 'portal.feedback.filter.statusGroup.closed', defaultMessage: 'Closed' },
-}
-
-/**
- * The statuses the feed shows when none are picked: the active ones, or every
- * status while searching or in a view (see feedShowsActiveOnly).
- */
-export function impliedStatusSlugs(
-  statuses: Pick<PostStatusEntity, 'slug' | 'category'>[],
-  feed: { search?: string; view?: string }
-): string[] {
-  const inScope = feedShowsActiveOnly(feed)
-    ? statuses.filter((s) => (s.category ?? 'active') === 'active')
-    : statuses
-  return inScope.map((s) => s.slug)
 }

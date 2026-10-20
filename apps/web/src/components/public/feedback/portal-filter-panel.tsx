@@ -1,16 +1,12 @@
 import { useId, useState } from 'react'
 import { useIntl, type MessageDescriptor } from 'react-intl'
-import { CheckIcon } from '@heroicons/react/24/solid'
 import { cn } from '@/lib/shared/utils'
 import type { PublicFeedView } from '@/lib/shared/types/filters'
 import type { PublicFeedbackFilters } from '@/lib/shared/types'
 import type { PostStatusEntity, PostTag } from '@/lib/shared/db-types'
 import type { PublicPostFacetCounts } from '@/lib/shared/types/filters'
-import {
-  STATUS_CATEGORY_ORDER,
-  STATUS_GROUP_LABELS,
-  impliedStatusSlugs,
-} from './public-filters-bar-defaults'
+import { STATUS_CATEGORY_ORDER } from './public-filters-bar-defaults'
+import { FilterPill, MoreButton } from './filter-pill'
 
 interface PanelBoard {
   id: string
@@ -34,8 +30,9 @@ interface PortalFilterPanelProps {
   footer?: React.ReactNode
 }
 
-/** Tags listed before the rest fold behind "N more". */
-const TAGS_SHOWN = 12
+/** Boards and tags listed before the rest fold behind "N more". */
+const BOARDS_SHOWN = 6
+const TAGS_SHOWN = 8
 
 const VIEW_LABELS: Record<'all' | PublicFeedView, MessageDescriptor> = {
   all: { id: 'portal.feedback.panel.view.all', defaultMessage: 'All ideas' },
@@ -63,7 +60,7 @@ function Count({ value }: { value: number | undefined }) {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
   const headingId = useId()
   return (
     <div role="group" aria-labelledby={headingId} className="px-3 py-3">
@@ -74,80 +71,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         {title}
       </h2>
       {children}
-    </div>
-  )
-}
-
-function StatusGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  const labelId = useId()
-  return (
-    <div role="group" aria-labelledby={labelId} className="mb-1 last:mb-0">
-      <p id={labelId} className="px-1 pb-1 pt-1.5 text-xs text-muted-foreground">
-        {label}
-      </p>
-      {children}
-    </div>
-  )
-}
-
-function StatusRow({
-  status,
-  checked,
-  onToggle,
-  onOnly,
-  count,
-}: {
-  status: PostStatusEntity
-  checked: boolean
-  onToggle: () => void
-  /** Shows just this status. */
-  onOnly: () => void
-  count: number | undefined
-}) {
-  const intl = useIntl()
-  // A plain checkbox-role button: the whole row toggles, and it renders far
-  // less markup per status than the Base UI checkbox (the portal page weight
-  // budget counts every byte of this panel). "Only" sits over the count on
-  // hover or focus.
-  return (
-    <div className="group/status relative">
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={checked}
-        onClick={onToggle}
-        className="flex w-full items-center gap-2.5 rounded-md px-1 py-1 text-start text-sm hover:bg-muted/50"
-      >
-        <span
-          aria-hidden
-          className={cn(
-            'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
-            checked
-              ? 'border-primary bg-primary text-primary-foreground'
-              : 'border-muted-foreground/60'
-          )}
-        >
-          {checked && <CheckIcon className="size-3" />}
-        </span>
-        <span
-          className="size-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: status.color }}
-          aria-hidden
-        />
-        <span className="min-w-0 truncate text-foreground">{status.name}</span>
-        <Count value={count} />
-      </button>
-      <button
-        type="button"
-        onClick={onOnly}
-        aria-label={intl.formatMessage(
-          { id: 'portal.feedback.panel.statusOnlyLabel', defaultMessage: 'Show only {status}' },
-          { status: status.name }
-        )}
-        className="absolute inset-y-0.5 end-0.5 rounded px-1.5 text-xs text-muted-foreground opacity-0 bg-card hover:text-foreground focus-visible:opacity-100 group-hover/status:opacity-100"
-      >
-        {intl.formatMessage({ id: 'portal.feedback.panel.statusOnly', defaultMessage: 'Only' })}
-      </button>
     </div>
   )
 }
@@ -169,27 +92,22 @@ export function PortalFilterPanel({
   footer,
 }: PortalFilterPanelProps): React.ReactElement {
   const intl = useIntl()
+  const [allBoardsShown, setAllBoardsShown] = useState(false)
   const [allTagsShown, setAllTagsShown] = useState(false)
+  const pillSize = layout === 'sheet' ? 'md' : 'sm'
+  const countText = (value: number | undefined) => (value ? intl.formatNumber(value) : undefined)
 
-  // The ticks always show what the feed holds. With nothing picked that is
-  // the default scope: the active statuses, or every status while searching
-  // or in a view. The URL may name statuses by slug or (older links) by id.
+  // A lit pill is a status the visitor picked. With none lit the feed shows
+  // its default scope (the active statuses, or all of them while searching
+  // or in a view), so the first pick narrows to that status and later picks
+  // add to it. The URL may name statuses by slug or (older links) by id.
   const picked =
     filters.status?.map((value) => statuses.find((s) => s.id === value)?.slug ?? value) ?? []
-  const implied = impliedStatusSlugs(statuses, filters)
-  const shown = picked.length > 0 ? picked : implied
-
-  // A pick that matches the default scope is no pick, so the URL stays clean
-  // and no chip shows. Unticking the last status also goes back to it.
-  function pickStatuses(next: string[]): void {
-    const ordered = statuses.map((s) => s.slug).filter((slug) => next.includes(slug))
-    const isImplied =
-      ordered.length === implied.length && ordered.every((slug) => implied.includes(slug))
-    setFilters({ status: ordered.length === 0 || isImplied ? undefined : ordered })
-  }
 
   function toggleStatus(slug: string): void {
-    pickStatuses(shown.includes(slug) ? shown.filter((s) => s !== slug) : [...shown, slug])
+    const next = picked.includes(slug) ? picked.filter((s) => s !== slug) : [...picked, slug]
+    const ordered = statuses.map((s) => s.slug).filter((s) => next.includes(s))
+    setFilters({ status: ordered.length > 0 ? ordered : undefined })
   }
 
   function toggleTag(tagId: string): void {
@@ -201,7 +119,7 @@ export function PortalFilterPanel({
   }
 
   const showSection = showViews && (
-    <Section
+    <PanelSection
       key="show"
       title={intl.formatMessage({ id: 'portal.feedback.panel.show', defaultMessage: 'Show' })}
     >
@@ -222,11 +140,15 @@ export function PortalFilterPanel({
           )
         })}
       </div>
-    </Section>
+    </PanelSection>
   )
 
+  // The picked board stays listed when it is one of the folded ones.
+  const shownBoards = allBoardsShown
+    ? boards
+    : boards.filter((board, i) => i < BOARDS_SHOWN || board.slug === filters.board)
   const boardSection = boards.length > 1 && (
-    <Section
+    <PanelSection
       key="boards"
       title={intl.formatMessage({ id: 'portal.feedback.sidebar.boards', defaultMessage: 'Boards' })}
     >
@@ -244,7 +166,7 @@ export function PortalFilterPanel({
             })}
           </span>
         </button>
-        {boards.map((board) => (
+        {shownBoards.map((board) => (
           <button
             key={board.id}
             type="button"
@@ -256,37 +178,44 @@ export function PortalFilterPanel({
             <Count value={counts?.boards[board.slug]} />
           </button>
         ))}
+        {boards.length > shownBoards.length && (
+          <MoreButton
+            hidden={boards.length - shownBoards.length}
+            onClick={() => setAllBoardsShown(true)}
+            className="py-1.5"
+          />
+        )}
       </div>
-    </Section>
+    </PanelSection>
   )
 
+  const orderedStatuses = STATUS_CATEGORY_ORDER.flatMap((category) =>
+    statuses.filter((s) => (s.category ?? 'active') === category)
+  )
   const statusSection = (
-    <Section
+    <PanelSection
       key="status"
       title={intl.formatMessage({
         id: 'portal.feedback.filter.category.status',
         defaultMessage: 'Status',
       })}
     >
-      {STATUS_CATEGORY_ORDER.map((category) => {
-        const group = statuses.filter((s) => (s.category ?? 'active') === category)
-        if (group.length === 0) return null
-        return (
-          <StatusGroup key={category} label={intl.formatMessage(STATUS_GROUP_LABELS[category])}>
-            {group.map((status) => (
-              <StatusRow
-                key={status.id}
-                status={status}
-                checked={shown.includes(status.slug)}
-                onToggle={() => toggleStatus(status.slug)}
-                onOnly={() => pickStatuses([status.slug])}
-                count={counts?.statuses[status.slug]}
-              />
-            ))}
-          </StatusGroup>
-        )
-      })}
-    </Section>
+      <div className="flex flex-wrap gap-1.5 px-1">
+        {orderedStatuses.map((status) => (
+          <FilterPill
+            key={status.id}
+            pressed={picked.includes(status.slug)}
+            onClick={() => toggleStatus(status.slug)}
+            color={status.color}
+            count={countText(counts?.statuses[status.slug])}
+            size={pillSize}
+            title={status.name}
+          >
+            {status.name}
+          </FilterPill>
+        ))}
+      </div>
+    </PanelSection>
   )
 
   // Once the counts are in, tags on no visible post drop out (a picked tag
@@ -296,44 +225,32 @@ export function PortalFilterPanel({
   )
   const shownTags = allTagsShown ? usableTags : usableTags.slice(0, TAGS_SHOWN)
   const tagSection = usableTags.length > 1 && (
-    <Section
+    <PanelSection
       key="tags"
       title={intl.formatMessage({ id: 'portal.postDetail.metadata.tags', defaultMessage: 'Tags' })}
     >
       <div className="flex flex-wrap gap-1.5 px-1">
-        {shownTags.map((tag) => {
-          const active = filters.tagIds?.includes(tag.id) ?? false
-          return (
-            <button
-              key={tag.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => toggleTag(tag.id)}
-              className="rounded px-2 py-0.5 text-xs font-medium"
-              style={{
-                backgroundColor: tag.color + (active ? '40' : '1a'),
-                color: tag.color,
-                boxShadow: active ? `inset 0 0 0 1px ${tag.color}` : undefined,
-              }}
-            >
-              {tag.name}
-            </button>
-          )
-        })}
-        {usableTags.length > shownTags.length && (
-          <button
-            type="button"
-            onClick={() => setAllTagsShown(true)}
-            className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+        {shownTags.map((tag) => (
+          <FilterPill
+            key={tag.id}
+            pressed={filters.tagIds?.includes(tag.id) ?? false}
+            onClick={() => toggleTag(tag.id)}
+            color={tag.color}
+            dot="square"
+            size={pillSize}
+            title={tag.name}
           >
-            {intl.formatMessage(
-              { id: 'portal.feedback.panel.moreTags', defaultMessage: '{count} more' },
-              { count: usableTags.length - shownTags.length }
-            )}
-          </button>
+            {tag.name}
+          </FilterPill>
+        ))}
+        {usableTags.length > shownTags.length && (
+          <MoreButton
+            hidden={usableTags.length - shownTags.length}
+            onClick={() => setAllTagsShown(true)}
+          />
         )}
       </div>
-    </Section>
+    </PanelSection>
   )
 
   const sections =
@@ -350,7 +267,7 @@ export function PortalFilterPanel({
       )}
     >
       {sections}
-      {footer && <div className="px-4 py-3">{footer}</div>}
+      {footer}
     </div>
   )
 }

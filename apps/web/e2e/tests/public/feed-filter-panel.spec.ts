@@ -6,28 +6,36 @@ test.describe('Portal feed filter panel', () => {
     await page.waitForLoadState('networkidle')
   })
 
-  test('the ticks show the default scope, and Only picks one status', async ({ page }) => {
+  test('no status is lit by default, and the first pick narrows to it', async ({ page }) => {
     const status = page.getByRole('group', { name: 'Status', exact: true })
-    await expect(status.getByRole('checkbox', { name: /Open/ })).toBeChecked()
-    await expect(status.getByRole('checkbox', { name: /Complete/ })).not.toBeChecked()
+    const open = status.getByRole('button', { name: /^Open/ })
+    const complete = status.getByRole('button', { name: /^Complete/ })
+    await expect(open).toHaveAttribute('aria-pressed', 'false')
 
-    await status.getByRole('checkbox', { name: /Complete/ }).hover()
-    await status.getByRole('button', { name: 'Show only Complete' }).click()
+    await complete.click()
 
     await expect(page).toHaveURL(/[?&]status=/, { timeout: 5000 })
-    await expect(status.getByRole('checkbox', { name: /Complete/ })).toBeChecked()
-    await expect(status.getByRole('checkbox', { name: /Open/ })).not.toBeChecked()
+    await expect(complete).toHaveAttribute('aria-pressed', 'true')
+    await expect(open).toHaveAttribute('aria-pressed', 'false')
     const filters = page.getByRole('region', { name: 'Active filters' })
     await expect(filters.getByText('Status:')).toHaveCount(1)
     await expect(page.locator('[data-post-id]').first()).toContainText('Complete')
   })
 
-  test('ticking Complete adds shipped ideas to the feed', async ({ page }) => {
+  test('a second pick adds to the first', async ({ page }) => {
     const status = page.getByRole('group', { name: 'Status', exact: true })
-    await status.getByRole('checkbox', { name: /Complete/ }).click()
+    await status.getByRole('button', { name: /^Open/ }).click()
     await expect(page).toHaveURL(/[?&]status=/, { timeout: 5000 })
-    await expect(status.getByRole('checkbox', { name: /Open/ })).toBeChecked()
-    await expect(status.getByRole('checkbox', { name: /Complete/ })).toBeChecked()
+    await status.getByRole('button', { name: /^Complete/ }).click()
+    await expect(page).toHaveURL(/complete/, { timeout: 5000 })
+    await expect(status.getByRole('button', { name: /^Open/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    await expect(status.getByRole('button', { name: /^Complete/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
   })
 
   test('picking a board narrows the feed and shows counts', async ({ page }) => {
@@ -42,11 +50,11 @@ test.describe('Portal feed filter panel', () => {
   test('counts follow the other filters', async ({ page }) => {
     const open = page
       .getByRole('group', { name: 'Status', exact: true })
-      .getByRole('checkbox', { name: /Open/ })
+      .getByRole('button', { name: /^Open/ })
     await expect(open).toHaveText(/\d$/)
     await page.getByRole('searchbox', { name: 'Search ideas' }).fill('xyzzy_no_such_idea')
     await expect(page).toHaveURL(/[?&]search=/, { timeout: 5000 })
-    // A row with no posts shows no number.
+    // A pill with no posts shows no number.
     await expect(open).not.toHaveText(/\d$/, { timeout: 5000 })
   })
 
