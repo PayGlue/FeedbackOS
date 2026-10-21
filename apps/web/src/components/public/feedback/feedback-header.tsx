@@ -10,6 +10,9 @@ const FeedbackHeaderAnimated = lazy(() =>
   import('./feedback-header-animated').then((m) => ({ default: m.FeedbackHeaderAnimated }))
 )
 
+/** The longest title the composer takes; the loading composer holds to it too. */
+export const TITLE_MAX_LENGTH = 200
+
 interface FallbackProps {
   /**
    * Makes the shell typeable (the loading feed's composer): the title and a
@@ -35,6 +38,7 @@ export function FeedbackHeaderFallback({ title, onTitleChange, onFocus }: Fallba
             defaultMessage: "What's your idea?",
           })}
           readOnly={!onTitleChange}
+          maxLength={TITLE_MAX_LENGTH}
           value={onTitleChange ? title : undefined}
           onChange={onTitleChange && ((event) => onTitleChange(event.target.value))}
           onFocus={onFocus}
