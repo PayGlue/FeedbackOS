@@ -886,7 +886,7 @@
     },
     "sweep:doc:anon:/changelog": {
       "dbQueries": 0,
-      "htmlKB": 21.7
+      "htmlKB": 23.4
     },
     "sweep:ui:anon:/changelog": {
       "dbQueries": 6,
@@ -899,7 +899,7 @@
     },
     "sweep:doc:anon:/hc": {
       "dbQueries": 3,
-      "htmlKB": 26.3
+      "htmlKB": 28
     },
     "sweep:ui:anon:/hc": {
       "dbQueries": 3,
@@ -912,7 +912,7 @@
     },
     "sweep:doc:anon:/support": {
       "dbQueries": 0,
-      "htmlKB": 22
+      "htmlKB": 23.7
     },
     "sweep:ui:anon:/support": {
       "dbQueries": 0,
@@ -925,7 +925,7 @@
     },
     "sweep:doc:anon:/notifications": {
       "dbQueries": 0,
-      "htmlKB": 24.8
+      "htmlKB": 26.5
     },
     "sweep:ui:anon:/notifications": {
       "dbQueries": 0,
@@ -964,7 +964,7 @@
     },
     "sweep:doc:admin:/notifications": {
       "dbQueries": 5,
-      "htmlKB": 29
+      "htmlKB": 30.7
     },
     "sweep:ui:admin:/notifications": {
       "dbQueries": 18,
@@ -977,7 +977,7 @@
     },
     "sweep:doc:admin:/support": {
       "dbQueries": 5,
-      "htmlKB": 28.3
+      "htmlKB": 30
     },
     "sweep:ui:admin:/support": {
       "dbQueries": 10,
