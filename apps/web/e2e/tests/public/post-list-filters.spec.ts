@@ -18,6 +18,22 @@ test.describe('Public Post List — chip filters', () => {
     await expect(page.getByText(/min votes:/i)).toBeVisible()
   })
 
+  test('a chip opens its pills to change the filter in place', async ({ page }) => {
+    await page.goto(`/?status=${encodeURIComponent(JSON.stringify(['open']))}`)
+    await page.waitForLoadState('networkidle')
+    const chips = page.getByRole('region', { name: 'Active filters' })
+    await chips.getByRole('button', { name: /^Status:/ }).click()
+    const editor = page.getByRole('dialog', { name: 'Status' })
+    await editor.getByRole('button', { name: /^Planned/ }).click()
+
+    await expect(page).toHaveURL(/planned/, { timeout: 5000 })
+    await expect(editor).toBeVisible()
+    await expect(editor.getByRole('button', { name: /^Planned/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  })
+
   test('Clear all wipes filters', async ({ page }) => {
     await page.getByRole('button', { name: /^more filters$/i }).click()
     await page.getByRole('button', { name: '10+', exact: true }).click()

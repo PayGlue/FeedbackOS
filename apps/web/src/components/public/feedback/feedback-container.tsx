@@ -466,6 +466,7 @@ export function FeedbackContainer({
               statuses={statuses}
               tags={tags}
               boards={boards}
+              counts={facetCounts}
             />
           </div>
           {facetCounts && (
