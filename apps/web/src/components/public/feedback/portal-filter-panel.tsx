@@ -34,14 +34,14 @@ interface PortalFilterPanelProps {
 const BOARDS_SHOWN = 6
 const TAGS_SHOWN = 8
 
-const VIEW_LABELS: Record<'all' | PublicFeedView, MessageDescriptor> = {
+export const VIEW_LABELS: Record<'all' | PublicFeedView, MessageDescriptor> = {
   all: { id: 'portal.feedback.panel.view.all', defaultMessage: 'All ideas' },
   mine: { id: 'portal.feedback.panel.view.mine', defaultMessage: 'My ideas' },
   voted: { id: 'portal.feedback.panel.view.voted', defaultMessage: 'Voted' },
   following: { id: 'portal.feedback.panel.view.following', defaultMessage: 'Following' },
 }
 
-const rowClass = (active: boolean) =>
+export const rowClass = (active: boolean) =>
   cn(
     'flex w-full max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-start text-sm transition-colors',
     active
@@ -60,7 +60,7 @@ function Count({ value }: { value: number | undefined }) {
   )
 }
 
-function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
+export function PanelSection({ title, children }: { title: string; children: React.ReactNode }) {
   const headingId = useId()
   return (
     <div role="group" aria-labelledby={headingId} className="px-3 py-3">

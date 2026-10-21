@@ -5,6 +5,8 @@ import { z } from 'zod'
 import { ViewerPortalNoBoards } from '@/components/public/portal-no-boards'
 import { FeedbackContainer } from '@/components/public/feedback/feedback-container'
 import { PortalWelcomeCard } from '@/components/public/feedback/portal-welcome-card'
+import { PortalFeedSkeleton } from '@/components/public/feedback/portal-feed-skeleton'
+import { PortalPoweredBy } from '@/components/public/feedback/portal-powered-by'
 import { usePreviewWelcomeCard } from '@/components/public/preview-draft-context'
 import { portalQueries, useSeedPortalStatusesCache } from '@/lib/client/queries/portal'
 import { isProductEnabled } from '@/lib/shared/types/settings'
@@ -135,12 +137,22 @@ export const Route = createFileRoute('/_portal/')({
 })
 
 function PublicPortalPage() {
+  const { showPoweredBy } = Route.useLoaderData()
+  const settings = useWorkspaceSettings()
   return (
     <div className="mx-auto max-w-6xl w-full px-4 sm:px-6 py-6">
       {/* Hero renders immediately (context-only, no feed dependency). */}
       <PortalHero />
       {/* Only the feed region suspends on the streamed portalData query. */}
-      <Suspense fallback={<PortalFeedSkeleton />}>
+      <Suspense
+        fallback={
+          <PortalFeedSkeleton
+            poweredBy={
+              showPoweredBy ? <PortalPoweredBy workspaceSlug={settings?.slug ?? ''} /> : null
+            }
+          />
+        }
+      >
         <PortalFeed />
       </Suspense>
     </div>
@@ -237,33 +249,5 @@ function PortalFeed() {
       searchMode={'searchMode' in portalData.posts ? portalData.posts.searchMode : undefined}
       showPoweredBy={showPoweredBy}
     />
-  )
-}
-
-/**
- * Feed placeholder shown while the streamed portalData query resolves. Matches
- * the feed's list rhythm (toolbar band + a few PostCard-height rows) so the
- * layout doesn't jump when the real feed swaps in.
- */
-function PortalFeedSkeleton() {
-  return (
-    <div className="py-6" aria-hidden="true">
-      <div className="flex gap-6 lg:gap-8">
-        <div className="flex-1 min-w-0 space-y-3">
-          <div className="h-10 rounded-lg bg-muted/60 animate-pulse" />
-          <div className="mt-5 space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-24 rounded-lg border border-border/40 bg-muted/40 animate-pulse"
-              />
-            ))}
-          </div>
-        </div>
-        <div className="hidden md:block w-56 lg:w-64 shrink-0 space-y-3">
-          <div className="h-32 rounded-lg bg-muted/40 animate-pulse" />
-        </div>
-      </div>
-    </div>
   )
 }

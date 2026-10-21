@@ -10,7 +10,7 @@ const FeedbackHeaderAnimated = lazy(() =>
   import('./feedback-header-animated').then((m) => ({ default: m.FeedbackHeaderAnimated }))
 )
 
-function FeedbackHeaderFallback() {
+export function FeedbackHeaderFallback() {
   const intl = useIntl()
   return (
     <div className="bg-card border border-border rounded-lg mb-5 shadow-sm overflow-hidden">

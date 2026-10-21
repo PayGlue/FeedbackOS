@@ -34,6 +34,31 @@ test.describe('Public Post List — chip filters', () => {
     )
   })
 
+  test('while the feed loads, the compose card, sorting and search are already there', async ({
+    page,
+  }) => {
+    await page.goto('/changelog')
+    await page.waitForLoadState('networkidle')
+    let release = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    // Hold back only the feed's data (fetchPortalData), not the route.
+    await page.route(/_serverFn\/.*ZmV0Y2hQb3J0YWxEYXRh/, async (route) => {
+      await held
+      await route.continue()
+    })
+    await page.getByRole('link', { name: 'Feedback' }).first().click()
+
+    await expect(page.getByTestId('portal-feed-skeleton')).toBeVisible()
+    await expect(page.getByPlaceholder("What's your idea?")).toBeVisible()
+    await expect(page.getByRole('searchbox', { name: 'Search ideas' })).toBeVisible()
+    await page.getByRole('button', { name: 'Top', exact: true }).click()
+    await expect(page).toHaveURL(/[?&]sort=top/)
+
+    release()
+    await expect(page.locator('[data-post-id]').first()).toBeVisible()
+    await expect(page.getByTestId('portal-feed-skeleton')).toHaveCount(0)
+  })
+
   test('Clear all wipes filters', async ({ page }) => {
     await page.getByRole('button', { name: /^more filters$/i }).click()
     await page.getByRole('button', { name: '10+', exact: true }).click()
