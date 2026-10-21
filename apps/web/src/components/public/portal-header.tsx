@@ -447,12 +447,12 @@ function ThemeToggle() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
-  // Avoid hydration mismatch for theme toggle
+  // The saved choice is only known in the browser. Until then the button
+  // shows System, the default, so the header is complete on first paint and
+  // nothing shifts when the stored theme is read.
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  if (!mounted) return null
 
   const themeOptions = [
     {
@@ -472,7 +472,7 @@ function ThemeToggle() {
     },
   ] as const
 
-  const currentTheme = themeOptions.find((t) => t.value === theme) ?? themeOptions[0]
+  const currentTheme = (mounted && themeOptions.find((t) => t.value === theme)) || themeOptions[0]
   const CurrentIcon = currentTheme.icon
 
   return (
@@ -493,7 +493,7 @@ function ThemeToggle() {
           <DropdownMenuItem
             key={t.value}
             onClick={() => setTheme(t.value)}
-            className={cn(theme === t.value && 'bg-accent')}
+            className={cn(mounted && theme === t.value && 'bg-accent')}
           >
             <t.icon className="me-2 h-4 w-4" />
             {t.label}
