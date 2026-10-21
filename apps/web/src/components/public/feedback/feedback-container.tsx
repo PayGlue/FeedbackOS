@@ -431,7 +431,7 @@ export function FeedbackContainer({
   }
 
   return (
-    <div className="py-6">
+    <div>
       <div className="flex gap-6 lg:gap-8">
         <div className="flex-1 min-w-0">
           <FeedbackHeader

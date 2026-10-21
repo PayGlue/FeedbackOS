@@ -1,5 +1,5 @@
 import { nameInitial } from '@/lib/shared/utils/initial'
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Link, useRouter, useRouterState, useRouteContext } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
 import type { PortalNavItem } from './portal-header-nav'
@@ -69,6 +69,7 @@ export function PortalHeader({
 }: PortalHeaderProps) {
   const intl = useIntl()
   const router = useRouter()
+  const headerRef = useStickyHeaderHeight()
   const queryClient = useQueryClient()
   // Each part is selected: the route context is a new object after every
   // navigation, while these stay the same until the viewer or workspace
@@ -284,7 +285,10 @@ export function PortalHeader({
   // Two-row layout: Logo + Auth on top, Navigation below
   return (
     // A banner landmark, so the logo and account controls sit in one.
-    <header className="portal-header w-full py-2 border-b border-[var(--header-border)] bg-[var(--header-background)] shadow-sm">
+    <header
+      ref={headerRef}
+      className="portal-header sticky top-0 z-40 w-full py-2 border-b border-[var(--header-border)] bg-[var(--header-background)] shadow-sm"
+    >
       {/* Row 1: Logo + Name + Auth */}
       <div>
         <div className="max-w-6xl mx-auto w-full px-4 sm:px-6">
@@ -440,6 +444,30 @@ const NavTab = memo(
     prev.item.messageId === next.item.messageId &&
     prev.item.defaultMessage === next.item.defaultMessage
 )
+
+/**
+ * The header sticks to the top of the page. Its height (the logo, the tabs and
+ * any custom CSS set it) is published as --portal-header-height, so what else
+ * sticks sits below it and anchor jumps land clear of it.
+ */
+function useStickyHeaderHeight() {
+  const ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const header = ref.current
+    if (!header) return
+    const root = document.documentElement
+    const publish = () =>
+      root.style.setProperty('--portal-header-height', `${header.offsetHeight}px`)
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(header)
+    return () => {
+      observer.disconnect()
+      root.style.removeProperty('--portal-header-height')
+    }
+  }, [])
+  return ref
+}
 
 /** Compact theme toggle dropdown for the header. */
 function ThemeToggle() {

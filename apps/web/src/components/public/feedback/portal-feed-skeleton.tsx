@@ -151,7 +151,7 @@ export function PortalFeedSkeleton({ poweredBy }: { poweredBy?: React.ReactNode 
   const sort = filters.sort ?? 'trending'
 
   return (
-    <div className="py-6">
+    <div>
       <div className="flex gap-6 lg:gap-8">
         <div className="min-w-0 flex-1">
           <FeedbackHeaderFallback />
