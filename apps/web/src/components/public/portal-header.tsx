@@ -2,7 +2,7 @@ import { nameInitial } from '@/lib/shared/utils/initial'
 import { memo, useEffect, useRef, useState } from 'react'
 import { Link, useRouter, useRouterState, useRouteContext } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
-import type { PortalNavItem } from './portal-header-nav'
+import { isHelpPath, isTabActive, type PortalNavItem } from './portal-header-nav'
 import { usePortalNavItems } from './use-portal-nav-items'
 import { isPortalSupportSurfaceEnabled } from '@/lib/shared/support-surfaces'
 import { useIntl, FormattedMessage } from 'react-intl'
@@ -329,14 +329,6 @@ export function PortalHeader({
       </div>
     </header>
   )
-}
-
-const isHelpPath = (pathname: string) => pathname === '/hc' || pathname.startsWith('/hc/')
-
-function isTabActive(to: string, pathname: string): boolean {
-  if (to === '/') return pathname === '/' || /^\/[^/]+\/posts\//.test(pathname)
-  if (to === '/hc') return isHelpPath(pathname)
-  return pathname.startsWith(to)
 }
 
 const navItemClass = (isActive: boolean) =>
