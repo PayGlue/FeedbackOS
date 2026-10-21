@@ -8,7 +8,7 @@
   "journeys": {
     "doc:portal-home": {
       "dbQueries": 7,
-      "htmlKB": 107.6
+      "htmlKB": 121.7
     },
     "doc:portal-roadmap": {
       "dbQueries": 4,
@@ -16,7 +16,7 @@
     },
     "doc:portal-changelog": {
       "dbQueries": 0,
-      "htmlKB": 21.7
+      "htmlKB": 23.4
     },
     "doc:portal-post": {
       "dbQueries": 15,
@@ -24,7 +24,7 @@
     },
     "doc:help-center": {
       "dbQueries": 3,
-      "htmlKB": 26.3
+      "htmlKB": 28.0
     },
     "doc:widget": {
       "dbQueries": 19,
@@ -32,11 +32,11 @@
     },
     "doc:portal-home+session": {
       "dbQueries": 14,
-      "htmlKB": 127.5
+      "htmlKB": 142.5
     },
     "doc:portal-changelog+session": {
       "dbQueries": 5,
-      "htmlKB": 27.1
+      "htmlKB": 28.8
     },
     "doc:admin-feedback": {
       "dbQueries": 25,

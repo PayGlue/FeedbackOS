@@ -10,7 +10,17 @@ const FeedbackHeaderAnimated = lazy(() =>
   import('./feedback-header-animated').then((m) => ({ default: m.FeedbackHeaderAnimated }))
 )
 
-export function FeedbackHeaderFallback() {
+interface FallbackProps {
+  /**
+   * Makes the shell typeable (the loading feed's composer): the title and a
+   * click are kept and handed to the real composer once it loads.
+   */
+  title?: string
+  onTitleChange?: (title: string) => void
+  onFocus?: () => void
+}
+
+export function FeedbackHeaderFallback({ title, onTitleChange, onFocus }: FallbackProps = {}) {
   const intl = useIntl()
   return (
     <div className="bg-card border border-border rounded-lg mb-5 shadow-sm overflow-hidden">
@@ -24,7 +34,10 @@ export function FeedbackHeaderFallback() {
             id: 'portal.feedback.header.titlePlaceholder',
             defaultMessage: "What's your idea?",
           })}
-          readOnly
+          readOnly={!onTitleChange}
+          value={onTitleChange ? title : undefined}
+          onChange={onTitleChange && ((event) => onTitleChange(event.target.value))}
+          onFocus={onFocus}
           aria-label={intl.formatMessage({
             id: 'portal.feedback.header.titleLabel',
             defaultMessage: 'Feedback title',

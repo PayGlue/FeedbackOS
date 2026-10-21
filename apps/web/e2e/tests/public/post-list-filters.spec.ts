@@ -59,6 +59,28 @@ test.describe('Public Post List — chip filters', () => {
     await expect(page.getByTestId('portal-feed-skeleton')).toHaveCount(0)
   })
 
+  test('what is typed while the feed loads carries into the loaded feed', async ({ page }) => {
+    await page.goto('/changelog')
+    await page.waitForLoadState('networkidle')
+    let release = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    await page.route(/_serverFn\/.*ZmV0Y2hQb3J0YWxEYXRh/, async (route) => {
+      await held
+      await route.continue()
+    })
+    await page.getByRole('link', { name: 'Feedback' }).first().click()
+    await expect(page.getByTestId('portal-feed-skeleton')).toBeVisible()
+
+    await page.getByRole('searchbox', { name: 'Search ideas' }).fill('zap')
+    await page.getByPlaceholder("What's your idea?").fill('Dark mode')
+    // The feed arrives before the search's pause runs out.
+    release()
+
+    await expect(page).toHaveURL(/[?&]search=zap/, { timeout: 5000 })
+    await expect(page.getByRole('searchbox', { name: 'Search ideas' })).toHaveValue('zap')
+    await expect(page.getByPlaceholder("What's your idea?")).toHaveValue('Dark mode')
+  })
+
   test('Clear all wipes filters', async ({ page }) => {
     await page.getByRole('button', { name: /^more filters$/i }).click()
     await page.getByRole('button', { name: '10+', exact: true }).click()

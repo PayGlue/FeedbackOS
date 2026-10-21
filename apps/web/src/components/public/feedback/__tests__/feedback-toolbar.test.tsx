@@ -42,6 +42,30 @@ describe('FeedbackToolbar search', () => {
     expect(onSearchChange).toHaveBeenCalledWith('dark mode')
   })
 
+  it('carries a search still waiting on its pause from the loading feed to the loaded one', () => {
+    const toolbar = (handOffSearch: boolean, onSearchChange: (s: string) => void) => (
+      <IntlProvider locale="en">
+        <FeedbackToolbar
+          currentSort="trending"
+          onSortChange={vi.fn()}
+          onSearchChange={onSearchChange}
+          handOffSearch={handOffSearch}
+        />
+      </IntlProvider>
+    )
+    const loading = vi.fn()
+    const view = render(toolbar(true, loading))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zap' } })
+    view.unmount()
+    expect(loading).not.toHaveBeenCalled()
+
+    const loaded = vi.fn()
+    render(toolbar(false, loaded))
+    expect(screen.getByRole('searchbox')).toHaveProperty('value', 'zap')
+    act(() => vi.advanceTimersByTime(400))
+    expect(loaded).toHaveBeenCalledWith('zap')
+  })
+
   it('clears the search', () => {
     const { onSearchChange } = renderToolbar({ currentSearch: 'widget' })
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))

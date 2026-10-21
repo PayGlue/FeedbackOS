@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import { cn } from '@/lib/shared/utils'
 import { sortForSearch } from '@/lib/shared/types/filters'
@@ -9,6 +10,7 @@ import { PortalFilterSheet } from './portal-filter-sheet'
 import { PanelSection, VIEW_LABELS, rowClass } from './portal-filter-panel'
 import { PublicMoreFilters } from './public-filters-bar'
 import { usePublicFilters } from './use-public-filters'
+import { handOffFeedInput } from './feed-input-handoff'
 
 /** One placeholder bar, sized like the text it stands in for. */
 function Bone({ className }: { className?: string }) {
@@ -140,6 +142,35 @@ function PanelSkeleton({ layout }: { layout: 'sidebar' | 'sheet' }) {
 }
 
 /**
+ * The compose card while the feed loads. It takes typing; when the feed
+ * arrives the real composer opens with the title (or just opens, for a
+ * visitor who only clicked in).
+ */
+function LoadingComposer() {
+  const [title, setTitle] = useState('')
+  const touched = useRef(false)
+  const titleRef = useRef(title)
+  useEffect(() => {
+    titleRef.current = title
+  })
+  useEffect(
+    () => () => {
+      if (touched.current) handOffFeedInput({ composeTitle: titleRef.current })
+    },
+    []
+  )
+  return (
+    <FeedbackHeaderFallback
+      title={title}
+      onTitleChange={setTitle}
+      onFocus={() => {
+        touched.current = true
+      }}
+    />
+  )
+}
+
+/**
  * The portal feed while its streamed data resolves. Everything that doesn't
  * wait on that data is the real thing, and works: the compose card, sorting,
  * search, the Filters button and the panel's headings. Only the posts and
@@ -154,11 +185,12 @@ export function PortalFeedSkeleton({ poweredBy }: { poweredBy?: React.ReactNode 
     <div>
       <div className="flex gap-6 lg:gap-8">
         <div className="min-w-0 flex-1">
-          <FeedbackHeaderFallback />
+          <LoadingComposer />
           <FeedbackToolbar
             currentSort={sort}
             onSortChange={(next) => setFilters({ sort: next })}
             currentSearch={filters.search}
+            handOffSearch
             onSearchChange={(search) =>
               setFilters({
                 search: search || undefined,
