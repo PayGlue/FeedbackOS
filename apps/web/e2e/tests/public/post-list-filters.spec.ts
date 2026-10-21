@@ -53,6 +53,10 @@ test.describe('Public Post List — chip filters', () => {
     await expect(page.getByRole('searchbox', { name: 'Search ideas' })).toBeVisible()
     await page.getByRole('button', { name: 'Top', exact: true }).click()
     await expect(page).toHaveURL(/[?&]sort=top/)
+    await expect(page.getByRole('button', { name: 'All boards' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
 
     release()
     await expect(page.locator('[data-post-id]').first()).toBeVisible()

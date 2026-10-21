@@ -53,7 +53,8 @@ function CardSkeleton({ widths }: { widths: readonly [string, string, string] })
 
 /**
  * The filter panel without its data: the section headings, "All boards" and
- * the views are written out; the boards, statuses and tags they list are bars.
+ * the views are the real controls; the boards, statuses and tags they list
+ * are bars.
  */
 function PanelSkeleton({ layout }: { layout: 'sidebar' | 'sheet' }) {
   const intl = useIntl()
@@ -67,11 +68,20 @@ function PanelSkeleton({ layout }: { layout: 'sidebar' | 'sheet' }) {
       title={intl.formatMessage({ id: 'portal.feedback.panel.show', defaultMessage: 'Show' })}
     >
       <div className="space-y-1">
-        {(['all', 'mine', 'voted', 'following'] as const).map((view) => (
-          <div key={view} className={rowClass((filters.view ?? 'all') === view)}>
-            <span className="truncate">{intl.formatMessage(VIEW_LABELS[view])}</span>
-          </div>
-        ))}
+        {(['all', 'mine', 'voted', 'following'] as const).map((view) => {
+          const active = (filters.view ?? 'all') === view
+          return (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setFilters({ view: view === 'all' ? undefined : view })}
+              className={rowClass(active)}
+            >
+              <span className="truncate">{intl.formatMessage(VIEW_LABELS[view])}</span>
+            </button>
+          )
+        })}
       </div>
     </PanelSection>
   )
@@ -81,14 +91,19 @@ function PanelSkeleton({ layout }: { layout: 'sidebar' | 'sheet' }) {
       title={intl.formatMessage({ id: 'portal.feedback.sidebar.boards', defaultMessage: 'Boards' })}
     >
       <div className="space-y-1">
-        <div className={rowClass(!filters.board)}>
+        <button
+          type="button"
+          aria-pressed={!filters.board}
+          onClick={() => setFilters({ board: undefined })}
+          className={rowClass(!filters.board)}
+        >
           <span className="truncate">
             {intl.formatMessage({
               id: 'portal.feedback.panel.allBoards',
               defaultMessage: 'All boards',
             })}
           </span>
-        </div>
+        </button>
         {BOARD_WIDTHS.map((width, i) => (
           <div key={i} className="flex h-8 items-center px-3">
             <Bone className={cn('h-3.5', width)} />
