@@ -16,17 +16,21 @@ const FRESH_MS = 2000
 
 let pending: (FeedInput & { at: number }) | null = null
 
+/** The pending input, or null once it has gone stale (dropping it then). */
+function fresh(): (FeedInput & { at: number }) | null {
+  if (pending && Date.now() - pending.at > FRESH_MS) pending = null
+  return pending
+}
+
 export function handOffFeedInput(input: FeedInput): void {
-  pending = { ...pending, ...input, at: Date.now() }
+  // Stale input is dropped first, so new input cannot renew its timestamp.
+  pending = { ...fresh(), ...input, at: Date.now() }
 }
 
 export function takeFeedInput<K extends keyof FeedInput>(key: K): FeedInput[K] {
-  if (!pending) return undefined
-  if (Date.now() - pending.at > FRESH_MS) {
-    pending = null
-    return undefined
-  }
-  const value = pending[key]
-  delete pending[key]
+  const current = fresh()
+  if (!current) return undefined
+  const value = current[key]
+  delete current[key]
   return value
 }

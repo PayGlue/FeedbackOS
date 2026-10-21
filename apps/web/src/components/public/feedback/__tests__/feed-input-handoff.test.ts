@@ -17,4 +17,13 @@ describe('feed input handoff', () => {
     vi.advanceTimersByTime(5000)
     expect(takeFeedInput('search')).toBeUndefined()
   })
+
+  it('does not revive an expired value when new input is handed over', () => {
+    vi.useFakeTimers()
+    handOffFeedInput({ composeTitle: 'Abandoned idea' })
+    vi.advanceTimersByTime(5000)
+    handOffFeedInput({ search: 'zap' })
+    expect(takeFeedInput('composeTitle')).toBeUndefined()
+    expect(takeFeedInput('search')).toBe('zap')
+  })
 })
