@@ -47,7 +47,7 @@ import type { PostId, PostStatusId } from '@quackback/ids'
 import { useSessionContext } from '@/lib/client/hooks/use-root-context'
 import { toggleItem } from '@/components/shared/filter-utils'
 import { shownName } from '@/lib/shared/greeting-name'
-import { takeFeedInput } from '@/components/public/feedback/feed-input-handoff'
+import { useFeedHandoff } from '@/components/public/feedback/feed-input-handoff'
 
 const EMPTY_VIEW_MESSAGES: Record<PublicFeedView, MessageDescriptor> = {
   mine: {
@@ -369,13 +369,14 @@ export function FeedbackContainer({
   // The composer opened from a search that found nothing, with its words as
   // the title. Signed-out visitors get the composer's own sign-in path.
   const [draft, setDraft] = useState<{ title: string; key: number }>()
+  const handoff = useFeedHandoff()
   // A title typed (or a click) into the loading feed's composer opens it too.
   // Taken in an effect: the loading composer hands it over in its cleanup,
   // which React runs before this mounts.
   useEffect(() => {
-    const title = takeFeedInput('composeTitle')
+    const title = handoff?.take('composeTitle')
     if (title !== undefined) setDraft({ title, key: Date.now() })
-  }, [])
+  }, [handoff])
   const canStartIdea =
     !isRealUser || canPostTo(boardPermissions, boardLocked ? boardIdForCreate : undefined)
 

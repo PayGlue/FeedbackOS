@@ -7,6 +7,10 @@ import { FeedbackContainer } from '@/components/public/feedback/feedback-contain
 import { PortalWelcomeCard } from '@/components/public/feedback/portal-welcome-card'
 import { PortalFeedSkeleton } from '@/components/public/feedback/portal-feed-skeleton'
 import { PortalPoweredBy } from '@/components/public/feedback/portal-powered-by'
+import {
+  createFeedHandoff,
+  FeedHandoffContext,
+} from '@/components/public/feedback/feed-input-handoff'
 import { usePreviewWelcomeCard } from '@/components/public/preview-draft-context'
 import { portalQueries, useSeedPortalStatusesCache } from '@/lib/client/queries/portal'
 import { isProductEnabled } from '@/lib/shared/types/settings'
@@ -139,22 +143,26 @@ export const Route = createFileRoute('/_portal/')({
 function PublicPortalPage() {
   const { showPoweredBy } = Route.useLoaderData()
   const settings = useWorkspaceSettings()
+  // Input typed while the feed loads is carried only within this visit's feed.
+  const [feedHandoff] = useState(createFeedHandoff)
   return (
     <div className="mx-auto max-w-6xl w-full px-4 sm:px-6 py-6">
       {/* Hero renders immediately (context-only, no feed dependency). */}
       <PortalHero />
       {/* Only the feed region suspends on the streamed portalData query. */}
-      <Suspense
-        fallback={
-          <PortalFeedSkeleton
-            poweredBy={
-              showPoweredBy ? <PortalPoweredBy workspaceSlug={settings?.slug ?? ''} /> : null
-            }
-          />
-        }
-      >
-        <PortalFeed />
-      </Suspense>
+      <FeedHandoffContext.Provider value={feedHandoff}>
+        <Suspense
+          fallback={
+            <PortalFeedSkeleton
+              poweredBy={
+                showPoweredBy ? <PortalPoweredBy workspaceSlug={settings?.slug ?? ''} /> : null
+              }
+            />
+          }
+        >
+          <PortalFeed />
+        </Suspense>
+      </FeedHandoffContext.Provider>
     </div>
   )
 }

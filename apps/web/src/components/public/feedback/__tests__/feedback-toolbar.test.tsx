@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { IntlProvider } from 'react-intl'
 import { FeedbackToolbar } from '../feedback-toolbar'
+import { createFeedHandoff, FeedHandoffContext, type FeedHandoff } from '../feed-input-handoff'
 
 function renderToolbar(props: { currentSearch?: string; onSearchChange?: (s: string) => void }) {
   const onSearchChange = props.onSearchChange ?? vi.fn()
@@ -42,28 +43,51 @@ describe('FeedbackToolbar search', () => {
     expect(onSearchChange).toHaveBeenCalledWith('dark mode')
   })
 
-  it('carries a search still waiting on its pause from the loading feed to the loaded one', () => {
-    const toolbar = (handOffSearch: boolean, onSearchChange: (s: string) => void) => (
+  describe('from the loading feed', () => {
+    const toolbar = (
+      handoff: FeedHandoff,
+      handOffSearch: boolean,
+      onSearchChange: (s: string) => void
+    ) => (
       <IntlProvider locale="en">
-        <FeedbackToolbar
-          currentSort="trending"
-          onSortChange={vi.fn()}
-          onSearchChange={onSearchChange}
-          handOffSearch={handOffSearch}
-        />
+        <FeedHandoffContext.Provider value={handoff}>
+          <FeedbackToolbar
+            currentSort="trending"
+            onSortChange={vi.fn()}
+            onSearchChange={onSearchChange}
+            handOffSearch={handOffSearch}
+          />
+        </FeedHandoffContext.Provider>
       </IntlProvider>
     )
-    const loading = vi.fn()
-    const view = render(toolbar(true, loading))
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zap' } })
-    view.unmount()
-    expect(loading).not.toHaveBeenCalled()
+    function typeWhileLoading(handoff: FeedHandoff): ReturnType<typeof vi.fn> {
+      const loading = vi.fn()
+      const view = render(toolbar(handoff, true, loading))
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zap' } })
+      view.unmount()
+      return loading
+    }
 
-    const loaded = vi.fn()
-    render(toolbar(false, loaded))
-    expect(screen.getByRole('searchbox')).toHaveProperty('value', 'zap')
-    act(() => vi.advanceTimersByTime(400))
-    expect(loaded).toHaveBeenCalledWith('zap')
+    it('carries a search still waiting on its pause to the loaded feed', () => {
+      const handoff = createFeedHandoff()
+      expect(typeWhileLoading(handoff)).not.toHaveBeenCalled()
+
+      const loaded = vi.fn()
+      render(toolbar(handoff, false, loaded))
+      expect(screen.getByRole('searchbox')).toHaveProperty('value', 'zap')
+      act(() => vi.advanceTimersByTime(400))
+      expect(loaded).toHaveBeenCalledWith('zap')
+    })
+
+    it('does not carry it into the feed of a later visit', () => {
+      typeWhileLoading(createFeedHandoff())
+
+      const loaded = vi.fn()
+      render(toolbar(createFeedHandoff(), false, loaded))
+      expect(screen.getByRole('searchbox')).toHaveProperty('value', '')
+      act(() => vi.advanceTimersByTime(400))
+      expect(loaded).not.toHaveBeenCalled()
+    })
   })
 
   it('clears the search', () => {

@@ -9,7 +9,7 @@ import {
 } from '@heroicons/react/24/solid'
 import { cn } from '@/lib/shared/utils'
 import type { PublicPostSort } from '@/lib/shared/types/filters'
-import { handOffFeedInput, takeFeedInput } from './feed-input-handoff'
+import { useFeedHandoff } from './feed-input-handoff'
 
 interface FeedbackToolbarProps {
   currentSort: PublicPostSort
@@ -68,13 +68,14 @@ export function FeedbackToolbar({
   // hook into the portal bundle splits it out of the admin chunk it lives in,
   // costing admin pages an extra request.
   const [searchValue, setSearchValue] = useState(currentSearch ?? '')
+  const handoff = useFeedHandoff()
   // A search typed while the feed loaded arrives once this toolbar mounts
   // (React runs the loading toolbar's cleanup, which hands it over, before
   // this effect); the debounce below then applies it.
   useEffect(() => {
-    const carried = takeFeedInput('search')
+    const carried = handoff?.take('search')
     if (carried !== undefined) setSearchValue(carried)
-  }, [])
+  }, [handoff])
   // The last query this field applied. When the URL catches up to it, the
   // field keeps whatever was typed meanwhile; any other change (Clear all,
   // Back) comes from elsewhere and replaces the field.
@@ -103,13 +104,13 @@ export function FeedbackToolbar({
     searchValueRef.current = searchValue
   })
   useEffect(() => {
-    if (!handOffSearch) return
+    if (!handOffSearch || !handoff) return
     return () => {
       if (searchValueRef.current.trim() !== appliedRef.current) {
-        handOffFeedInput({ search: searchValueRef.current })
+        handoff.handOff({ search: searchValueRef.current })
       }
     }
-  }, [handOffSearch])
+  }, [handOffSearch, handoff])
   const searchLabel = intl.formatMessage({
     id: 'portal.feedback.toolbar.searchLabel',
     defaultMessage: 'Search ideas',

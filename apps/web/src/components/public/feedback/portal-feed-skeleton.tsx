@@ -10,7 +10,7 @@ import { PortalFilterSheet } from './portal-filter-sheet'
 import { PanelSection, VIEW_LABELS, rowClass } from './portal-filter-panel'
 import { PublicMoreFilters } from './public-filters-bar'
 import { usePublicFilters } from './use-public-filters'
-import { handOffFeedInput } from './feed-input-handoff'
+import { useFeedHandoff } from './feed-input-handoff'
 
 /** One placeholder bar, sized like the text it stands in for. */
 function Bone({ className }: { className?: string }) {
@@ -164,15 +164,16 @@ function PanelSkeleton({ layout }: { layout: 'sidebar' | 'sheet' }) {
 function LoadingComposer() {
   const [title, setTitle] = useState('')
   const touched = useRef(false)
+  const handoff = useFeedHandoff()
   const titleRef = useRef(title)
   useEffect(() => {
     titleRef.current = title
   })
   useEffect(
     () => () => {
-      if (touched.current) handOffFeedInput({ composeTitle: titleRef.current })
+      if (touched.current) handoff?.handOff({ composeTitle: titleRef.current })
     },
-    []
+    [handoff]
   )
   return (
     <FeedbackHeaderFallback
