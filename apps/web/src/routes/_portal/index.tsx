@@ -247,6 +247,7 @@ function PortalFeed() {
       boardPermissions={portalData.boardPermissions}
       facets={portalData.facets}
       searchMode={'searchMode' in portalData.posts ? portalData.posts.searchMode : undefined}
+      postsFilters={search}
       showPoweredBy={showPoweredBy}
     />
   )

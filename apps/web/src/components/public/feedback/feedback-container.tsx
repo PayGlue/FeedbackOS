@@ -36,6 +36,7 @@ import { useApprovePost, useRejectPost } from '@/lib/client/mutations/moderation
 import type { PublicPostListItem } from '@/lib/shared/types'
 import {
   sortForSearch,
+  type PublicFeedbackFilters,
   type PublicFeedView,
   type PublicPostFacetCounts,
   type PublicPostSort,
@@ -100,6 +101,12 @@ interface FeedbackContainerProps {
   facets?: PublicPostFacetCounts | null
   /** How the server-rendered search was widened, if it was. */
   searchMode?: WidenedSearch
+  /**
+   * The filters `posts` were fetched for. The visitor can change filters while
+   * they load, so these can differ from the current ones by the time they
+   * arrive.
+   */
+  postsFilters: PublicFeedbackFilters
 }
 
 /**
@@ -112,6 +119,30 @@ export function canPostTo(
 ): boolean {
   if (lockedBoardId) return !!boardPermissions?.[lockedBoardId]?.canSubmit
   return Object.values(boardPermissions ?? {}).some((board) => board.canSubmit)
+}
+
+const isEmpty = (value: unknown): boolean =>
+  value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
+
+/**
+ * Whether posts fetched for `postsFor` are the first page for `filters`, so
+ * they can seed the feed. Only the plain feed is seeded: any narrowing filter
+ * on either side makes the feed fetch its own first page.
+ */
+export function postsMatchFilters(
+  postsFor: PublicFeedbackFilters,
+  filters: PublicFeedbackFilters
+): boolean {
+  const narrowing = ['status', 'tagIds', 'minVotes', 'dateFrom', 'responded'] as const
+  if (narrowing.some((key) => !isEmpty(postsFor[key]) || !isEmpty(filters[key]))) return false
+  return (
+    postsFor.board === filters.board &&
+    postsFor.search === filters.search &&
+    (postsFor.sort ?? 'trending') === (filters.sort ?? 'trending') &&
+    postsFor.view === filters.view &&
+    postsFor.owner === filters.owner &&
+    (postsFor.segmentIds ?? []).join() === (filters.segmentIds ?? []).join()
+  )
 }
 
 export function FeedbackContainer({
@@ -132,6 +163,7 @@ export function FeedbackContainer({
   showPoweredBy = true,
   facets,
   searchMode: initialSearchMode,
+  postsFilters,
 }: FeedbackContainerProps): React.ReactElement {
   const intl = useIntl()
   const router = useRouter()
@@ -204,25 +236,13 @@ export function FeedbackContainer({
     ]
   )
 
-  // Track initial filters from server props to know when to use initialData
-  const initialFiltersRef = useRef({
-    board: currentBoard,
-    search: currentSearch,
-    sort: currentSort,
-    view: activeView,
-  })
-
-  // Only use initialData when current filters match what the server rendered
-  const filtersMatchInitial =
-    mergedFilters.board === initialFiltersRef.current.board &&
-    mergedFilters.search === initialFiltersRef.current.search &&
-    mergedFilters.sort === initialFiltersRef.current.sort &&
-    mergedFilters.view === initialFiltersRef.current.view &&
-    !mergedFilters.status?.length &&
-    !mergedFilters.tagIds?.length &&
-    !mergedFilters.minVotes &&
-    !mergedFilters.dateFrom &&
-    !mergedFilters.responded
+  // Seed the feed with the server's posts only while the filters are still
+  // the ones they were fetched for. Views are ignored for anyone not signed
+  // in, on the server as here.
+  const filtersMatchInitial = postsMatchFilters(
+    { ...postsFilters, view: isRealUser ? postsFilters.view : undefined },
+    mergedFilters
+  )
 
   // Server state - Posts list using TanStack Query
   const {
