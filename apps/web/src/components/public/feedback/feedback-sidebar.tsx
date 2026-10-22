@@ -47,10 +47,16 @@ export function FeedbackSidebar({ children, footer }: FeedbackSidebarProps) {
     fit()
     window.addEventListener('scroll', schedule, { passive: true })
     window.addEventListener('resize', schedule)
+    // The header can change height after mount (a late font, custom CSS),
+    // which moves where the column sticks.
+    const header = document.querySelector('.portal-header')
+    const observer = new ResizeObserver(schedule)
+    if (header) observer.observe(header)
     return () => {
       cancelAnimationFrame(frame)
       window.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
+      observer.disconnect()
     }
   }, [])
 
