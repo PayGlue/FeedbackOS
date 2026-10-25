@@ -134,7 +134,7 @@
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
-    "sanitize-html": "2.17.7",
+    "sanitize-html": "2.18.1",
     "slugify": "^1.6.9",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
