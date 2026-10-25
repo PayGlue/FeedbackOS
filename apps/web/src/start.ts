@@ -16,6 +16,7 @@ import { requestContextMiddleware } from '@/lib/server/middleware/request-contex
 import { userContentHostMiddleware } from '@/lib/server/middleware/user-content-host'
 import { serverFnLogMiddleware } from '@/lib/server/middleware/server-fn-log'
 import { workspaceContextMiddleware } from '@/lib/server/middleware/workspace-context'
+import { helpCenterHostMiddleware } from '@/lib/server/middleware/help-center-host'
 import { expireRouteContextOnWrite } from '@/lib/client/route-context-middleware'
 
 /**
@@ -47,6 +48,8 @@ export const startInstance = createStart(() => {
       userContentHostMiddleware,
       oauthCorsMiddleware,
       workspaceContextMiddleware,
+      // FeedbackOS: root paths on the help center domain move under /hc.
+      helpCenterHostMiddleware,
       csrfMiddleware,
     ],
     // Server-function failures never reach the request middleware's error
