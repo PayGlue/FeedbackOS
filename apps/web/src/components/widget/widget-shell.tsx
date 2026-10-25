@@ -126,7 +126,7 @@ export function WidgetShell({
   hideTabBar = false,
   panelExpanded = false,
   expandControl,
-  showPoweredBy = true,
+  showPoweredBy = false,
   children,
 }: WidgetShellProps) {
   const intl = useIntl()

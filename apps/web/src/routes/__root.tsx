@@ -83,6 +83,19 @@ type RootContext = Awaited<ReturnType<typeof loadRootContext>>
  */
 const rootContext = createRouteContextMemo<RootContext>()
 
+
+// FeedbackOS: the document title and icon follow the workspace instead of the
+// upstream product name. Portal routes set their own head on top of this.
+function workspaceTitle(context: unknown): string {
+  const settings = (context as { settings?: WorkspaceSettings | null } | undefined)?.settings
+  return settings?.name || 'FeedbackOS'
+}
+
+function workspaceIcon(context: unknown): string {
+  const settings = (context as { settings?: WorkspaceSettings | null } | undefined)?.settings
+  return settings?.faviconData?.url || settings?.brandingData?.logoUrl || '/logo.png'
+}
+
 export const Route = createRootRouteWithContext<RouterContext>()({
   beforeLoad: async ({ location }) => {
     const context = await rootContext.get(loadRootContext)
@@ -102,7 +115,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
     return context
   },
-  head: () => ({
+  head: ({ match }) => ({
     meta: [
       {
         charSet: 'utf-8',
@@ -112,7 +125,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         content: 'width=device-width, initial-scale=1, viewport-fit=cover',
       },
       {
-        title: 'Quackback',
+        title: workspaceTitle(match?.context),
       },
       {
         name: 'description',
@@ -131,6 +144,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       {
         rel: 'stylesheet',
         href: appCss,
+      },
+      {
+        rel: 'icon',
+        href: workspaceIcon(match?.context),
       },
       {
         rel: 'alternate',

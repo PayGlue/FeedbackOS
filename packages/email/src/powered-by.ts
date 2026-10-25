@@ -1,7 +1,7 @@
 import { createContext, createElement, useContext, type ReactNode } from 'react'
 
-/** Default on: self-hosted and unset cloud must keep the footer. */
-const EmailPoweredByContext = createContext(true)
+/** FeedbackOS: the footer is off by default. */
+const EmailPoweredByContext = createContext(false)
 
 export function EmailPoweredByProvider(props: { value: boolean; children: ReactNode }) {
   return createElement(EmailPoweredByContext.Provider, { value: props.value }, props.children)
@@ -12,7 +12,7 @@ export function useEmailShowPoweredBy(): boolean {
 }
 
 const resolver = {
-  current: async (): Promise<boolean> => true,
+  current: async (): Promise<boolean> => false,
 }
 
 /** Installed by the workspace process so each send can read live cloud config. */
