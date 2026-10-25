@@ -42,6 +42,11 @@ export function helpCenterRootRedirect(pathname: string, search: string): string
     return null
   }
   const trimmed = pathname.replace(/\/+$/, '')
+  // `/` and `/index` were the old site's start page.
+  if (trimmed === '' || trimmed === '/index') return `/hc${search}`
+  // A single segment is read as a locale under /hc, so `/faq` would 404 there.
+  // Send it to the category of that name instead.
+  if (/^\/[^/]+$/.test(trimmed)) return `/hc/categories${trimmed}${search}`
   return `/hc${trimmed}${search}`
 }
 
