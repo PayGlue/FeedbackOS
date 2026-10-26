@@ -1,6 +1,6 @@
 import { Button, Heading, Link, Section, Text } from '@react-email/components'
 import { EmailLayout, TransactionalFooter } from './email-layout'
-import { typography, button, utils } from './shared-styles'
+import { typography, button, utils, colors } from './shared-styles'
 
 interface PortalInviteEmailProps {
   workspaceName: string
@@ -31,8 +31,8 @@ export function PortalInviteEmail({
       {personalMessage && (
         <Section
           style={{
-            backgroundColor: '#f6f8fa',
-            borderLeft: '3px solid #d0d7de',
+            backgroundColor: colors.surfaceMuted,
+            borderLeft: `3px solid ${colors.border}`,
             padding: '12px 16px',
             marginTop: '24px',
             marginBottom: '8px',

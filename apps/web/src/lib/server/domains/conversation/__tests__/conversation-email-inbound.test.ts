@@ -883,6 +883,28 @@ describe('mailLoopSignal', () => {
 })
 
 describe('extractReplyText', () => {
+  it('cuts at the reply marker and drops the attribution line in any language', () => {
+    for (const attribution of [
+      'Le lun. 26 oct. 2026 à 01:14, support@example.com a écrit :',
+      'El lun, 26 oct 2026 a las 01:14, <support@example.com> escribió:',
+      '2026年10月26日(月) 1:14 support@example.com:',
+    ]) {
+      const raw = [
+        'Merci, ça marche.',
+        '',
+        attribution,
+        '> ##- Reply above this line -##',
+        '> Earlier message from the team',
+      ].join('\n')
+      expect(extractReplyText(raw)).toBe('Merci, ça marche.')
+    }
+  })
+
+  it('keeps a last line ending in a colon when the cut was not at the marker', () => {
+    const raw = ['Here is what I tried:', '', '--', 'Signature'].join('\n')
+    expect(extractReplyText(raw)).toBe('Here is what I tried:')
+  })
+
   it('drops a Gmail-style quoted history below "On … wrote:"', () => {
     const raw = [
       'This is my reply.',

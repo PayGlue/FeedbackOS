@@ -6,6 +6,7 @@
  * path needs and strip quoted reply history so the stored message is only what
  * the visitor actually wrote.
  */
+import { REPLY_MARKER_PATTERN } from '@quackback/email'
 import { realEmail } from '@/lib/shared/anonymous-email'
 
 /**
@@ -844,7 +845,14 @@ export function extractReplyText(raw: string): string {
   const lines = raw.replace(/\r\n/g, '\n').split('\n')
 
   let cut = lines.length
+  let atMarker = false
   for (let i = 0; i < lines.length; i++) {
+    // FeedbackOS: our own reply marker, quoted verbatim by every client.
+    if (REPLY_MARKER_PATTERN.test(lines[i])) {
+      cut = i
+      atMarker = true
+      break
+    }
     if (isCutLine(lines[i])) {
       cut = i
       break
@@ -852,11 +860,23 @@ export function extractReplyText(raw: string): string {
   }
 
   const kept = lines.slice(0, cut)
-  // Drop any trailing run of quoted (`>`) lines and blank lines left behind.
-  while (kept.length > 0) {
+  const dropTrailingQuote = () => {
+    // Drop any trailing run of quoted (`>`) lines and blank lines left behind.
+    while (kept.length > 0) {
+      const last = kept[kept.length - 1].trim()
+      if (last === '' || last.startsWith('>')) kept.pop()
+      else break
+    }
+  }
+  dropTrailingQuote()
+  // Cut at the marker, the client's attribution line is still there, in any
+  // language. Recognised by shape: ends with a colon, carries a date or address.
+  if (atMarker && kept.length > 0) {
     const last = kept[kept.length - 1].trim()
-    if (last === '' || last.startsWith('>')) kept.pop()
-    else break
+    if (last.length <= 300 && last.endsWith(':') && /\d|@/.test(last)) {
+      kept.pop()
+      dropTrailingQuote()
+    }
   }
   const result = kept.join('\n').trim()
   if (result) return result

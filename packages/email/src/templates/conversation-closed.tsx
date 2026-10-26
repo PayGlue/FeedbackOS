@@ -1,4 +1,5 @@
 import { Body, Head, Html, Preview, Text } from '@react-email/components'
+import { ReplyMarkerLine } from './reply-marker-line'
 
 export interface ConversationClosedEmailProps {
   workspaceName: string
@@ -48,6 +49,7 @@ export function ConversationClosedEmail({
       <Head />
       <Preview>{intro}</Preview>
       <Body style={page}>
+        <ReplyMarkerLine style={{ textAlign: 'left', color: '#98a2b3' }} />
         <Text
           style={{ margin: '0 0 13px', color: '#1d2939', fontSize: '15px', lineHeight: '1.65' }}
         >

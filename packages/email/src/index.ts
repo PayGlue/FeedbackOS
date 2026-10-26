@@ -73,6 +73,8 @@ export { setEmailPoweredByResolver } from './powered-by'
 export { setDefaultFromResolver, resetDefaultFromResolver } from './default-from'
 import { createElement } from 'react'
 import { EmailPoweredByProvider, resolveEmailPoweredBy } from './powered-by'
+import { EmailReplyMarkerProvider } from './reply-marker'
+export { REPLY_MARKER_TEXT, REPLY_MARKER_PATTERN } from './reply-marker'
 import { resolvedDefaultFrom } from './default-from'
 
 /**
@@ -579,11 +581,16 @@ async function sendEmail(
   } & ThreadingOptions
 ): Promise<EmailResult> {
   const showPoweredBy = await resolveEmailPoweredBy()
+  // A mail with a reply address can be answered by email, so it carries the
+  // reply marker the inbound side cuts quoted history at.
   return dispatch({
     ...options,
     react: createElement(EmailPoweredByProvider, {
       value: showPoweredBy,
-      children: options.react,
+      children: createElement(EmailReplyMarkerProvider, {
+        value: Boolean(options.replyTo),
+        children: options.react,
+      }),
     }),
   })
 }

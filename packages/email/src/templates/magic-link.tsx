@@ -1,6 +1,6 @@
 import { Button, Heading, Hr, Section, Text } from '@react-email/components'
 import { EmailLayout, TransactionalFooter } from './email-layout'
-import { typography, button, utils } from './shared-styles'
+import { typography, button, utils, colors } from './shared-styles'
 
 interface MagicLinkEmailProps {
   signInUrl: string
@@ -31,7 +31,7 @@ export function MagicLinkEmail({ signInUrl, code, logoUrl }: MagicLinkEmailProps
         </Button>
       </Section>
 
-      <Hr style={{ margin: '32px 0', borderColor: '#e5e7eb' }} />
+      <Hr style={{ margin: '32px 0', borderColor: colors.border }} />
 
       <Text style={{ ...typography.text, textAlign: 'center' }}>
         Or enter this code on the sign-in screen:

@@ -1,6 +1,6 @@
 import { Heading, Hr, Link, Section, Text } from '@react-email/components'
 import { EmailLayout, TransactionalFooter } from './email-layout'
-import { typography, utils } from './shared-styles'
+import { typography, utils, colors } from './shared-styles'
 
 interface NewSignInEmailProps {
   workspaceName?: string
@@ -61,7 +61,7 @@ export function NewSignInEmail({
         ) : null}
       </Section>
 
-      <Hr style={{ margin: '24px 0', borderColor: '#e5e7eb' }} />
+      <Hr style={{ margin: '24px 0', borderColor: colors.border }} />
 
       <Text style={typography.text}>
         {ssoEnforced ? (
