@@ -33,6 +33,9 @@ const createTicketSchema = z.object({
   description: z.string().max(4000).optional(),
   priority: priorityEnum.optional(),
   requesterPrincipalId: z.string().optional(),
+  // FeedbackOS: the description is the requester's message, filed on their
+  // behalf (e.g. from a support form in another app).
+  descriptionFromRequester: z.boolean().optional(),
   companyId: z.string().optional(),
   attachments: attachmentsSchema,
 })
@@ -136,6 +139,7 @@ export const Route = createFileRoute('/api/v1/tickets/')({
                 : undefined,
               priority: parsed.data.priority,
               requesterPrincipalId,
+              descriptionFromRequester: parsed.data.descriptionFromRequester,
               companyId,
               attachments: toAttachments(parsed.data.attachments),
               // CONVERGENCE PHASE 1b: a customer-intake path — a CUSTOMER ticket

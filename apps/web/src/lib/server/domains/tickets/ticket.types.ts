@@ -51,6 +51,10 @@ export interface CreateTicketInput {
   /** Attachments on the opening message, same shape/limits as a reply. */
   attachments?: ConversationAttachment[]
   requesterPrincipalId?: PrincipalId | null
+  /** FeedbackOS: the description is the requester's own words even though a
+   *  service actor (an integration's API key) files the ticket on their
+   *  behalf, so the opening message is authored by the requester. */
+  descriptionFromRequester?: boolean
   /** Explicit assignee. Always wins over the agent-create defaults (the source
    *  conversation's assignee, else the creating agent — see `createTicket`). */
   assigneePrincipalId?: PrincipalId | null
