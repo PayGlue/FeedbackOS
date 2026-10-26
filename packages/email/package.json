@@ -22,7 +22,7 @@
     "@aws-sdk/client-sesv2": "^3.1131.0",
     "@quackback/logger": "workspace:*",
     "@react-email/components": "^1.0.12",
-    "nodemailer": "^10.0.9",
+    "nodemailer": "^10.2.1",
     "react": "^19.3.0",
     "resend": "^6.28.0"
   },
