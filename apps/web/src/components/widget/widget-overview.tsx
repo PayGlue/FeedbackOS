@@ -302,11 +302,11 @@ export function WidgetOverview({
               ) : firstName ? (
                 <FormattedMessage
                   id="widget.launcher.greeting.named"
-                  defaultMessage="Hi, {name} 👋"
+                  defaultMessage="Hi, {name} 👋🏻"
                   values={{ name: firstName }}
                 />
               ) : (
-                <FormattedMessage id="widget.launcher.greeting" defaultMessage="Hi there 👋" />
+                <FormattedMessage id="widget.launcher.greeting" defaultMessage="Hi there 👋🏻" />
               )}
             </h1>
             <p

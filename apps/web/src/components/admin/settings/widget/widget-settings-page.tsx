@@ -759,7 +759,7 @@ function HomeCustomizationCard({
             id="home-greeting"
             defaultValue={home.greeting ?? ''}
             maxLength={120}
-            placeholder="Hi {name} 👋"
+            placeholder="Hi {name} 👋🏻"
             onBlur={(e) => {
               const value = e.target.value.trim()
               if (value === (home.greeting ?? '')) return

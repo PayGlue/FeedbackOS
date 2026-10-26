@@ -656,7 +656,7 @@ export type WidgetHeroPatternId = 'dots' | 'grid' | 'mesh' | 'waves'
 
 /** Customisation for the aggregated Home surface (greeting, hero, quick links). */
 export interface WidgetHomeConfig {
-  /** Greeting heading; supports a `{name}` placeholder (e.g. "Hi {name} 👋"). */
+  /** Greeting heading; supports a `{name}` placeholder (e.g. "Hi {name} 👋🏻"). */
   greeting?: string
   /** Subtitle under the greeting (e.g. "How can we help?"). */
   subtitle?: string
@@ -742,7 +742,7 @@ export type PublicWidgetConfig = Pick<
 
 export const DEFAULT_MESSENGER_CONFIG: MessengerConfig = {
   enabled: false,
-  welcomeMessage: 'Hi! 👋 How can we help you today?',
+  welcomeMessage: 'Hi! 👋🏻 How can we help you today?',
   offlineMessage: "We're away right now. Leave a message and we'll get back to you by email.",
   // AI-first: identity on, and Quinn answers when a model is configured.
   // Admins pause replies under Automation → Agent. The widget master stays
