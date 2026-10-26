@@ -11,6 +11,7 @@ import {
   parseFetchLiteral,
   type ImapClient,
   type RawImapMessage,
+  imapDate,
 } from '../conversation.email-imap'
 import type { ParsedInboundEmail } from '../conversation.email-inbound'
 import type { IngestInboundResult } from '../conversation.email-inbound.service'
@@ -84,12 +85,10 @@ describe('pollOnce', () => {
       { uid: 1, raw: rawWithBody('one') },
       { uid: 2, raw: rawWithBody('two') },
     ])
-    const ingest = vi.fn(
-      async (): Promise<IngestInboundResult> => ({
-        status: 'ingested',
-        conversationId: 'conversation_x' as never,
-      })
-    )
+    const ingest = vi.fn(async (): Promise<IngestInboundResult> => ({
+      status: 'ingested',
+      conversationId: 'conversation_x' as never,
+    }))
 
     const result = await pollOnce(client, ingest)
 
@@ -178,5 +177,12 @@ describe('parseFetchLiteral', () => {
   })
   it('returns null when there is no literal', () => {
     expect(parseFetchLiteral('* 1 FETCH (FLAGS (\\Seen))\r\nA2 OK done\r\n')).toBeNull()
+  })
+})
+
+describe('imapDate', () => {
+  it('formats an RFC 3501 date for SEARCH SINCE', () => {
+    expect(imapDate(new Date(Date.UTC(2026, 9, 5, 23, 0)))).toBe('5-Oct-2026')
+    expect(imapDate(new Date(Date.UTC(2026, 0, 31)))).toBe('31-Jan-2026')
   })
 })
