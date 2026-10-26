@@ -42,6 +42,18 @@ describe('emailHtmlToContent', () => {
     expect(emailHtmlToContent('   \n\t ')).toEqual({ text: '', contentJson: null })
   })
 
+  it('drops quoted history after a German attribution line', () => {
+    const fastmail =
+      '<div>Ok cool</div><div><br></div>' +
+      '<div>Am Mo, 26. Okt 2026, um 01:14, schrieb ' +
+      '<a href="mailto:support@example.com">support@example.com</a>:<br></div>' +
+      '<blockquote type="cite"><div>Original message body</div></blockquote>'
+    const { text } = emailHtmlToContent(fastmail)
+    expect(text).toContain('Ok cool')
+    expect(text).not.toContain('Original message body')
+    expect(text).not.toContain('schrieb')
+  })
+
   describe('gmail-style reply', () => {
     const gmail =
       '<div dir="ltr">Thanks for the <b>update</b>!<div><br></div>' +

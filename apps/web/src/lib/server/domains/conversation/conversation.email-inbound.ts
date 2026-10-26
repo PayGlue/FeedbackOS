@@ -820,6 +820,7 @@ export function mailLoopSignal(
 // in ordinary prose and a top-level cut on it would silently drop real text.
 const QUOTE_SEPARATORS = [
   /^On\s.+\swrote:\s*$/i, // Gmail / Apple Mail
+  /^Am\s.+\sschrieb\b.*:\s*$/i, // the same in German clients
   /^-{2,}\s*Original Message\s*-{2,}/i, // Outlook
   /^_{5,}\s*$/, // Outlook divider
 ]

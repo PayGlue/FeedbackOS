@@ -65,6 +65,9 @@ const HISTORY_MARKERS: readonly RegExp[] = [
   // <a> mailto for the sender address (Apple/Gmail render the address linked).
   // Mirrors extractReplyText's `^On .+ wrote:$` line rule, HTML-adapted.
   /(?<=>)\s*On\b(?:[^<]|<[^>]*>){2,400}?\bwrote:\s*(?=<|$)/i,
+  // The same attribution line from German clients (Fastmail, Apple Mail, Gmail
+  // in German): "Am <date>, schrieb <name>:" or "Am <date> schrieb <name>:".
+  /(?<=>)\s*Am\b(?:[^<]|<[^>]*>){2,400}?\bschrieb\b(?:[^<]|<[^>]*>){0,300}?:\s*(?=<|$)/i,
   // Gmail quoted container / attribution wrapper (class on div or blockquote).
   /<(?:div|blockquote)[^>]*\bclass="[^"]*\bgmail_(?:quote|attr)\b[^"]*"[^>]*>/i,
   // Yahoo Mail quoted container.
