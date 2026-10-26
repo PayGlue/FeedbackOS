@@ -88,7 +88,8 @@ export async function pollOnce(
       if (result.status === 'ingested' || result.status === 'ingested_ticket') ingested++
       // FeedbackOS: a dropped message is marked seen and never retried, so say
       // why. Without this a refused message leaves no trace at all.
-      else log.info({ uid: message.uid, status: result.status }, 'imap message not ingested')
+      else if (result.status !== 'duplicate')
+        log.info({ uid: message.uid, status: result.status }, 'imap message not ingested')
       await client.markSeen(message.uid)
     } catch (err) {
       failed++
@@ -106,6 +107,29 @@ const CONNECT_TIMEOUT_MS = 10_000
 const RESPONSE_TIMEOUT_MS = 20_000
 // Bound the work per poll; leftover unseen mail is picked up next tick.
 const MAX_UIDS_PER_POLL = 50
+// FeedbackOS: how far back each poll looks besides UNSEEN (see fetchUnseen).
+// SINCE matches whole days, so 1 means yesterday and today. Kept short on
+// purpose: a message picked up for the first time opens a conversation and can
+// send its sender an acknowledgement, which must not happen to old mail.
+const RECENT_DAYS = 1
+// UIDs this process already handed to the ingest core, per mailbox. Lost on a
+// restart, which only means one re-fetch that the Message-ID dedupe absorbs.
+const handledUids = new Set<string>()
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function handledKey(config: ImapConfig, uid: number): string {
+  return `${config.user}|${config.mailbox}|${uid}`
+}
+
+function daysAgo(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+}
+
+/** IMAP date-text, e.g. `26-Oct-2026` (RFC 3501 SEARCH SINCE). */
+export function imapDate(date: Date): string {
+  return `${date.getUTCDate()}-${MONTHS[date.getUTCMonth()]}-${date.getUTCFullYear()}`
+}
+
 // Re-scan window overlap so a completion tag split across two chunks still matches.
 const SEND_SCAN_OVERLAP = 16
 
@@ -133,9 +157,19 @@ class SocketImapClient implements ImapClient {
 
   async fetchUnseen(): Promise<RawImapMessage[]> {
     const searchTag = this.nextTag()
-    const searchResp = await this.send(searchTag, 'UID SEARCH UNSEEN')
-    // Cap the batch per poll; the remainder stays unseen for the next tick.
-    const uids = parseSearchUids(searchResp).slice(0, MAX_UIDS_PER_POLL)
+    // FeedbackOS: unseen OR recent. Some servers (Fastmail label folders) report
+    // a message as \Seen over IMAP before anyone read it, so UNSEEN alone misses
+    // mail. Recent messages are fetched as well; the ingest core drops a message
+    // it already stored by its Message-ID, and a UID handled once in this process
+    // is not fetched again.
+    const searchResp = await this.send(
+      searchTag,
+      `UID SEARCH OR UNSEEN SINCE ${imapDate(daysAgo(RECENT_DAYS))}`
+    )
+    // Cap the batch per poll; the remainder is picked up next tick.
+    const uids = parseSearchUids(searchResp)
+      .filter((uid) => !handledUids.has(handledKey(this.config, uid)))
+      .slice(0, MAX_UIDS_PER_POLL)
     const messages: RawImapMessage[] = []
     for (const uid of uids) {
       const tag = this.nextTag()
@@ -147,6 +181,7 @@ class SocketImapClient implements ImapClient {
   }
 
   async markSeen(uid: number): Promise<void> {
+    handledUids.add(handledKey(this.config, uid))
     await this.exec(`UID STORE ${uid} +FLAGS (\\Seen)`)
   }
 
