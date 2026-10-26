@@ -193,7 +193,9 @@ async function loadQuotedPreviousMessage(
 
   const previous = rows[1]
   if (!previous?.content) return null
-  const name = previous.name?.trim() || (previous.senderType === 'agent' ? 'Support' : 'Customer')
+  // FeedbackOS: this quote goes to the customer, so their own unnamed message
+  // reads "you wrote" rather than "Customer wrote".
+  const name = previous.name?.trim() || (previous.senderType === 'agent' ? 'Support' : 'you')
   return { date: previous.createdAt, name, text: previous.content }
 }
 

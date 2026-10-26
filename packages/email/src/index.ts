@@ -18,6 +18,16 @@ import { Resend } from 'resend'
 import { createLogger } from '@quackback/logger'
 import { isSyntheticAnonEmail } from './anon'
 import { applyDisplayName, sendViaSes } from './ses'
+
+/**
+ * FeedbackOS: a display name on the signed reply address, so a mail client
+ * shows "PayGlue Support" when the customer replies instead of the long
+ * plus-addressed route home. The address itself is unchanged.
+ */
+function namedReplyTo(address: string | undefined, workspaceName: string): string | undefined {
+  if (!address) return address
+  return applyDisplayName(address, `${workspaceName} Support`)
+}
 import { sendViaResend } from './resend'
 import { listUnsubscribeHeaders } from './list-unsubscribe'
 import { currentEmailIdempotencyKey } from './idempotency'
@@ -1066,6 +1076,8 @@ export async function sendConversationMessageEmail(
         messagePreview,
         agentName: senderName,
         teamName: workspaceName,
+        heading: conversationSubject ?? undefined,
+        logoUrl,
         viewUrl: ctaUrl,
         quotedPrevious,
       })
@@ -1086,7 +1098,7 @@ export async function sendConversationMessageEmail(
     to,
     subject: copy.subject,
     react,
-    replyTo,
+    replyTo: copy.useHumanTemplate ? namedReplyTo(replyTo, workspaceName) : replyTo,
     messageId,
     inReplyTo,
     references,
@@ -1128,7 +1140,7 @@ export async function sendConversationClosedEmail(params: {
       csatPrompt: params.csatPrompt,
       ratingUrls: params.ratingUrls,
     }),
-    replyTo: params.replyTo,
+    replyTo: namedReplyTo(params.replyTo, params.workspaceName),
     from: params.from,
     fromDisplayName: params.fromDisplayName,
     messageId: params.messageId,
@@ -1161,8 +1173,9 @@ export async function sendConversationAutoAckEmail(params: {
       messagePreview: 'We received your email and will get back to you shortly.',
       agentName: params.workspaceName,
       teamName: params.workspaceName,
+      heading: params.conversationSubject ?? undefined,
     }),
-    replyTo: params.replyTo,
+    replyTo: namedReplyTo(params.replyTo, params.workspaceName),
     from: params.from,
     messageId: params.messageId,
     inReplyTo: params.inReplyTo,

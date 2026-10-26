@@ -1,9 +1,14 @@
-import { Body, Head, Html, Link, Preview, Text } from '@react-email/components'
-import { ReplyMarkerLine } from './reply-marker-line'
+import { Heading, Hr, Link, Text } from '@react-email/components'
+import { EmailLayout } from './email-layout'
+import { colors, eyebrow, typography } from './shared-styles'
 
 /**
- * Human correspondence for the email channel: the agent's words are the body.
- * No layout card, logo, heading, intro, quote box, or unsubscribe.
+ * Correspondence for the email channel: the agent's words are the body.
+ *
+ * FeedbackOS: drawn in the PayGlue mail look (logo and wordmark above a dark
+ * card, an uppercase support line, the subject as heading), so a customer gets
+ * the same mail from support that they get from the rest of the product. Still
+ * no unsubscribe and no intro: the message is the content.
  */
 export interface ConversationReplyEmailProps {
   /** Sanitized HTML of the agent's message. */
@@ -13,6 +18,9 @@ export interface ConversationReplyEmailProps {
   agentName: string
   /** Second signature line: team or workspace name. */
   teamName: string
+  /** Conversation subject, shown as the heading (without a leading "Re:"). */
+  heading?: string
+  logoUrl?: string
   /** Portal or widget deep link; omitted when the visitor has no web surface. */
   viewUrl?: string
   quotedPrevious?: {
@@ -22,60 +30,41 @@ export interface ConversationReplyEmailProps {
   }
 }
 
-const page: React.CSSProperties = {
-  backgroundColor: '#ffffff',
-  color: '#1d2939',
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  fontSize: '15px',
-  lineHeight: '1.65',
-  margin: 0,
-  padding: '24px 8px 32px',
-}
-
 const body: React.CSSProperties = {
-  color: '#1d2939',
-  fontSize: '15px',
-  lineHeight: '1.65',
+  color: colors.text,
+  fontSize: '16px',
+  lineHeight: '26px',
 }
 
-const sigName: React.CSSProperties = {
-  color: '#1d2939',
-  fontSize: '15px',
-  lineHeight: '1.65',
-  margin: '20px 0 0',
-}
-
-const sigTeam: React.CSSProperties = {
-  color: '#1d2939',
-  fontSize: '15px',
-  lineHeight: '1.65',
-  margin: '0 0 20px',
+const signature: React.CSSProperties = {
+  color: colors.text,
+  fontSize: '16px',
+  lineHeight: '24px',
+  margin: '24px 0 0',
 }
 
 const rule: React.CSSProperties = {
-  border: 'none',
-  borderTop: '1px solid #e2e7ee',
-  margin: '0 0 12px',
+  borderColor: colors.border,
+  margin: '28px 0 16px',
 }
 
 const footer: React.CSSProperties = {
-  color: '#667085',
-  fontSize: '12px',
-  lineHeight: '1.55',
-  margin: '0 0 20px',
+  color: colors.textMuted,
+  fontSize: '13px',
+  lineHeight: '20px',
+  margin: '0 0 16px',
 }
 
 const footerLink: React.CSSProperties = {
-  color: '#667085',
-  fontSize: '12px',
-  textDecoration: 'underline',
+  color: colors.link,
+  fontSize: '13px',
+  textDecoration: 'none',
 }
 
 const quote: React.CSSProperties = {
-  color: '#98a2b3',
+  color: colors.textLight,
   fontSize: '13px',
-  lineHeight: '1.55',
+  lineHeight: '20px',
   margin: '0',
 }
 
@@ -91,56 +80,72 @@ function quoteExcerpt(text: string): string {
   return `${trimmed.slice(0, 499).trimEnd()}…`
 }
 
+function headingText(subject: string | undefined): string | null {
+  const stripped = (subject ?? '').replace(/^(re|aw|fwd?|wg):\s*/i, '').trim()
+  return stripped || null
+}
+
 export function ConversationReplyEmail({
   bodyHtml,
   messagePreview,
   agentName,
   teamName,
+  heading,
+  logoUrl,
   viewUrl,
   quotedPrevious,
 }: ConversationReplyEmailProps) {
   const preview = messagePreview.slice(0, 140)
   const quoteDate = quotedPrevious ? formatQuoteDate(quotedPrevious.date) : ''
+  const title = headingText(heading)
 
   return (
-    <Html>
-      <Head />
-      <Preview>{preview}</Preview>
-      <Body style={page}>
-        <ReplyMarkerLine style={{ textAlign: 'left', color: '#98a2b3' }} />
-        {bodyHtml ? (
-          <div style={body} dangerouslySetInnerHTML={{ __html: bodyHtml }} />
-        ) : (
-          <Text style={{ ...body, margin: '0 0 13px' }}>{messagePreview}</Text>
-        )}
+    <EmailLayout preview={preview} logoUrl={logoUrl} logoAlt={teamName}>
+      <Text style={eyebrow}>{teamName} support</Text>
+      {title ? <Heading style={typography.h1}>{title}</Heading> : null}
 
-        <Text style={sigName}>{agentName}</Text>
-        <Text style={sigTeam}>{teamName}</Text>
+      {bodyHtml ? (
+        <div
+          style={{ ...body, marginTop: '16px' }}
+          dangerouslySetInnerHTML={{ __html: bodyHtml }}
+        />
+      ) : (
+        <Text style={{ ...body, margin: '16px 0 13px' }}>{messagePreview}</Text>
+      )}
 
-        <hr style={rule} />
-
-        <Text style={footer}>
-          Reply to this email to continue the conversation
-          {viewUrl ? (
-            <>
-              {' · '}
-              <Link href={viewUrl} style={footerLink}>
-                View it online
-              </Link>
-            </>
-          ) : null}
-        </Text>
-
-        {quotedPrevious ? (
-          <Text style={quote}>
-            On {quoteDate}
-            {quoteDate ? ', ' : ''}
-            {quotedPrevious.name} wrote:
+      <Text style={signature}>
+        {agentName}
+        {teamName && teamName !== agentName ? (
+          <>
             <br />
-            {quoteExcerpt(quotedPrevious.text)}
-          </Text>
+            {teamName}
+          </>
         ) : null}
-      </Body>
-    </Html>
+      </Text>
+
+      <Hr style={rule} />
+
+      <Text style={footer}>
+        Reply to this email to continue the conversation
+        {viewUrl ? (
+          <>
+            {' · '}
+            <Link href={viewUrl} style={footerLink}>
+              View it online
+            </Link>
+          </>
+        ) : null}
+      </Text>
+
+      {quotedPrevious ? (
+        <Text style={quote}>
+          On {quoteDate}
+          {quoteDate ? ', ' : ''}
+          {quotedPrevious.name} wrote:
+          <br />
+          {quoteExcerpt(quotedPrevious.text)}
+        </Text>
+      ) : null}
+    </EmailLayout>
   )
 }
