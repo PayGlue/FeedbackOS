@@ -256,6 +256,7 @@
   "portal.feedback.sidebar.boards": "الفئات",
   "portal.feedback.sidebar.viewAllPosts": "عرض جميع المنشورات",
   "portal.feedback.sidebar.poweredBy": "مدعوم بواسطة {brand}",
+  "portal.feedback.sidebar.sourceCode": "الشفرة المصدرية",
   "portal.feedback.similarPosts.heading": "أفكار مشابهة",
   "portal.postDetail.comments": "{count, plural, zero {لا تعليقات} one {تعليق واحد} two {تعليقان} few {# تعليقات} many {# تعليقًا} other {# تعليق}}",
   "portal.postDetail.metadata.eta": "الموعد المتوقع",

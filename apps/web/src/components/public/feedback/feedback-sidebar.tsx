@@ -1,4 +1,5 @@
 import { ListBulletIcon, ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
+import { SOURCE_CODE_URL } from '@/lib/shared/source-code'
 import { FormattedMessage } from 'react-intl'
 import { cn } from '@/lib/shared/utils'
 import type { PublicBoardWithStats } from '@/lib/shared/types'
@@ -107,6 +108,22 @@ export function FeedbackSidebar({
             </a>
           </div>
         ) : null}
+
+        {/* FeedbackOS: the source of the running version, offered to every
+            user as the AGPL (section 13) requires. */}
+        <div className="flex justify-center mt-3">
+          <a
+            href={SOURCE_CODE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <FormattedMessage
+              id="portal.feedback.sidebar.sourceCode"
+              defaultMessage="Source code"
+            />
+          </a>
+        </div>
       </div>
     </aside>
   )
