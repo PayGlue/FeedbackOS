@@ -2,9 +2,9 @@ import { Button, Heading, Section, Text } from '@react-email/components'
 import { EmailLayout, NotificationFooter } from './email-layout'
 import { typography, button } from './shared-styles'
 
-const MAINTENANCE_BLUE = '#3b82f6'
-const MAINTENANCE_BLUE_BG = '#eff6ff'
-const MAINTENANCE_BLUE_BORDER = '#bfdbfe'
+const MAINTENANCE_BLUE = '#60a5fa'
+const MAINTENANCE_BLUE_BG = '#172554'
+const MAINTENANCE_BLUE_BORDER = '#1e3a8a'
 
 interface StatusMaintenanceScheduledEmailProps {
   workspaceName: string

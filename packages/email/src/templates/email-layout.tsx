@@ -8,9 +8,12 @@ import {
   Section,
   Text,
   Link,
+  Row,
+  Column,
 } from '@react-email/components'
-import { layout, branding, typography, utils, colors, DEFAULT_LOGO_URL } from './shared-styles'
+import { layout, branding, typography, utils, DEFAULT_LOGO_URL } from './shared-styles'
 import { useEmailShowPoweredBy } from '../powered-by'
+import { ReplyMarkerLine } from './reply-marker-line'
 
 interface EmailLayoutProps {
   preview: string
@@ -47,30 +50,40 @@ export function EmailLayout({
       <Preview>{preview}</Preview>
       <Body style={layout.main}>
         {/* Wrapper Section provides background color for clients that strip <body> styles */}
-        <Section style={{ backgroundColor: colors.background }}>
+        <Section style={layout.wrapper}>
           <Container style={layout.container}>
-            {/* Logo */}
+            <ReplyMarkerLine />
+            {/* Logo and name above the card */}
             <Section style={branding.logoContainer}>
-              <Img
-                src={logoUrl ?? DEFAULT_LOGO_URL}
-                alt={logoAlt}
-                width={branding.logo.width}
-                height={branding.logo.height}
-                style={branding.logo}
-              />
+              <Row>
+                <Column style={{ width: `${branding.logo.width}px`, verticalAlign: 'middle' }}>
+                  <Img
+                    src={logoUrl ?? DEFAULT_LOGO_URL}
+                    alt={logoAlt}
+                    width={branding.logo.width}
+                    height={branding.logo.height}
+                    style={branding.logo}
+                  />
+                </Column>
+                <Column style={{ verticalAlign: 'middle' }}>
+                  <Text style={branding.appName}>{logoAlt}</Text>
+                </Column>
+              </Row>
             </Section>
 
-            {children}
+            <Section style={layout.card}>
+              {children}
 
-            {/* Footer */}
-            {footer}
-            {showPoweredBy ? (
-              <Text style={typography.footer}>
-                <Link href="https://quackback.io" style={{ ...utils.link, fontSize: '13px' }}>
-                  Powered by Quackback
-                </Link>
-              </Text>
-            ) : null}
+              {/* Footer */}
+              {footer}
+              {showPoweredBy ? (
+                <Text style={typography.footer}>
+                  <Link href="https://quackback.io" style={{ ...utils.link, fontSize: '13px' }}>
+                    Powered by Quackback
+                  </Link>
+                </Text>
+              ) : null}
+            </Section>
           </Container>
         </Section>
       </Body>

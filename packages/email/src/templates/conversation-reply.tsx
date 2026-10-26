@@ -1,4 +1,5 @@
 import { Body, Head, Html, Link, Preview, Text } from '@react-email/components'
+import { ReplyMarkerLine } from './reply-marker-line'
 
 /**
  * Human correspondence for the email channel: the agent's words are the body.
@@ -106,6 +107,7 @@ export function ConversationReplyEmail({
       <Head />
       <Preview>{preview}</Preview>
       <Body style={page}>
+        <ReplyMarkerLine style={{ textAlign: 'left', color: '#98a2b3' }} />
         {bodyHtml ? (
           <div style={body} dangerouslySetInnerHTML={{ __html: bodyHtml }} />
         ) : (

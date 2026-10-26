@@ -40,6 +40,7 @@
  */
 
 import TurndownService from 'turndown'
+import { REPLY_MARKER_PATTERN } from '@quackback/email'
 import { sanitizeEmailHtml } from './sanitize-email-html'
 import { markdownToTiptapJson, tiptapJsonToText } from '@/lib/server/markdown-tiptap'
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
@@ -98,7 +99,57 @@ function trimQuotedHistory(html: string): string {
     const m = marker.exec(html)
     if (m && m.index < cut) cut = m.index
   }
+  const atMarker = replyMarkerCut(html)
+  if (atMarker !== null && atMarker < cut) return dropAttributionLine(html.slice(0, atMarker))
   return cut >= html.length ? html : html.slice(0, cut)
+}
+
+/**
+ * FeedbackOS: where to cut at our own reply marker (`REPLY_MARKER_TEXT`, sent
+ * at the top of every mail that can be answered). Language- and client-
+ * independent: whatever the client writes around a quote, it quotes the marker
+ * verbatim. The cut goes to the start of the blockquote that holds the marker
+ * (Apple Mail, Fastmail, Thunderbird and Gmail quote inside one), or to the
+ * marker itself when the client quotes without one.
+ */
+function replyMarkerCut(html: string): number | null {
+  const m = REPLY_MARKER_PATTERN.exec(html)
+  if (!m) return null
+  const quoteStart = html.slice(0, m.index).search(/<blockquote\b[^>]*>(?![\s\S]*<blockquote\b)/i)
+  return quoteStart >= 0 ? quoteStart : m.index
+}
+
+// Block boundaries a mail client puts around its attribution line.
+const BLOCK_BOUNDARY = /<(?:br|\/?div|\/?p|\/?blockquote)\b[^>]*>/gi
+
+/**
+ * Drop the client's attribution line ("On … wrote:", "Am … schrieb …:",
+ * "Le … a écrit :") left at the end once the quote below it is cut. Recognised
+ * by shape, not by words: the last line of text ends with a colon and carries a
+ * date or an address. Anything else is the sender's own text and stays.
+ */
+function dropAttributionLine(head: string): string {
+  const bounds: Array<{ start: number; end: number }> = []
+  for (const m of head.matchAll(BLOCK_BOUNDARY)) {
+    bounds.push({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length })
+  }
+  let segEnd = head.length
+  for (let i = bounds.length; i >= 0; i--) {
+    const segStart = i === 0 ? 0 : bounds[i - 1].end
+    const text = head
+      .slice(segStart, segEnd)
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .trim()
+    if (text) {
+      const isAttribution = text.length <= 300 && /:$/.test(text) && /\d|@/.test(text)
+      return isAttribution ? head.slice(0, segStart) : head
+    }
+    if (i > 0) segEnd = bounds[i - 1].start
+  }
+  return head
 }
 
 /**

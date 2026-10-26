@@ -54,6 +54,39 @@ describe('emailHtmlToContent', () => {
     expect(text).not.toContain('schrieb')
   })
 
+  describe('reply marker', () => {
+    const quoted =
+      '<blockquote type="cite"><div>##- Reply above this line -##</div>' +
+      '<div>Original message body</div></blockquote>'
+
+    it('cuts a French Fastmail reply at the quote that holds the marker', () => {
+      const html =
+        '<div>Merci, ça marche.</div><div><br></div>' +
+        '<div>Le lun. 26 oct. 2026 à 01:14, <a href="mailto:support@example.com">support@example.com</a> a écrit :<br></div>' +
+        quoted
+      const { text } = emailHtmlToContent(html)
+      expect(text).toContain('Merci, ça marche.')
+      expect(text).not.toContain('Original message body')
+      expect(text).not.toContain('a écrit')
+      expect(text).not.toContain('Reply above this line')
+    })
+
+    it('cuts a reply whose client quotes without a blockquote', () => {
+      const html =
+        '<p>Thanks!</p><p>##- Reply above this line -##</p><p>Original message body</p>'
+      const { text } = emailHtmlToContent(html)
+      expect(text).toContain('Thanks!')
+      expect(text).not.toContain('Original message body')
+    })
+
+    it('keeps a closing line with a colon that is not an attribution', () => {
+      const html = '<div>Steps I tried:</div><div><br></div>' + quoted
+      const { text } = emailHtmlToContent(html)
+      expect(text).toContain('Steps I tried:')
+      expect(text).not.toContain('Original message body')
+    })
+  })
+
   describe('gmail-style reply', () => {
     const gmail =
       '<div dir="ltr">Thanks for the <b>update</b>!<div><br></div>' +
