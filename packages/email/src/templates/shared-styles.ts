@@ -5,7 +5,9 @@
  * Colors are derived from the app's design system.
  */
 
-export const DEFAULT_LOGO_URL = 'https://quackback.io/logo.png'
+// FeedbackOS: the logo for mails that are sent without a workspace logo (the
+// conversation and ticket mails), configurable per install.
+export const DEFAULT_LOGO_URL = process.env.EMAIL_LOGO_URL || 'https://quackback.io/logo.png'
 
 // FeedbackOS: PayGlue's mail look, the same dark shell the PayGlue dashboard
 // sends its own account mails in (slate background, raised card, indigo).
@@ -149,6 +151,11 @@ export const branding = {
     display: 'block' as const,
     borderRadius: '6px',
   },
+  // A CamelCase name ("PayGlue") is drawn as a wordmark: first part in the
+  // link indigo, the rest in white, like the PayGlue dashboard mails.
+  appNameAccent: {
+    color: colors.link,
+  },
   appName: {
     color: colors.heading,
     fontSize: '18px',
@@ -166,4 +173,15 @@ export const replyMarker = {
   lineHeight: '18px',
   margin: '0 0 16px',
   textAlign: 'center' as const,
+}
+
+// Small uppercase line above the heading ("PAYGLUE SUPPORT")
+export const eyebrow = {
+  color: colors.link,
+  fontSize: '12px',
+  fontWeight: '700' as const,
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase' as const,
+  lineHeight: '18px',
+  margin: '0 0 8px',
 }

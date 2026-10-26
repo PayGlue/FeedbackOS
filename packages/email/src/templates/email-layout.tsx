@@ -66,7 +66,9 @@ export function EmailLayout({
                   />
                 </Column>
                 <Column style={{ verticalAlign: 'middle' }}>
-                  <Text style={branding.appName}>{logoAlt}</Text>
+                  <Text style={branding.appName}>
+                    <Wordmark name={logoAlt} />
+                  </Text>
                 </Column>
               </Row>
             </Section>
@@ -88,6 +90,18 @@ export function EmailLayout({
         </Section>
       </Body>
     </Html>
+  )
+}
+
+/** "PayGlue" as Pay + Glue; a name without an inner capital stays as it is. */
+function Wordmark({ name }: { name: string }) {
+  const split = /^([A-Z][a-z0-9]+)([A-Z].*)$/.exec(name)
+  if (!split) return <>{name}</>
+  return (
+    <>
+      <span style={branding.appNameAccent}>{split[1]}</span>
+      {split[2]}
+    </>
   )
 }
 
