@@ -700,6 +700,18 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'suppressed duplicate log line.',
   },
   {
+    file: 'apps/web/src/lib/server/domains/conversation/conversation.email-imap.ts',
+    name: 'handledUids',
+    category: 'process-lifetime',
+    reason:
+      'FeedbackOS: UIDs of the IMAP mailbox this process already handed to the ingest core, keyed ' +
+      'by user, mailbox and UID, so a poll that also searches recent mail does not fetch the same ' +
+      'message every minute. It describes the one mailbox configured in process.env, which the ' +
+      'pooled-tenancy guard in conversation.email-imap-queue.ts already restricts to a single ' +
+      'workspace, so there is no workspace dimension to mix up. Losing it on a restart costs one ' +
+      're-fetch that the Message-ID dedupe drops.',
+  },
+  {
     file: 'apps/web/src/lib/server/domains/conversation/conversation.email-imap-queue.ts',
     name: 'warnedPooled',
     category: 'process-lifetime',
