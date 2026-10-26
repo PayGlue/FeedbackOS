@@ -28,6 +28,10 @@ export interface ImapConfig {
   password: string
   tls: boolean
   mailbox: string
+  /** FeedbackOS: other mailboxes that hold the same message (a server that
+   *  exposes labels as folders keeps a separate \Seen per copy). A handled
+   *  message is marked seen there too. From IMAP_MARK_SEEN_ALSO, comma separated. */
+  alsoMarkSeen?: string[]
 }
 
 /** One fetched message: its IMAP UID and the raw RFC822 bytes as text. */
@@ -66,7 +70,16 @@ export function readImapConfig(env: EnvLike = process.env): ImapConfig | null {
     password,
     tls,
     mailbox: env.IMAP_MAILBOX || 'INBOX',
+    ...alsoMarkSeenFrom(env),
   }
+}
+
+function alsoMarkSeenFrom(env: EnvLike): { alsoMarkSeen?: string[] } {
+  const boxes = (env.IMAP_MARK_SEEN_ALSO ?? '')
+    .split(',')
+    .map((box) => box.trim())
+    .filter(Boolean)
+  return boxes.length > 0 ? { alsoMarkSeen: boxes } : {}
 }
 
 /**
@@ -137,6 +150,7 @@ const SEND_SCAN_OVERLAP = 16
 class SocketImapClient implements ImapClient {
   private tagSeq = 0
   private buffer = ''
+  private readonly messageIds = new Map<number, string>()
   private constructor(
     private readonly socket: Socket,
     private readonly config: ImapConfig
@@ -175,7 +189,11 @@ class SocketImapClient implements ImapClient {
       const tag = this.nextTag()
       const resp = await this.send(tag, `UID FETCH ${uid} (BODY.PEEK[])`)
       const raw = parseFetchLiteral(resp)
-      if (raw !== null) messages.push({ uid, raw })
+      if (raw !== null) {
+        messages.push({ uid, raw })
+        const messageId = /^Message-ID:\s*(<[^>\r\n]+>)/im.exec(raw)?.[1]
+        if (messageId) this.messageIds.set(uid, messageId)
+      }
     }
     return messages
   }
@@ -183,6 +201,27 @@ class SocketImapClient implements ImapClient {
   async markSeen(uid: number): Promise<void> {
     handledUids.add(handledKey(this.config, uid))
     await this.exec(`UID STORE ${uid} +FLAGS (\\Seen)`)
+    await this.markSeenElsewhere(this.messageIds.get(uid))
+  }
+
+  /** FeedbackOS: the same message in the other configured mailboxes. Best
+   *  effort; the poll's own mailbox is selected again afterwards. */
+  private async markSeenElsewhere(messageId: string | undefined): Promise<void> {
+    const boxes = this.config.alsoMarkSeen ?? []
+    if (!messageId || boxes.length === 0) return
+    try {
+      for (const box of boxes) {
+        await this.exec(`SELECT ${quote(box)}`)
+        const found = parseSearchUids(
+          await this.exec(`UID SEARCH HEADER Message-ID ${quote(messageId)}`)
+        )
+        for (const other of found) await this.exec(`UID STORE ${other} +FLAGS (\\Seen)`)
+      }
+    } catch (err) {
+      log.warn({ err }, 'imap mark seen in other mailbox failed')
+    } finally {
+      await this.exec(`SELECT ${quote(this.config.mailbox)}`)
+    }
   }
 
   async close(): Promise<void> {

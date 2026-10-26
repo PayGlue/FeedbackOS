@@ -186,3 +186,19 @@ describe('imapDate', () => {
     expect(imapDate(new Date(Date.UTC(2026, 0, 31)))).toBe('31-Jan-2026')
   })
 })
+
+describe('readImapConfig IMAP_MARK_SEEN_ALSO', () => {
+  const base = {
+    EMAIL_INBOUND_PROVIDER: 'imap',
+    IMAP_HOST: 'imap.example.com',
+    IMAP_USER: 'u',
+    IMAP_PASSWORD: 'p',
+  }
+  it('lists the extra mailboxes, trimmed', () => {
+    const config = readImapConfig({ ...base, IMAP_MARK_SEEN_ALSO: ' [06] PayGlue , Archive ' })
+    expect(config?.alsoMarkSeen).toEqual(['[06] PayGlue', 'Archive'])
+  })
+  it('leaves the field out when unset', () => {
+    expect(readImapConfig(base)).not.toHaveProperty('alsoMarkSeen')
+  })
+})
