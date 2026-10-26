@@ -36,6 +36,7 @@ import { canActAsAgent } from '@/lib/server/policy/conversation'
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import type { Actor } from '@/lib/server/policy/types'
 import type { PrincipalId } from '@quackback/ids'
+import type { Role, PrincipalType } from '@/lib/shared/roles'
 import { ValidationError, InternalError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import { publishTicketEvent } from '@/lib/server/realtime/conversation-channels'
@@ -459,8 +460,8 @@ async function requesterActor(requesterPrincipalId: PrincipalId): Promise<Actor>
     .limit(1)
   return {
     principalId: requesterPrincipalId,
-    role: row?.role ?? 'user',
-    principalType: row?.type ?? 'anonymous',
+    role: (row?.role ?? 'user') as Role,
+    principalType: (row?.type ?? 'anonymous') as PrincipalType,
     segmentIds: new Set(),
   }
 }
