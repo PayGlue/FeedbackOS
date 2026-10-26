@@ -195,8 +195,8 @@ describe('readImapConfig IMAP_MARK_SEEN_ALSO', () => {
     IMAP_PASSWORD: 'p',
   }
   it('lists the extra mailboxes, trimmed', () => {
-    const config = readImapConfig({ ...base, IMAP_MARK_SEEN_ALSO: ' [06] PayGlue , Archive ' })
-    expect(config?.alsoMarkSeen).toEqual(['[06] PayGlue', 'Archive'])
+    const config = readImapConfig({ ...base, IMAP_MARK_SEEN_ALSO: ' Projects/Support , Archive ' })
+    expect(config?.alsoMarkSeen).toEqual(['Projects/Support', 'Archive'])
   })
   it('leaves the field out when unset', () => {
     expect(readImapConfig(base)).not.toHaveProperty('alsoMarkSeen')
