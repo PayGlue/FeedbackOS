@@ -592,6 +592,36 @@ describe.skipIf(!fixture.available)('convergence Phase 1b (real DB, rolled back)
   })
 
   describe('agent-authored intake (the API v1 / MCP shape via createTicket)', () => {
+    // FeedbackOS: an integration files on the requester's behalf.
+    it('descriptionFromRequester opens with a visitor message authored by the requester', async () => {
+      await seedDefaultStatus()
+      const requesterP = await seedPrincipal({})
+      const serviceP = await seedPrincipal({ role: 'member', type: 'service' })
+
+      const dto = await createTicket(
+        {
+          type: 'customer',
+          title: 'Wrong VAT number',
+          description: 'My invoice has the wrong VAT number.',
+          requesterPrincipalId: requesterP,
+          descriptionFromRequester: true,
+          withBackingConversation: true,
+        },
+        serviceActor(serviceP)
+      )
+
+      const link = await readPairLink(dto.id as TicketId)
+      const conversation = await readConversation(link!.conversationId)
+      const messages = await testDb
+        .select()
+        .from(conversationMessages)
+        .where(eq(conversationMessages.conversationId, conversation.id))
+      expect(messages).toHaveLength(1)
+      expect(messages[0].senderType).toBe('visitor')
+      expect(messages[0].principalId).toBe(requesterP)
+      const ticket = await readTicket(dto.id as TicketId)
+      expect(ticket.assigneePrincipalId).toBeNull()
+    })
     it('customer + requester + flag creates the pair with an agent-typed opening, born-owned', async () => {
       await seedDefaultStatus()
       const requesterP = await seedPrincipal({})
