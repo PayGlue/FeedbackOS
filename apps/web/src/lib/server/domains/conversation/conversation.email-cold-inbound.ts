@@ -68,6 +68,17 @@ export interface ColdInboundResolution {
 }
 
 /**
+ * FeedbackOS: the display name of a From header (`"Jane Doe" <jane@acme.com>`,
+ * `Jane Doe <jane@acme.com>`), or null when it carries only an address.
+ */
+export function senderDisplayName(fromHeader: string | null): string | null {
+  if (!fromHeader) return null
+  const match = /^\s*"?([^"<]*?)"?\s*<[^>]+>\s*$/.exec(fromHeader)
+  const name = match?.[1]?.trim()
+  return name ? name.slice(0, 200) : null
+}
+
+/**
  * Resolve the sender of a cold inbound email to a principal, gated by the
  * Authentication-Results header. `fromEmail` is the raw From address.
  */
@@ -136,7 +147,14 @@ export async function resolveColdInboundSender(
   // Otherwise a new standalone lead: an anonymous principal carrying the contact
   // email. A DMARC pass with no existing account is still a verified lead; a weak
   // verdict is unverified and gets the badge.
-  const lead = await createPrincipal({ role: 'user', type: 'anonymous', contactEmail: email })
+  // FeedbackOS: the name from the From header, or the address when the sender
+  // gave none, so the inbox shows who wrote instead of "Visitor".
+  const lead = await createPrincipal({
+    role: 'user',
+    type: 'anonymous',
+    contactEmail: email,
+    displayName: senderDisplayName(fromEmail) ?? email,
+  })
   return {
     action: 'create',
     principalId: lead.id,
