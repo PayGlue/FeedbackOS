@@ -164,7 +164,8 @@ export async function createTicketCore(input: CreateTicketInput, actor: Actor): 
   // The description is the requester's own ask when they file the ticket
   // themselves — their inline images may only reference our own storage.
   const filedByRequester =
-    !!actor.principalId && actor.principalId === (input.requesterPrincipalId ?? null)
+    (!!actor.principalId && actor.principalId === (input.requesterPrincipalId ?? null)) ||
+    (input.descriptionFromRequester === true && !!input.requesterPrincipalId)
   const openingAttachments = await resolveAttachments(input.attachments, {
     principalId: actor.principalId ?? null,
     canAttachAnyFile: canActAsAgent(actor).allowed,

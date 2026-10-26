@@ -825,7 +825,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/workflows.ts`::runWorkflowManuallyFn | conversation.reply |
 | `lib/server/functions/workspace-wipe.ts`::wipeCloudWorkspaceFn | END_USER (any authenticated) |
 
-### Public REST API (`withApiKeyAuth`) — 127 surfaces
+### Public REST API (`withApiKeyAuth`) — 128 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -936,6 +936,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `routes/api/v1/tags/index.ts`::GET | PUBLIC (any valid key) |
 | `routes/api/v1/tags/index.ts`::POST | tag.manage |
 | `routes/api/v1/ticket-statuses/index.ts`::GET | ticket.view |
+| `routes/api/v1/ticket-types/index.ts`::GET | ticket.view |
 | `routes/api/v1/tickets/$ticketId.assign.ts`::POST | ticket.assign |
 | `routes/api/v1/tickets/$ticketId.messages.ts`::GET | ticket.view |
 | `routes/api/v1/tickets/$ticketId.note.ts`::POST | ticket.note |
@@ -1034,7 +1035,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-227 of 1057 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+227 of 1058 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 

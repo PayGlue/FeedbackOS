@@ -372,11 +372,14 @@ export async function createTicket(input: CreateTicketInput, actor: Actor): Prom
   }
   if (!assigneePrincipalId && actor.principalId) {
     const [creator] = await db
-      .select({ role: principal.role })
+      .select({ role: principal.role, type: principal.type })
       .from(principal)
       .where(eq(principal.id, actor.principalId))
       .limit(1)
-    if (creator && isTeamMember(creator.role)) assigneePrincipalId = actor.principalId
+    // FeedbackOS: an API key or integration (a service principal) is never the
+    // assignee; a ticket it files arrives unassigned for the team to pick up.
+    if (creator && isTeamMember(creator.role) && creator.type !== 'service')
+      assigneePrincipalId = actor.principalId
   }
 
   // Company propagation: the requester's own company fills in when nothing

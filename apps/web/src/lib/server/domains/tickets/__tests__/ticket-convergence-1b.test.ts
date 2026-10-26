@@ -626,7 +626,9 @@ describe.skipIf(!fixture.available)('convergence Phase 1b (real DB, rolled back)
       expect(messages[0].principalId).toBe(agentP)
       expect(conversation.assignedAgentPrincipalId).toBe(agentP)
       const ticket = await readTicket(dto.id as TicketId)
-      expect(ticket.assigneePrincipalId).toBe(agentP)
+      // FeedbackOS: a service principal (API key) is never the ticket's
+      // assignee; the ticket arrives unassigned for the team.
+      expect(ticket.assigneePrincipalId).toBeNull()
       // An opening message is never a first response, whichever parent it
       // lands on.
       expect(ticket.firstResponseAt).toBeNull()
