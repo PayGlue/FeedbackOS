@@ -66,3 +66,24 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 | --------------------- | ----------------------------------------------------------- |
 | `EMAIL_LOGO_URL`      | Logo for emails sent without a workspace logo               |
 | `IMAP_MARK_SEEN_ALSO` | Further mailboxes in which a handled message is marked seen |
+
+## Maintaining the fork
+
+- **Upstream updates are merged, never rebased.** Fetch Quackback's `main`, run
+  `git merge --no-ff upstream/main` on a branch named `upstream-sync/<date>`,
+  and open a pull request. Merge it with a merge commit, not a squash, so the
+  upstream history and the recorded conflict resolutions stay.
+- **Turn on `git rerere`** in every clone (`git config rerere.enabled true`), so
+  a conflict resolved once is resolved the same way next time.
+- **`merge=ours` only for branding files.** `.gitattributes` marks `README.md`;
+  it needs `git config merge.ours.driver true` once per clone. Never use it for
+  code: it discards the other side entirely, real fixes included.
+- **No octopus merges** and no automatic search and replace of "Quackback":
+  both have silently broken forks before (URLs, path aliases, i18n keys).
+- After an upstream merge, check every file this fork added or deleted against
+  the new tree. Upstream can bring a deleted file back under a new path.
+- The `Upstream reference check` workflow fails a pull request that adds new
+  references to Quackback's infrastructure; `upstream-sync/*` branches are
+  exempt and reviewed by hand.
+- Commits follow Conventional Commits (`feat(email): ...`, `fix(imap): ...`),
+  in English, describing the behaviour.

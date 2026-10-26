@@ -1,0 +1,35 @@
+name: Upstream reference check
+
+# FeedbackOS: fail a pull request that adds new references to the original
+# project's infrastructure (its website, cloud app, docs or repository) outside
+# the files that name it on purpose. Upstream merges bring such references by
+# nature and are reviewed by hand, so branches named upstream-sync/* are skipped.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: ${{ !startsWith(github.head_ref, 'upstream-sync/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Look for new upstream references
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          hits=$(git diff --unified=0 "$base" "$head" -- . ':!README.md' ':!FORK.md' ':!.github/workflows/upstream-reference-check.yml' \
+            | grep -E '^\+' | grep -vE '^\+\+\+' \
+            | grep -nE 'quackback\.io|QuackbackIO/quackback' || true)
+          if [ -n "$hits" ]; then
+            echo "New references to Quackback's infrastructure:"
+            echo "$hits"
+            echo "Point them at this fork or make them configurable."
+            exit 1
+          fi
+          echo "No new upstream references."
