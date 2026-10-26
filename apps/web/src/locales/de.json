@@ -256,6 +256,7 @@
   "portal.feedback.sidebar.boards": "Boards",
   "portal.feedback.sidebar.viewAllPosts": "Alle Beiträge ansehen",
   "portal.feedback.sidebar.poweredBy": "Powered by {brand}",
+  "portal.feedback.sidebar.sourceCode": "Quellcode",
   "portal.feedback.similarPosts.heading": "Ähnliche Ideen",
   "portal.postDetail.comments": "{count, plural, one {# Kommentar} other {# Kommentare}}",
   "portal.postDetail.metadata.eta": "Voraussichtlich",

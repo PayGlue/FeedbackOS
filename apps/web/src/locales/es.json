@@ -256,6 +256,7 @@
   "portal.feedback.sidebar.boards": "Categorías",
   "portal.feedback.sidebar.viewAllPosts": "Ver todas las publicaciones",
   "portal.feedback.sidebar.poweredBy": "Desarrollado con {brand}",
+  "portal.feedback.sidebar.sourceCode": "Código fuente",
   "portal.feedback.similarPosts.heading": "Ideas similares",
   "portal.postDetail.comments": "{count, plural, one {# comentario} other {# comentarios}}",
   "portal.postDetail.metadata.eta": "ETA",

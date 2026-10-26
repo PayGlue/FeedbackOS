@@ -256,6 +256,7 @@
   "portal.feedback.sidebar.boards": "Borden",
   "portal.feedback.sidebar.viewAllPosts": "Alle posts bekijken",
   "portal.feedback.sidebar.poweredBy": "Mogelijk gemaakt door {brand}",
+  "portal.feedback.sidebar.sourceCode": "Broncode",
   "portal.feedback.similarPosts.heading": "Vergelijkbare ideeën",
   "portal.postDetail.comments": "{count, plural, one {# reactie} other {# reacties}}",
   "portal.postDetail.metadata.eta": "Verwacht",

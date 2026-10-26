@@ -256,6 +256,7 @@
   "portal.feedback.sidebar.boards": "Tablice",
   "portal.feedback.sidebar.viewAllPosts": "Zobacz wszystkie wpisy",
   "portal.feedback.sidebar.poweredBy": "Obsługiwane przez {brand}",
+  "portal.feedback.sidebar.sourceCode": "Kod źródłowy",
   "portal.feedback.similarPosts.heading": "Podobne pomysły",
   "portal.postDetail.comments": "{count, plural, one {# komentarz} few {# komentarze} many {# komentarzy} other {# komentarza}}",
   "portal.postDetail.metadata.eta": "Przewidywany termin",
