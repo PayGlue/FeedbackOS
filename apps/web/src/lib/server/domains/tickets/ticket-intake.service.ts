@@ -35,6 +35,7 @@ import { resolveAttachments, linkFilesToMessage } from '@/lib/server/domains/fil
 import { canActAsAgent } from '@/lib/server/policy/conversation'
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import type { Actor } from '@/lib/server/policy/types'
+import type { PrincipalId } from '@quackback/ids'
 import { ValidationError, InternalError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import { publishTicketEvent } from '@/lib/server/realtime/conversation-channels'
@@ -269,7 +270,7 @@ export async function createTicketCore(input: CreateTicketInput, actor: Actor): 
         .insert(conversationMessages)
         .values({
           ticketId: ticket.id,
-          principalId: actor.principalId,
+          principalId: filedByRequester ? input.requesterPrincipalId! : actor.principalId,
           senderType: filedByRequester ? 'visitor' : 'agent',
           content: validateContent(
             resolvedDescription,
@@ -332,6 +333,13 @@ export async function createTicketCore(input: CreateTicketInput, actor: Actor): 
       // an intake that succeeded; the union loader reads both shapes.
       try {
         const { insertTicketMessage } = await import('./ticket-message.service')
+        // FeedbackOS: filed on the requester's behalf (descriptionFromRequester),
+        // the opening is sent AS the requester. A service actor may not send
+        // conversation messages, and the message is theirs anyway.
+        const openingActor =
+          filedByRequester && actor.principalId !== input.requesterPrincipalId
+            ? await requesterActor(input.requesterPrincipalId!)
+            : actor
         await insertTicketMessage(
           {
             ticketId: created.ticket.id,
@@ -346,7 +354,7 @@ export async function createTicketCore(input: CreateTicketInput, actor: Actor): 
             senderType: filedByRequester ? 'visitor' : 'agent',
             isInternal: false,
             stampFirstResponse: false,
-            actor,
+            actor: openingActor,
           }
         )
       } catch (err) {
@@ -374,7 +382,7 @@ export async function createTicketCore(input: CreateTicketInput, actor: Actor): 
               .insert(conversationMessages)
               .values({
                 ticketId: created.ticket.id,
-                principalId: actor.principalId,
+                principalId: filedByRequester ? input.requesterPrincipalId! : actor.principalId,
                 senderType: filedByRequester ? 'visitor' : 'agent',
                 content: validateContent(
                   resolvedDescription,
@@ -438,4 +446,21 @@ export async function createTicketCore(input: CreateTicketInput, actor: Actor): 
   // covers creation, mirroring how the conversation domain's 'conversation'
   // event has no separate created/updated split.
   return publishTicketUpdated(created.ticket)
+}
+
+/** FeedbackOS: the requester as an actor, for an opening message an
+ *  integration files on their behalf. Carries the requester's own identity
+ *  and role, never the integration's permissions. */
+async function requesterActor(requesterPrincipalId: PrincipalId): Promise<Actor> {
+  const [row] = await db
+    .select({ role: principal.role, type: principal.type })
+    .from(principal)
+    .where(eq(principal.id, requesterPrincipalId))
+    .limit(1)
+  return {
+    principalId: requesterPrincipalId,
+    role: row?.role ?? 'user',
+    principalType: row?.type ?? 'anonymous',
+    segmentIds: new Set(),
+  }
 }
