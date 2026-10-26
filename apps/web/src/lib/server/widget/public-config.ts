@@ -107,13 +107,13 @@ export async function getPublicServerConfig(): Promise<{
     const brandingConfig = await getBrandingConfig()
     theme.themeMode = brandingConfig.themeMode ?? 'user'
 
-    const { oklchToHex } = await import('@/lib/shared/theme/colors')
+    // Branding colors may be stored as oklch or hex; toHex handles both.
     const light = brandingConfig.light
     const dark = brandingConfig.dark
-    if (light?.primary) theme.lightPrimary = oklchToHex(light.primary)
-    if (light?.primaryForeground) theme.lightPrimaryForeground = oklchToHex(light.primaryForeground)
-    if (dark?.primary) theme.darkPrimary = oklchToHex(dark.primary)
-    if (dark?.primaryForeground) theme.darkPrimaryForeground = oklchToHex(dark.primaryForeground)
+    if (light?.primary) theme.lightPrimary = await toHex(light.primary)
+    if (light?.primaryForeground) theme.lightPrimaryForeground = await toHex(light.primaryForeground)
+    if (dark?.primary) theme.darkPrimary = await toHex(dark.primary)
+    if (dark?.primaryForeground) theme.darkPrimaryForeground = await toHex(dark.primaryForeground)
     if (light?.radius) theme.radius = light.radius
 
     const customCss = await getCustomCss()
