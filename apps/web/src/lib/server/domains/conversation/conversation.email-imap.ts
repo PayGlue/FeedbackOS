@@ -86,6 +86,9 @@ export async function pollOnce(
     try {
       const result = await ingest(parseRawEmail(message.raw))
       if (result.status === 'ingested' || result.status === 'ingested_ticket') ingested++
+      // FeedbackOS: a dropped message is marked seen and never retried, so say
+      // why. Without this a refused message leaves no trace at all.
+      else log.info({ uid: message.uid, status: result.status }, 'imap message not ingested')
       await client.markSeen(message.uid)
     } catch (err) {
       failed++
