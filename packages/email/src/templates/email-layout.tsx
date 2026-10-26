@@ -59,7 +59,7 @@ export function EmailLayout({
                 <Column style={{ width: `${branding.logo.width}px`, verticalAlign: 'middle' }}>
                   <Img
                     src={logoUrl ?? DEFAULT_LOGO_URL}
-                    alt=""
+                    alt={logoAlt}
                     width={branding.logo.width}
                     height={branding.logo.height}
                     style={branding.logo}
