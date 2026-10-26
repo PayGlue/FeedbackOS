@@ -175,6 +175,45 @@ registerPath('/ticket-statuses', {
   },
 })
 
+// A workspace ticket type (GET /ticket-types discovery endpoint, FeedbackOS).
+const TicketTypeSchema = z.object({
+  id: TypeIdSchema.meta({ example: 'ticket_type_01h455vb4pex5vsknk084sn02q' }),
+  name: z.string().meta({ example: 'Billing or plan' }),
+  slug: z.string().meta({ example: 'billing-or-plan' }),
+  category: z
+    .string()
+    .meta({ description: 'customer, back_office or tracker', example: 'customer' }),
+  icon: z.string().nullable().meta({ example: '💳' }),
+  color: z.string().meta({ example: '#0891b2' }),
+  position: z.number().meta({ description: 'Ordering within its category', example: 0 }),
+  isDefault: z.boolean().meta({ description: 'Whether this is the default type of its category' }),
+  intakeVisible: z.boolean().meta({ description: 'Whether customers can pick it at intake' }),
+})
+
+// Register GET /ticket-types (discovery for the ids POST /tickets takes)
+registerPath('/ticket-types', {
+  get: {
+    tags: ['Tickets'],
+    summary: 'List ticket types',
+    description:
+      "Returns the workspace's live ticket types (ordered by category then position). Use an id as ticketTypeId on POST /tickets. Requires a team-role API key.",
+    responses: {
+      200: {
+        description: 'List of ticket types',
+        content: {
+          'application/json': {
+            schema: createItemResponseSchema(z.array(TicketTypeSchema), 'Ticket types'),
+          },
+        },
+      },
+      401: {
+        description: 'Unauthorized',
+        content: { 'application/json': { schema: UnauthorizedErrorSchema } },
+      },
+    },
+  },
+})
+
 // Register GET /tickets
 registerPath('/tickets', {
   get: {
