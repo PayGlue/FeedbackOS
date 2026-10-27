@@ -358,7 +358,12 @@ export default function FileViewer({
   }
 
   const jumpable = !compact && Boolean(onJumpToMessage && file.messageId)
-  const subLine = [file.senderName, formatSentAt(file.sentAt, formatDate), formatBytes(file.size)]
+  // A size of 0 means unknown (help center images), so it is left out.
+  const subLine = [
+    file.senderName,
+    formatSentAt(file.sentAt, formatDate),
+    file.size > 0 ? formatBytes(file.size) : '',
+  ]
     .filter(Boolean)
     .join(' · ')
 

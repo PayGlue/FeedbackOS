@@ -38,6 +38,8 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
   configured redirect rules instead of a 404.
 - Clicking an image in an article opens it at full size in the file viewer,
   with the article's other images one arrow key away.
+- The file viewer leaves the size out of its header when it is unknown
+  (size 0), as for these article images.
 
 **Email channel**
 
