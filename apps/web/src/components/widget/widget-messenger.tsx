@@ -8,6 +8,7 @@ import { VisitorSurfaceRpcProvider } from '@/lib/client/visitor-surface-rpc'
 import { widgetVisitorRpc } from '@/lib/client/widget-visitor-rpc'
 import { useConversationPresence, markAgentPresentInCache } from './use-messenger-presence'
 import { useWidgetFileUpload } from './use-widget-file-upload'
+import type { ThreadHumanAgent } from '@/lib/shared/conversation/human-agent'
 
 interface WidgetMessengerProps {
   /** Whether the help center is available (gates in-conversation article suggestions). */
@@ -19,6 +20,8 @@ interface WidgetMessengerProps {
   conversationTarget?: ConversationId | 'new'
   /** Put the cursor in the composer on mount (new-thread landings on desktop). */
   autofocusComposer?: boolean
+  /** Notified when a teammate takes over the thread (for the shell header). */
+  onHumanAgentChange?: (agent: ThreadHumanAgent | null) => void
 }
 
 /**
@@ -32,6 +35,7 @@ export function WidgetMessenger({
   onArticleSelect,
   conversationTarget,
   autofocusComposer = false,
+  onHumanAgentChange,
 }: WidgetMessengerProps = {}) {
   const queryClient = useQueryClient()
   const { user, ensureSession, sessionVersion } = useWidgetAuth()
@@ -77,6 +81,7 @@ export function WidgetMessenger({
         helpSearch={helpSearch}
         embedOpenMode="newTab"
         showHeader={false}
+        onHumanAgentChange={onHumanAgentChange}
         autofocusComposer={autofocusComposer}
         compact
       />

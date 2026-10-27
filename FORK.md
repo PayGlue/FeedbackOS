@@ -20,6 +20,8 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
   buttons and links. Conversation emails to customers (replies, acknowledgement,
   closed) use the same layout with the subject as heading.
 - The widget launcher reads hex brand colours as well as oklch.
+- Once a teammate replies in a conversation, the messenger header shows that
+  person instead of the AI assistant; the assistant moves to the subtitle.
 - A "Source code" link to this repository in the portal, so every user can
   reach the source of the running version (AGPL section 13). A fork points
   `apps/web/src/lib/shared/source-code.ts` at its own repository.
