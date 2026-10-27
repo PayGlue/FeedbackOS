@@ -51,6 +51,11 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
   (`IMAP_MARK_SEEN_ALSO`, comma separated).
 - A fetched message that is not ingested is logged with its reason.
 
+**Status page**
+
+- A visitor who is not signed in and subscribes to the status page gets the
+  sign-in dialog, not a generic error.
+
 **Tickets API**
 
 - `GET /api/v1/ticket-types` lists ticket types with id and slug.

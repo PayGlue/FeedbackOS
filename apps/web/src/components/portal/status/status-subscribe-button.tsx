@@ -27,7 +27,12 @@ import type { StatusComponentId } from '@quackback/ids'
 
 /** Matches the exact string `subscribeStatusFn` throws for a lazy/anonymous
  *  better-auth session — see `lib/server/functions/status-subscriptions.ts`. */
-const ANONYMOUS_ERROR_MESSAGE = 'Anonymous interaction is not enabled'
+// Both mean "sign in first": an anonymous session is refused by the
+// subscription gate, and a visitor with no session at all by requireAuth().
+const SIGN_IN_ERROR_MESSAGES = new Set([
+  'Anonymous interaction is not enabled',
+  'Authentication required',
+])
 
 interface StatusSubscribeButtonProps {
   className?: string
@@ -79,7 +84,7 @@ export function StatusSubscribeButton({ className }: StatusSubscribeButtonProps)
       )
     },
     onError: (error: unknown) => {
-      if (error instanceof Error && error.message === ANONYMOUS_ERROR_MESSAGE) {
+      if (error instanceof Error && SIGN_IN_ERROR_MESSAGES.has(error.message)) {
         setOpen(false)
         authPopover?.openAuthPopover({ mode: 'login' })
         return
