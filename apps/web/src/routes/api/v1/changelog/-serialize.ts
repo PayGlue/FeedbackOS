@@ -13,6 +13,7 @@ export function formatChangelogResponse(entry: {
   createdAt: Date
   updatedAt: Date
   linkedPosts?: ChangelogLinkedPost[]
+  categories?: Array<{ id: string; name: string; color: string | null }>
 }) {
   return {
     id: entry.id,
@@ -22,6 +23,8 @@ export function formatChangelogResponse(entry: {
     displayDate: entry.displayDate?.toISOString() || null,
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),
+    // FeedbackOS: the entry's labels, so an integration can filter by them.
+    categories: (entry.categories ?? []).map((c) => ({ id: c.id, name: c.name, color: c.color })),
     linkedPosts: (entry.linkedPosts ?? []).map((post) => ({
       id: post.id,
       title: post.title,
