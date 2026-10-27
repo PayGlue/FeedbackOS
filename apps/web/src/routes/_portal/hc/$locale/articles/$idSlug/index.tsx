@@ -8,6 +8,7 @@ import { HelpCenterPrevNext } from '@/components/help-center/help-center-prev-ne
 import { HelpCenterArticleFeedback } from '@/components/help-center/help-center-article-feedback'
 import { HelpCenterRelatedArticles } from '@/components/help-center/help-center-related-articles'
 import { HelpCenterToc } from '@/components/help-center/help-center-toc'
+import { HelpCenterImageZoom } from '@/components/help-center/help-center-image-zoom'
 import { buildCategoryBreadcrumbs } from '@/components/help-center/help-center-utils'
 import {
   extractHeadings,
@@ -218,9 +219,11 @@ function ArticleDetailPage() {
 
             <div className="prose prose-neutral dark:prose-invert max-w-none">
               {article.contentJson && isRichTextContent(article.contentJson) ? (
-                <EmbedHydration>
-                  <RichTextContent content={article.contentJson as JSONContent} />
-                </EmbedHydration>
+                <HelpCenterImageZoom>
+                  <EmbedHydration>
+                    <RichTextContent content={article.contentJson as JSONContent} />
+                  </EmbedHydration>
+                </HelpCenterImageZoom>
               ) : (
                 <p className="whitespace-pre-wrap">{article.content}</p>
               )}
