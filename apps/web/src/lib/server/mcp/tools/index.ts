@@ -3,8 +3,11 @@
  *
  * Tools calling domain services directly (no HTTP self-loop), grouped by
  * resource module. Each tool declares its authorization contract — `{ scope,
- * teamOnly, feature }` — on `registerTool` (see ./helpers), except the two
- * cross-entity lookup tools (search, get_details) which gate per-branch.
+ * teamOnly, feature, permissions }` — on `registerTool` (see ./helpers); the
+ * two cross-entity lookup tools (search, get_details) gate scope per-branch.
+ * Every tool also declares which result fields hold text from outside the
+ * team in ../untrusted (UNTRUSTED_TOOL_FIELDS); registration fails typecheck
+ * and the coverage test without it.
  *
  * - search.ts        search, get_details
  * - posts.ts         triage_post, vote_post, proxy_vote, create_post,
@@ -24,6 +27,9 @@
  *                    unlink_ticket
  * - files.ts         upload_file
  * - widget.ts        widget_install_status
+ * - settings.ts      get_settings, propose_settings_change
+ * - navigation.ts    navigate_workspace
+ * - approvals.ts     get_approval, list_approvals
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -38,6 +44,9 @@ import { registerConversationTools } from './conversations'
 import { registerTicketTools } from './tickets'
 import { registerFileTools } from './files'
 import { registerWidgetTools } from './widget'
+import { registerSettingsTools } from './settings'
+import { registerNavigationTools } from './navigation'
+import { registerApprovalTools } from './approvals'
 
 export function registerTools(server: McpServer, auth: McpAuthContext) {
   registerSearchTools(server, auth)
@@ -50,4 +59,7 @@ export function registerTools(server: McpServer, auth: McpAuthContext) {
   registerTicketTools(server, auth)
   registerFileTools(server, auth)
   registerWidgetTools(server, auth)
+  registerSettingsTools(server, auth)
+  registerNavigationTools(server, auth)
+  registerApprovalTools(server, auth)
 }

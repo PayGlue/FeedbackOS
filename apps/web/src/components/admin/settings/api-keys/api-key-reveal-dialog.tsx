@@ -34,7 +34,7 @@ export function ApiKeyRevealDialog({
           Your API key <strong>{keyName}</strong> has been created successfully.
         </>
       }
-      secretLabel="Your API key"
+      secretLabel="API key"
       secretValue={keyValue}
       confirmLabel="I've saved my key"
     >
@@ -42,7 +42,7 @@ export function ApiKeyRevealDialog({
       <div className="space-y-2">
         <label className="text-sm font-medium">Usage</label>
         <div className="rounded-lg bg-muted p-3">
-          <code className="text-xs text-muted-foreground block">
+          <code className="ph-mask text-xs text-muted-foreground block">
             curl -H &quot;Authorization: Bearer {keyValue ? keyValue.slice(0, 20) + '...' : ''}
             &quot; \
             <br />

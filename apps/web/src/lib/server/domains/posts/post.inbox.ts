@@ -21,13 +21,17 @@ import {
   isNull,
   isNotNull,
 } from '@/lib/server/db'
+import { postViewFilter } from '@/lib/server/policy/posts'
+import type { Actor } from '@/lib/server/policy/types'
 import { toUuid, type PostId, type PrincipalId } from '@quackback/ids'
+import { notTestPrincipal } from '@/lib/server/test-data'
 import type {
   PostListItem,
   InboxPostListParams,
   InboxPostListResult,
   InboxFilterCounts,
 } from './post.types'
+import { postSearchCondition, postSearchOrder, postSearchRank } from './post.search'
 
 /** Facet whose own filter is skipped when counting that facet's options. */
 export type InboxFilterFacet = 'status' | 'board' | 'tags' | 'segments' | 'responded' | 'deleted'
@@ -78,6 +82,7 @@ export function inboxFilterConditions(params: InboxPostListParams, omit?: InboxF
     responded,
     updatedBefore,
     showDeleted,
+    excludeTest,
   } = params
 
   const conditions = []
@@ -95,6 +100,7 @@ export function inboxFilterConditions(params: InboxPostListParams, omit?: InboxF
 
   // Exclude merged/duplicate posts from inbox listing
   conditions.push(isNull(posts.canonicalPostId))
+  if (excludeTest) conditions.push(notTestPrincipal(posts.principalId))
 
   if (omit !== 'board' && boardIds?.length) {
     conditions.push(inArray(posts.boardId, boardIds))
@@ -133,7 +139,7 @@ export function inboxFilterConditions(params: InboxPostListParams, omit?: InboxF
   }
 
   if (search) {
-    conditions.push(sql`${posts.searchVector} @@ websearch_to_tsquery('english', ${search})`)
+    conditions.push(postSearchCondition(search, params.searchMode))
   }
 
   if (dateFrom) {
@@ -208,10 +214,16 @@ const priorityScoreSql = sql<number>`
  * @param params - Query parameters including filters, sort, and pagination
  * @returns Result containing inbox post list or an error
  */
-export async function listInboxPosts(params: InboxPostListParams): Promise<InboxPostListResult> {
-  const { sort = 'newest', cursor, limit = 20 } = params
+export async function listInboxPosts(
+  params: InboxPostListParams,
+  actor?: Actor
+): Promise<InboxPostListResult> {
+  const { search, searchMode = 'all', cursor, limit = 20 } = params
+  // Best match ranks a search; without one there is nothing to rank by.
+  const sort = params.sort === 'relevance' && !search ? 'newest' : (params.sort ?? 'newest')
 
   const conditions = inboxFilterConditions(params)
+  if (actor) conditions.push(postViewFilter(actor))
 
   // Cursor-based keyset pagination: resolve cursor to sort-field values
   if (cursor) {
@@ -222,7 +234,24 @@ export async function listInboxPosts(params: InboxPostListParams): Promise<Inbox
     if (cursorPost) {
       const cursorDate = cursorPost.createdAt.toISOString()
       const cursorUuid = toUuid(cursorPost.id)
-      if (sort === 'priority') {
+      if (sort === 'relevance' && search) {
+        // Keyset on the rank: read the cursor post's rank with the same
+        // expressions the ORDER BY uses. As float8, so each value survives
+        // the trip through JS exactly.
+        const keys = [...postSearchRank(search, searchMode), posts.voteCount].map(
+          (key) => sql<number>`(${key})::float8`
+        )
+        const [rankRow] = await db
+          .select(Object.fromEntries(keys.map((key, i) => [`k${i}`, key])))
+          .from(posts)
+          .where(eq(posts.id, cursor as PostId))
+        if (rankRow) {
+          const values = keys.map((_, i) => sql`${rankRow[`k${i}`]}::float8`)
+          conditions.push(
+            sql`(${sql.join(keys, sql`, `)}, ${posts.id}) < (${sql.join(values, sql`, `)}, ${cursorUuid}::uuid)`
+          )
+        }
+      } else if (sort === 'priority') {
         // Keyset on the computed score: look up the cursor post's score with
         // the same expression the ORDER BY uses.
         const [scoreRow] = await db
@@ -259,6 +288,7 @@ export async function listInboxPosts(params: InboxPostListParams): Promise<Inbox
     oldest: [asc(posts.createdAt), asc(posts.id)],
     votes: [desc(posts.voteCount), desc(posts.createdAt), desc(posts.id)],
     priority: [desc(priorityScoreSql), desc(posts.createdAt), desc(posts.id)],
+    relevance: search ? postSearchOrder(search, searchMode) : [],
   }
 
   // Fetch limit+1 to determine hasMore without a COUNT query

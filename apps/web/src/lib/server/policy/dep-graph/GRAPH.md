@@ -58,14 +58,16 @@ Edges (28):
 
 ## 3. Server domains (lib/server/domains)
 
-Nodes (52): activity, admin-overview, ai, analytics, api, api-keys, assistant, attribute-definitions, billing, boards, changelog, channel-accounts, channels, comments, companies, company-attributes, conversation, conversation-attributes, conversation-views, embeddings, export, files, help-center, import, inbox, macros, merge-suggestions, moderation, notifications, office-hours, platform-credentials, post-tags, post-views, posts, principals, push-devices, roadmaps, roles, segments, sentiment, settings, sla, status, statuses, subscriptions, summary, teams, tickets, user-attributes, users, webhooks, workflows
-Edges (127):
+Nodes (54): activity, admin-overview, ai, analytics, api, api-keys, assistant, attribute-definitions, billing, boards, changelog, channel-accounts, channels, comments, companies, company-attributes, conversation, conversation-attributes, conversation-views, embeddings, export, files, help-center, import, inbox, macros, merge-suggestions, moderation, notifications, office-hours, onboarding, platform-credentials, post-tags, post-views, posts, principals, push-devices, roadmaps, roles, segments, sentiment, settings, settings-registry, sla, status, statuses, subscriptions, summary, teams, tickets, user-attributes, users, webhooks, workflows
+Edges (143):
 
+- activity -> principals
 - admin-overview -> changelog
 - ai -> settings
 - analytics -> api
 - analytics -> assistant
 - analytics -> principals
+- analytics -> settings
 - analytics -> workflows
 - api -> api-keys
 - api -> settings
@@ -74,6 +76,7 @@ Edges (127):
 - assistant -> ai
 - assistant -> api
 - assistant -> boards
+- assistant -> changelog
 - assistant -> conversation
 - assistant -> conversation-attributes
 - assistant -> embeddings
@@ -82,6 +85,7 @@ Edges (127):
 - assistant -> post-tags
 - assistant -> posts
 - assistant -> principals
+- assistant -> segments
 - assistant -> settings
 - assistant -> status
 - assistant -> statuses
@@ -145,8 +149,15 @@ Edges (127):
 - merge-suggestions -> settings
 - moderation -> comments
 - moderation -> posts
+- onboarding -> api
+- onboarding -> api-keys
+- onboarding -> assistant
+- onboarding -> principals
+- onboarding -> settings
+- onboarding -> users
 - posts -> activity
 - posts -> ai
+- posts -> changelog
 - posts -> embeddings
 - posts -> merge-suggestions
 - posts -> principals
@@ -162,8 +173,13 @@ Edges (127):
 - settings -> ai
 - settings -> platform-credentials
 - settings -> sla
+- settings-registry -> api
+- settings-registry -> api-keys
+- settings-registry -> assistant
+- settings-registry -> settings
 - sla -> office-hours
 - sla -> settings
+- status -> settings
 - subscriptions -> changelog
 - subscriptions -> posts
 - subscriptions -> status
