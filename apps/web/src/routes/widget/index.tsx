@@ -49,7 +49,8 @@ import {
 } from '@/components/widget/use-messenger-presence'
 import { conversationAvailable } from '@/lib/shared/conversation/presence'
 import { ConversationPresenceBadge } from '@/components/shared/conversation/conversation-presence-badge'
-import { Avatar } from '@/components/ui/avatar'
+import { MessengerIdentity } from '@/components/shared/conversation/messenger-identity'
+import type { ThreadHumanAgent } from '@/lib/shared/conversation/human-agent'
 import {
   WidgetArticleSkeleton,
   WidgetChangelogListSkeleton,
@@ -470,6 +471,15 @@ function WidgetPage() {
   const [conversationTarget, setConversationTarget] = useState<ConversationId | 'new' | null>(
     resumeConversationId ? (resumeConversationId as ConversationId) : null
   )
+  const [messengerAgent, setMessengerAgent] = useState<{
+    threadKey: string
+    agent: ThreadHumanAgent | null
+  } | null>(null)
+  const handleHumanAgentChange = useCallback(
+    (agent: ThreadHumanAgent | null) =>
+      setMessengerAgent({ threadKey: conversationTarget ?? 'active', agent }),
+    [conversationTarget]
+  )
   // Manual size preference: the header's expand/collapse button flips this,
   // and it is STICKY — collapsing turns auto-expansion off for every later
   // item view until the visitor expands again. Persisted per browser.
@@ -859,22 +869,15 @@ function WidgetPage() {
   // the assistant identity when enabled — always available, no presence — or
   // the live presence badge for assistant-less workspaces.
   const presence = useConversationPresence(messengerEnabled && !assistant)
+  // Once a teammate replies, they front the header instead of the assistant.
+  // Keyed on the open thread so a report from the previous one never leaks.
+  const threadKey = conversationTarget ?? 'active'
+  const humanAgent = messengerAgent?.threadKey === threadKey ? messengerAgent.agent : null
   const messengerHeader =
     view === 'messenger' ? (
       assistant ? (
         <div className="flex min-w-0 items-center gap-2.5 ps-1">
-          <Avatar src={assistant.avatarUrl} name={assistant.name} className="size-8 text-xs" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold leading-tight text-foreground">
-              {assistant.name}
-            </p>
-            <p className="truncate text-[11px] leading-tight text-muted-foreground">
-              <FormattedMessage
-                id="widget.messenger.assistant.teamAlso"
-                defaultMessage="The team can also help"
-              />
-            </p>
-          </div>
+          <MessengerIdentity assistant={assistant} humanAgent={humanAgent} />
         </div>
       ) : (
         <div className="min-w-0 ps-1">
@@ -978,6 +981,7 @@ function WidgetPage() {
             // A fresh thread exists to be typed into; a resumed one to be read.
             // Mobile hosts skip it — the software keyboard would cover the thread.
             autofocusComposer={conversationTarget === 'new' && !hostIsMobile}
+            onHumanAgentChange={handleHumanAgentChange}
           />
         </ViewTransition>
       )}

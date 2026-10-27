@@ -26,7 +26,6 @@ import { conversationAvailable } from '@/lib/shared/conversation/presence'
 import { ArrowUpIcon, ChevronDownIcon } from '@heroicons/react/24/solid'
 import { ChatBubbleLeftRightIcon, PaperClipIcon, BookOpenIcon } from '@heroicons/react/24/outline'
 import type { ConversationId } from '@quackback/ids'
-import { Avatar } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TypingDots } from '@/components/shared/typing-dots'
 import { personalizeMessage, firstNameOf } from '@/lib/shared/conversation/personalize'
@@ -71,6 +70,8 @@ import type { BlockReplyMetadata } from '@/lib/shared/db-types'
 import { useVisitorSurfaceRpc } from '@/lib/client/visitor-surface-rpc'
 import { getWidgetCapabilitiesFn } from '@/lib/server/functions/widget-capabilities'
 import { TicketHeaderCard } from './ticket-header-card'
+import { MessengerIdentity } from './messenger-identity'
+import { lastHumanAgent, type ThreadHumanAgent } from '@/lib/shared/conversation/human-agent'
 import { useLocalDateFormatter } from '@/components/ui/local-date'
 import type { RequesterTicketDTO } from '@/lib/server/domains/tickets'
 
@@ -162,6 +163,10 @@ export interface VisitorConversationThreadProps {
    *  bar beside the back button, keeping one header row like the reference
    *  messengers. The portal keeps the built-in row. */
   showHeader?: boolean
+  /** Notified when the teammate fronting the thread changes (null while only
+   *  the visitor and the assistant have spoken). The widget shows them in its
+   *  shell header, since it renders the thread with showHeader={false}. */
+  onHumanAgentChange?: (agent: ThreadHumanAgent | null) => void
   /** Notified when the first send creates the conversation. */
   onConversationStarted?: (id: ConversationId) => void
   /**
@@ -201,6 +206,7 @@ export function VisitorConversationThread({
   helpSearch,
   embedOpenMode = 'newTab',
   showHeader = true,
+  onHumanAgentChange,
   onConversationStarted,
   autofocusComposer = false,
   compact = false,
@@ -268,6 +274,15 @@ export function VisitorConversationThread({
     staleTime: Infinity,
   })
   const messages = thread?.messages ?? EMPTY_MESSAGES
+  const humanAgent = useMemo(() => lastHumanAgent(messages), [messages])
+  const humanAgentKey = humanAgent
+    ? `${humanAgent.principalId}|${humanAgent.name ?? ''}|${humanAgent.avatarUrl ?? ''}`
+    : ''
+  useEffect(() => {
+    onHumanAgentChange?.(humanAgent)
+    // Keyed on the identity, not the object: every new message rebuilds it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [humanAgentKey, onHumanAgentChange])
   const gallery = useGalleryValue(messages)
   const hasMoreOlder = thread?.hasMore ?? false
   const agentReadAt = thread?.agentLastReadAt ?? null
@@ -1161,16 +1176,11 @@ export function VisitorConversationThread({
           assistant, the classic live presence strip shows. */}
       {showHeader && assistant ? (
         <div className="flex items-center gap-2.5 px-4 py-2 border-b border-border/40 shrink-0">
-          <Avatar src={assistant.avatarUrl} name={assistant.name} className="size-7 text-xs" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold leading-tight text-foreground">{assistant.name}</p>
-            <p className="text-[11px] leading-tight text-muted-foreground">
-              <FormattedMessage
-                id="widget.messenger.assistant.teamAlso"
-                defaultMessage="The team can also help"
-              />
-            </p>
-          </div>
+          <MessengerIdentity
+            assistant={assistant}
+            humanAgent={humanAgent}
+            avatarClassName="size-7 text-xs"
+          />
         </div>
       ) : showHeader ? (
         <div className="flex items-center px-4 py-2 border-b border-border/40 shrink-0">
