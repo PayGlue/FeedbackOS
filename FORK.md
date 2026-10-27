@@ -64,6 +64,8 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 **Dependencies**
 
 - Security updates ahead of upstream where an advisory required it.
+- No Dependabot. Its updates for this Bun workspace fail in the fork; the
+  audit check in CI catches advisories, and upstream merges bring the updates.
 
 ## Configuration added by this fork
 
