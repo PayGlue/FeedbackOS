@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    - cron: '17 3 * * *'
+  # FeedbackOS: no nightly schedule. Every pull request runs the full unit,
+  # perf and e2e-smoke checks; the nightly e2e-full suite exceeds the hosted
+  # runner's one-hour limit and adds nothing a fork's own pull requests need.
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
