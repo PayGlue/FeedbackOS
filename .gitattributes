@@ -1,0 +1,4 @@
+# FeedbackOS: on a merge conflict our version of these wins (merge=ours).
+# Only for branding files, never for code: it discards the other side entirely.
+# Needs once per clone: git config merge.ours.driver true
+README.md merge=ours
