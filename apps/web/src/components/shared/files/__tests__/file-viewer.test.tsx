@@ -131,6 +131,13 @@ describe('FileViewer header', () => {
     expect(screen.queryByRole('button', { name: /^Dana Whitfield/ })).toBeNull()
   })
 
+  it('leaves out a size it does not know', async () => {
+    const shot = file({ name: 'screenshot.png', family: 'image', fileId: 'file_shot', size: 0 })
+    renderViewer({ files: [shot] })
+    expect(await screen.findByText('screenshot.png')).toBeInTheDocument()
+    expect(screen.queryByText(/0 B/)).toBeNull()
+  })
+
   it('jumps to the message the file came from, closing the viewer', async () => {
     const onJumpToMessage = vi.fn()
     const { onClose } = renderViewer({ onJumpToMessage })
