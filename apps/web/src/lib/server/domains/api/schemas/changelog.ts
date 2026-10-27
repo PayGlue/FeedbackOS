@@ -48,6 +48,15 @@ const ChangelogEntrySchema = z.object({
   }),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
+  categories: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string().meta({ example: 'Shipped' }),
+        color: z.string().nullable(),
+      })
+    )
+    .meta({ description: 'Labels on this changelog entry' }),
   linkedPosts: z.array(LinkedPostSchema).meta({
     description: 'Posts linked to this changelog entry',
   }),
