@@ -36,6 +36,8 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
   `/hc/...`).
 - A category URL whose category was merged or deleted falls back to the
   configured redirect rules instead of a 404.
+- Clicking an image in an article opens it at full size in the file viewer,
+  with the article's other images one arrow key away.
 
 **Email channel**
 
