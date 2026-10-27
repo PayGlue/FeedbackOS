@@ -344,6 +344,15 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       "another workspace's messages on a bus with no authorization layer of its own.",
   },
   {
+    file: 'apps/web/src/lib/server/test-data.ts',
+    name: 'testOwners',
+    category: 'workspace-keyed',
+    reason:
+      "Which principals are a teammate's test customer, by principal id. The answer is fixed when the " +
+      'principal is created, but it is read from one workspace database: shared across workspaces a ' +
+      "copied id could answer from the wrong workspace and leak or hide that workspace's test data.",
+  },
+  {
     file: 'apps/web/src/lib/server/local-cache.ts',
     name: 'localCopies',
     category: 'workspace-keyed',
@@ -351,6 +360,16 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       "Short-lived copies of cached values, chiefly the workspace settings, which hold one workspace's " +
       'auth config, secrets and flags. Shared, one workspace would be served another workspace settings ' +
       'for up to the copy lifetime.',
+  },
+  {
+    file: 'apps/web/src/lib/server/mcp/untrusted.ts',
+    name: 'itemFacts',
+    category: 'workspace-scoped-key',
+    keyedBy: 'CallToolResult',
+    reason:
+      "Keyed by one MCP tool call's result object, which exists only for the request that produced " +
+      'it, so a lookup can only ever find facts about its own result. It is a WeakMap, so nothing ' +
+      'outlives the result once the response is sent.',
   },
   {
     file: 'apps/web/src/lib/server/response-hooks.ts',
@@ -710,6 +729,16 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'pooled-tenancy guard in conversation.email-imap-queue.ts already restricts to a single ' +
       'workspace, so there is no workspace dimension to mix up. Losing it on a restart costs one ' +
       're-fetch that the Message-ID dedupe drops.',
+  },
+  {
+    file: 'apps/web/src/lib/server/domains/api-keys/api-key-authority.ts',
+    name: 'reportedCreatorless',
+    category: 'process-lifetime',
+    reason:
+      'A log-once set of API key ids refused for having no recorded creator. Ids are TypeIDs over ' +
+      'UUIDs, so there is no cross-workspace collision to have; the only shared effect would be ' +
+      'suppressing a duplicate diagnostic. It never decides authority (the empty creator column ' +
+      'does), and it grows only with keys whose creator column is empty.',
   },
   {
     file: 'apps/web/src/lib/server/domains/conversation/conversation.email-imap-queue.ts',
@@ -1084,6 +1113,21 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
   },
   {
     file: 'apps/web/src/lib/server/jobs/worker.ts',
+    name: 'scheduledWakes',
+    category: 'workspace-scoped-key',
+    keyedBy: 'workspaceKey',
+    reason:
+      'The next instant each parked workspace has clock-driven work, as the probe that parked it ' +
+      'found it, so the refresh pass can start that workspace loop when the work falls due. One ' +
+      'entry per parked workspace, deleted when the loop wakes or the workspace leaves the active ' +
+      'set. Per-process and safe to lose on restart: the dormancy marks are in memory too, so a ' +
+      'boot treats every idle workspace as unprobed and re-learns the schedule with one probe each. ' +
+      'Each replica holds the schedule for the loops it runs, so replicas never need to agree on it. ' +
+      'A wrong entry costs one extra probe if it is early, and delays that workspace clock-driven ' +
+      'work until the stored instant if it is late.',
+  },
+  {
+    file: 'apps/web/src/lib/server/jobs/worker.ts',
     name: 'running',
     category: 'process-lifetime',
     owner: 'Piece 6 (saas/queue-lease)',
@@ -1158,13 +1202,28 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
   },
   {
     file: 'apps/web/src/lib/server/jobs/runner.ts',
+    name: 'fleetInFlight',
+    category: 'process-lifetime',
+    owner: 'Piece 6 (saas/queue-lease)',
+    reason:
+      'Slots reserved by claims in flight or held by running jobs, per queue name, across ' +
+      'every workspace pool in this process - what fleetConcurrency caps. Being shared ' +
+      'across workspaces is its purpose: a ' +
+      'per-workspace count would cap nothing a fleet does at once. It holds queue names and ' +
+      'counts only, never a payload or a workspace identity, so a cross-workspace read reveals ' +
+      'nothing but how busy the process is.',
+  },
+  {
+    file: 'apps/web/src/lib/server/jobs/runner.ts',
     name: 'cronCache',
     category: 'content-addressed',
     owner: 'Piece 6 (saas/queue-lease)',
     reason:
-      'Parsed cron expressions keyed by the pattern string. Parsing is a pure function of that ' +
-      'string, so a cross-workspace hit returns exactly what the requesting workspace would have ' +
-      'parsed - and the patterns are compile-time constants in jobs/definitions.ts anyway.',
+      'Parsed cron expressions and their slot spread windows, keyed by the pattern string. ' +
+      'Both are pure functions of that string, so a cross-workspace hit returns exactly what the ' +
+      'requesting workspace would have computed - and the patterns are compile-time constants in ' +
+      'jobs/definitions.ts anyway. The per-workspace offset is derived from the spread key at ' +
+      'call time and is never cached here.',
   },
   {
     file: 'apps/web/src/lib/server/jobs/job-queue.ts',

@@ -10,7 +10,7 @@ import {
   DevicePhoneMobileIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/solid'
-import { Button } from '@/components/ui/button'
+import { Button, NewTabHint } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import {
@@ -45,7 +45,8 @@ import {
   useBrandingState,
   FONT_OPTIONS,
 } from '@/components/admin/settings/branding/use-branding-state'
-import { primaryPresetIds, themePresets, type ThemeConfig } from '@/lib/shared/theme'
+import type { ThemeConfig } from '@/lib/shared/theme'
+import { primaryPresetIds, themePresets } from '@/lib/shared/theme/presets'
 import { useUpdatePortalConfig } from '@/lib/client/mutations/settings'
 import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 import { UpgradeModal } from '@/components/admin/upgrade'
@@ -66,8 +67,10 @@ import type {
 import type { TiptapContent } from '@/lib/shared/db-types'
 import { readBatch } from '@/lib/client/queries/read-batch'
 import { useSessionContext, useWorkspaceSettings } from '@/lib/client/hooks/use-root-context'
+import { adminPageHead } from '@/lib/client/admin-head'
 
 export const Route = createFileRoute('/admin/settings/portal')({
+  head: adminPageHead('Portal settings'),
   loader: async ({ context }) => {
     // Portal config reads/writes require settings.branding, which non-admin
     // team roles lack. Gate the page instead of letting managers land on a
@@ -414,6 +417,7 @@ function PortalPage() {
               <Button variant="outline" size="sm" asChild className="whitespace-nowrap">
                 <a href="/" target="_blank" rel="noopener noreferrer">
                   Open portal
+                  <NewTabHint />
                   <ArrowTopRightOnSquareIcon className="size-3.5 ms-1.5" />
                 </a>
               </Button>

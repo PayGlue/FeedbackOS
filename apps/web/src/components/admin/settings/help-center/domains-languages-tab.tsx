@@ -50,6 +50,8 @@ const LOCALE_LABELS: Record<string, string> = {
   'zh-tw': '繁體中文',
   nl: 'Nederlands',
   pl: 'Polski',
+  th: 'ภาษาไทย',
+  uk: 'Українська',
 }
 
 const HOSTNAME_PATTERN =

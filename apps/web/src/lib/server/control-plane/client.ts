@@ -184,9 +184,12 @@ export type BillingCatalogue = {
   /** @deprecated unread; older catalogues may still send this. */
   liteSeatsIncluded?: Record<CataloguePlanId, number | null>
   aiIncludedCentsPerMonth?: Partial<Record<CataloguePlanId, number>>
+  /** @deprecated unread; older catalogues may still send this. */
   aiTopUpPackCents?: number
   aiBlendedCentsPerMTok?: number
+  /** @deprecated unread; older catalogues may still send this. */
   emailTopUpPackCents?: number
+  /** @deprecated unread; older catalogues may still send this. */
   emailTopUpPackUnits?: number
   plans: Array<{
     id: CataloguePlanId
@@ -270,15 +273,6 @@ export type HostedBillingSessionInput =
       brandingRemoval?: boolean
     }
   | { action: 'downgrade'; planId: 'free' }
-  | {
-      action: 'topup'
-      meter: 'ai' | 'email'
-      packs: number
-      /** The per-pack price the customer was shown; charged only if it is still live. */
-      packCents?: number
-      /** The emails per pack the customer was shown (email packs). */
-      packUnits?: number
-    }
   | { action: 'branding'; billingPeriod: 'monthly' | 'annual' }
   | { action: 'branding-remove' }
 

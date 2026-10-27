@@ -30,6 +30,11 @@ describe('requiredScopeForMcpRpc', () => {
     expect(requiredScopeForMcpRpc(toolsCall('reply_to_conversation'))).toBe('write:chat')
   })
 
+  it('maps the approval reads to read:settings, the scope settings requests are filed under', () => {
+    expect(requiredScopeForMcpRpc(toolsCall('get_approval'))).toBe('read:settings')
+    expect(requiredScopeForMcpRpc(toolsCall('list_approvals'))).toBe('read:settings')
+  })
+
   it('maps search posts to read:feedback and articles to read:article', () => {
     expect(requiredScopeForMcpRpc(toolsCall('search', { query: 'x' }))).toBe('read:feedback')
     expect(requiredScopeForMcpRpc(toolsCall('search', { entity: 'posts' }))).toBe('read:feedback')
@@ -88,6 +93,31 @@ describe('requiredScopeForMcpRpc', () => {
     const registeredFixed = names.filter((name) => !dispatched.has(name))
     expect(registeredFixed.sort()).toEqual(Object.keys(TOOL_SCOPES).sort())
     for (const name of dispatched) expect(names).toContain(name)
+  })
+
+  it('marks a tool read-only exactly when its scope only reads, so writes are always audited', () => {
+    // The tool-call audit skips tools annotated read-only. A write tool marked
+    // read-only by mistake would change things with no audit row.
+    const annotations = new Map<string, { readOnlyHint?: boolean }>()
+    registerTools(
+      {
+        tool: (name: string, _d: string, _s: unknown, a: { readOnlyHint?: boolean }) => {
+          annotations.set(name, a)
+        },
+      } as never,
+      TEST_AUTH
+    )
+    const dispatched = new Set<string>(MCP_ARGUMENT_DISPATCHED_TOOLS)
+    for (const [name, a] of annotations) {
+      const readOnly = a?.readOnlyHint === true
+      if (dispatched.has(name)) {
+        expect({ name, readOnly }).toEqual({ name, readOnly: true })
+        continue
+      }
+      const reads = TOOL_SCOPES[name]?.startsWith('read:') ?? false
+      expect({ name, readOnly }).toEqual({ name, readOnly: reads })
+    }
+    expect(annotations.size).toBeGreaterThan(Object.keys(TOOL_SCOPES).length)
   })
 
   it('maps every registered resource URI', () => {

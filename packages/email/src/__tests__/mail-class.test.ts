@@ -17,4 +17,21 @@ describe('email meter classes', () => {
     expect(isEmailBillable('StatusChangeEmail')).toBe(false)
     expect(isEmailBillable('CsatRequestEmail')).toBe(false)
   })
+
+  it('never meters sign-in, security, or invitation mail', () => {
+    const exempt = [
+      'MagicLinkEmail',
+      'PasswordResetEmail',
+      'RecoveryCodeUsedEmail',
+      'NewSignInEmail',
+      'VerifyAddressEmail',
+      'InvitationEmail',
+      'PortalInviteEmail',
+      'SignupNotAllowedEmail',
+    ]
+    for (const emailType of exempt) {
+      expect(isEmailBillable(emailType)).toBe(false)
+      expect(METERED_EMAIL_TYPES).not.toContain(emailType)
+    }
+  })
 })

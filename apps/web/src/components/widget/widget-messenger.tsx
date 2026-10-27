@@ -22,6 +22,8 @@ interface WidgetMessengerProps {
   autofocusComposer?: boolean
   /** Notified when a teammate takes over the thread (for the shell header). */
   onHumanAgentChange?: (agent: ThreadHumanAgent | null) => void
+  /** Text the composer starts with (a host's `open({ view: 'chat', body })`). */
+  initialDraft?: string
 }
 
 /**
@@ -36,6 +38,7 @@ export function WidgetMessenger({
   conversationTarget,
   autofocusComposer = false,
   onHumanAgentChange,
+  initialDraft,
 }: WidgetMessengerProps = {}) {
   const queryClient = useQueryClient()
   const { user, ensureSession, sessionVersion } = useWidgetAuth()
@@ -83,6 +86,7 @@ export function WidgetMessenger({
         showHeader={false}
         onHumanAgentChange={onHumanAgentChange}
         autofocusComposer={autofocusComposer}
+        initialDraft={initialDraft}
         compact
       />
     </VisitorSurfaceRpcProvider>

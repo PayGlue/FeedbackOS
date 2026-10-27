@@ -44,20 +44,17 @@ export function SecretRevealDialog({
         <div className="py-4 space-y-4">
           <WarningBox
             variant="warning"
-            title={`Copy this ${secretLabel.toLowerCase()} now`}
+            title="Copy this now"
             description="This is the only time you'll see it. Store it securely and never share it publicly."
           />
 
           <div className="space-y-2">
             <label className="text-sm font-medium">{secretLabel}</label>
             <div className="flex items-center gap-2">
-              <code className="flex-1 rounded-lg bg-muted px-3 py-2.5 font-mono text-sm break-all">
+              <code className="ph-mask flex-1 rounded-lg bg-muted px-3 py-2.5 font-mono text-sm break-all">
                 {secretValue}
               </code>
-              <CopyButton
-                value={secretValue ?? ''}
-                aria-label={`Copy ${secretLabel.toLowerCase()} to clipboard`}
-              />
+              <CopyButton value={secretValue ?? ''} aria-label="Copy to clipboard" />
             </div>
           </div>
 

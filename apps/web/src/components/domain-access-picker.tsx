@@ -1,3 +1,4 @@
+import { useIntl } from 'react-intl'
 import {
   ACCESS_DOMAINS,
   toggleDomainLevel,
@@ -5,6 +6,7 @@ import {
   type DomainAccessChip,
   type DomainAccessLevels,
 } from '@/lib/shared/api-key-scopes'
+import { isChipWithinRequest } from '@/lib/shared/domain-access'
 import { cn } from '@/lib/shared/utils'
 
 function AccessChip({
@@ -45,12 +47,18 @@ export function DomainAccessPicker({
   onChange,
   disabled,
   className,
+  allowed,
 }: {
   levels: DomainAccessLevels
   onChange: (levels: DomainAccessLevels) => void
   disabled?: boolean
   className?: string
+  /** The most each domain may be given. Chips above it are disabled. */
+  allowed?: DomainAccessLevels
 }) {
+  const intl = useIntl()
+  const within = (domain: AccessDomainId, chip: DomainAccessChip) =>
+    !allowed || isChipWithinRequest(allowed, domain, chip)
   function select(domain: AccessDomainId, chip: DomainAccessChip) {
     onChange({
       ...levels,
@@ -66,25 +74,61 @@ export function DomainAccessPicker({
           className={`flex items-center justify-between px-4 py-3 ${i > 0 ? 'border-t border-border/30' : ''}`}
         >
           <div className="min-w-0">
-            <p className="text-sm font-medium">{group.label}</p>
-            <p className="text-xs text-muted-foreground">{group.description}</p>
+            <p className="text-sm font-medium">
+              {group.domain === 'settings'
+                ? intl.formatMessage({ id: 'apiKeys.scopes.settings', defaultMessage: 'Settings' })
+                : group.label}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {group.domain === 'settings'
+                ? intl.formatMessage({
+                    id: 'apiKeys.scopes.settingsDescription',
+                    defaultMessage: 'Branding, Messenger, modules, and office hours',
+                  })
+                : group.description}
+            </p>
           </div>
           <div className="flex gap-1.5 shrink-0 ml-4">
             {group.kind === 'read_write' && (
               <>
                 <AccessChip
-                  name={`${group.label}: Read`}
-                  display="Read"
+                  name={
+                    group.domain === 'settings'
+                      ? intl.formatMessage({
+                          id: 'apiKeys.scopes.settingsRead',
+                          defaultMessage: 'Settings: Read',
+                        })
+                      : `${group.label}: Read`
+                  }
+                  display={
+                    group.domain === 'settings'
+                      ? intl.formatMessage({ id: 'apiKeys.scopes.read', defaultMessage: 'Read' })
+                      : 'Read'
+                  }
                   pressed={levels[group.domain] === 'read'}
                   onPressedChange={() => select(group.domain, 'read')}
-                  disabled={disabled}
+                  disabled={disabled || !within(group.domain, 'read')}
                 />
                 <AccessChip
-                  name={`${group.label}: Read and write`}
-                  display="Read and write"
+                  name={
+                    group.domain === 'settings'
+                      ? intl.formatMessage({
+                          id: 'apiKeys.scopes.settingsReadWrite',
+                          defaultMessage: 'Settings: Read and write',
+                        })
+                      : `${group.label}: Read and write`
+                  }
+                  display={
+                    group.domain === 'settings'
+                      ? intl.formatMessage({
+                          id: 'apiKeys.scopes.readWrite',
+                          defaultMessage: 'Read and write',
+                        })
+                      : 'Read and write'
+                  }
                   pressed={levels[group.domain] === 'read_write'}
                   onPressedChange={() => select(group.domain, 'read_write')}
-                  disabled={disabled}
+                  disabled={disabled || !within(group.domain, 'read_write')}
                 />
               </>
             )}
@@ -94,7 +138,7 @@ export function DomainAccessPicker({
                 display="Write"
                 pressed={levels[group.domain] === 'write'}
                 onPressedChange={() => select(group.domain, 'write')}
-                disabled={disabled}
+                disabled={disabled || !within(group.domain, 'write')}
               />
             )}
           </div>

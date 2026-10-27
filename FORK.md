@@ -20,10 +20,13 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
   buttons and links. Conversation emails to customers (replies, acknowledgement,
   closed) use the same layout with the subject as heading.
 - The widget launcher reads hex brand colours as well as oklch.
+- The launcher greeting uses the waving hand with a skin tone (👋🏻) in every
+  language.
 - Once a teammate replies in a conversation, the messenger header shows that
   person instead of the AI assistant; the assistant moves to the subtitle.
-- A "Source code" link to this repository in the portal, so every user can
-  reach the source of the running version (AGPL section 13). A fork points
+- A "Source code" link to this repository under the feedback filters in the
+  portal (`portal-source-code-link.tsx`), so every user can reach the source of
+  the running version (AGPL section 13). A fork points
   `apps/web/src/lib/shared/source-code.ts` at its own repository.
 
 **Help center on a custom domain**
@@ -50,11 +53,6 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 - A handled message can be marked seen in further mailboxes
   (`IMAP_MARK_SEEN_ALSO`, comma separated).
 - A fetched message that is not ingested is logged with its reason.
-
-**Status page**
-
-- A visitor who is not signed in and subscribes to the status page gets the
-  sign-in dialog, not a generic error.
 
 **Tickets API**
 

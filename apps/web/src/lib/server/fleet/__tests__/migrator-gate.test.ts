@@ -367,6 +367,18 @@ describe('replayGateVerdict', () => {
       '0290_files',
       '0291_legacy_surface_switches',
       '0292_account_profile_sync',
+      '0293_test_customer',
+      '0294_workspace_copilot',
+      '0295_website_branding_existing_workspaces',
+      '0296_validate_workspace_copilot_checks',
+      '0297_onboarding_emails',
+      '0298_status_maintenance_started_at',
+      '0299_status_incident_notify_subscribers',
+      '0300_status_incident_details_edited_at',
+      '0301_audit_attribution',
+      '0302_approvals_foundation',
+      '0303_ai_permission_split',
+      '0304_device_authorization',
     ])
     const verdict = replayGateVerdict(before, verdictsFor(replaySetFor(before)), false)
     expect(verdict.ok).toBe(false)

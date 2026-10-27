@@ -6,6 +6,7 @@
  * Status changes + assignment need an id-discovery tool first; a later slice.
  */
 
+import { PERMISSIONS } from '@/lib/shared/permissions'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { TicketId, TicketTypeId, PrincipalId, CompanyId } from '@quackback/ids'
@@ -26,8 +27,10 @@ import {
   mcpAgentActor,
   jsonResult,
   compactJsonResult,
+  withAuthorFacts,
   READ_ONLY,
   WRITE,
+  type AuthorAt,
 } from './helpers'
 
 const TICKET_TYPES = ['customer', 'back_office', 'tracker'] as const
@@ -72,6 +75,7 @@ export function registerTicketTools(server: McpServer, auth: McpAuthContext) {
     limit?: number
   }>(server, auth, {
     name: 'list_tickets',
+    permissions: [PERMISSIONS.TICKET_VIEW],
     description: `List support tickets. Filter by type, registry ticket-type, internal status category, customer-facing stage, requester, or company; sort and cap with limit. A service key sees every ticket; a human caller sees the tickets their role can view.
 
 Examples:
@@ -148,6 +152,7 @@ Examples:
     cursor?: string
   }>(server, auth, {
     name: 'get_ticket',
+    permissions: [PERMISSIONS.TICKET_VIEW],
     description: `Get a ticket and its most recent thread messages, oldest-first. For a conversation-linked customer ticket the thread is the pair's shared thread (the conversation's messages plus the ticket's own legacy/internal rows). Set includeInternal to also return internal teammate notes.
 
 Example: get_ticket({ ticketId: "ticket_01abc...", includeInternal: true })`,
@@ -180,7 +185,7 @@ Example: get_ticket({ ticketId: "ticket_01abc...", includeInternal: true })`,
         }),
       ])
       const nextCursor = page.hasMore && page.messages.length ? page.messages[0].id : null
-      return jsonResult({
+      const result = jsonResult({
         ticket: {
           id: dto.id,
           number: dto.number,
@@ -216,6 +221,10 @@ Example: get_ticket({ ticketId: "ticket_01abc...", includeInternal: true })`,
         hasMore: page.hasMore,
         nextCursor,
       })
+      return withAuthorFacts(
+        result,
+        page.messages.map((m, i): AuthorAt => [`messages[${i}]`, m.author?.principalId])
+      )
     },
   })
 
@@ -229,6 +238,7 @@ Example: get_ticket({ ticketId: "ticket_01abc...", includeInternal: true })`,
     companyId?: string
   }>(server, auth, {
     name: 'create_ticket',
+    permissions: [PERMISSIONS.TICKET_CREATE],
     description: `Open a support ticket. type is customer (a requester's request), back_office (an internal task), or tracker (an umbrella others link to). Pass ticketTypeId to file under a workspace-defined registry type instead — its category then determines type (discover ids via list_tickets' ticketType field). A description opens the thread. Returns the created ticket.
 
 Example: create_ticket({ type: "customer", title: "Refund not received", description: "Customer reports a missing refund from last week." })`,
@@ -298,6 +308,7 @@ Example: create_ticket({ type: "customer", title: "Refund not received", descrip
 
   registerTool<{ ticketId: string; content: string; fileIds?: string[] }>(server, auth, {
     name: 'reply_to_ticket',
+    permissions: [PERMISSIONS.TICKET_REPLY],
     description: `Post a reply on a ticket thread (visible to the requester). On a conversation-linked customer ticket the reply lands on the pair's shared thread — the linked conversation — whose first-response machinery owns response timing; on an unlinked ticket the first reply stamps the ticket's first-response time.
 
 Attach files already uploaded with upload_file by passing their ids in fileIds (max 10).
@@ -338,6 +349,7 @@ Example: reply_to_ticket({ ticketId: "ticket_01abc...", content: "We've issued y
 
   registerTool<{ ticketId: string; content: string; fileIds?: string[] }>(server, auth, {
     name: 'add_ticket_note',
+    permissions: [PERMISSIONS.TICKET_NOTE],
     description: `Add an internal note to a ticket thread. Never visible to the requester — only the support team sees it.
 
 Attach files already uploaded with upload_file by passing their ids in fileIds (max 10).
@@ -377,6 +389,7 @@ Example: add_ticket_note({ ticketId: "ticket_01abc...", content: "Confirmed the 
 
   registerTool<{ trackerTicketId: string; ticketId: string }>(server, auth, {
     name: 'link_ticket',
+    permissions: [PERMISSIONS.TICKET_ASSIGN],
     description: `Link a customer ticket to a tracker so the tracker's stage changes cascade onto it. The tracker must be type "tracker" and the ticket type "customer"; a customer ticket belongs to at most one tracker. Returns the tracker's linked tickets.
 
 Example: link_ticket({ trackerTicketId: "ticket_01tracker...", ticketId: "ticket_01customer..." })`,
@@ -401,6 +414,7 @@ Example: link_ticket({ trackerTicketId: "ticket_01tracker...", ticketId: "ticket
 
   registerTool<{ trackerTicketId: string; ticketId: string }>(server, auth, {
     name: 'unlink_ticket',
+    permissions: [PERMISSIONS.TICKET_ASSIGN],
     description: `Remove a customer ticket from a tracker. Returns the tracker's remaining linked tickets.
 
 Example: unlink_ticket({ trackerTicketId: "ticket_01tracker...", ticketId: "ticket_01customer..." })`,

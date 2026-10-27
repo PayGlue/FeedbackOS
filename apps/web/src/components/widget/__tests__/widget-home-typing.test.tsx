@@ -241,13 +241,31 @@ describe('widget home title', () => {
         })
     )
     renderHome()
-    typeTitleByKey('Dark')
+    typeTitleByKey('Dark m')
     await screen.findByTestId('editor')
     await waitFor(() => expect(signals).toHaveLength(1))
     expect(signals[0]!.aborted).toBe(false)
 
     typeTitle('Dark mode')
     expect(signals[0]!.aborted).toBe(true)
+  })
+
+  it('looks for similar ideas only once the title is long enough to be like one', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderHome()
+      typeTitleByKey('Dark')
+      await screen.findByTestId('editor')
+      await act(async () => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(fetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/api/widget/search'),
+        expect.anything()
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('offers Submit only once the title has text', async () => {

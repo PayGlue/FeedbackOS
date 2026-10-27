@@ -299,7 +299,7 @@ export const Route = createFileRoute('/widget/')({
       assistant:
         messengerTabEnabled && settings?.publicWidgetConfig?.messenger?.assistant?.enabled
           ? {
-              name: settings.publicWidgetConfig.messenger.assistant.name?.trim() || 'Quinn',
+              name: settings.publicWidgetConfig.messenger.assistant.name?.trim() || 'Quackback AI',
               avatarUrl: settings.publicWidgetConfig.messenger.assistant.avatarUrl || null,
             }
           : null,
@@ -480,6 +480,9 @@ function WidgetPage() {
       setMessengerAgent({ threadKey: conversationTarget ?? 'active', agent }),
     [conversationTarget]
   )
+  // A host's `open({ view: 'chat', body })`. The nonce remounts the messenger
+  // so a draft sent while it is already open still lands in the composer.
+  const [messengerDraft, setMessengerDraft] = useState<{ nonce: number; body: string } | null>(null)
   // Manual size preference: the header's expand/collapse button flips this,
   // and it is STICKY — collapsing turns auto-expansion off for every later
   // item view until the visitor expands again. Persisted per browser.
@@ -667,6 +670,10 @@ function WidgetPage() {
           setView('help')
           break
         case 'messenger':
+          if (command.body) {
+            const body = command.body
+            setMessengerDraft((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, body }))
+          }
           openMessenger()
           break
         case 'tickets':
@@ -974,7 +981,8 @@ function WidgetPage() {
           fallback={<WidgetMessengerViewSkeleton isNew={conversationTarget === 'new'} />}
         >
           <WidgetMessenger
-            key={conversationTarget ?? 'active'}
+            key={`${conversationTarget ?? 'active'}:${messengerDraft?.nonce ?? 0}`}
+            initialDraft={messengerDraft?.body}
             helpEnabled={tabs.help}
             onArticleSelect={handleHelpArticleSelect}
             conversationTarget={conversationTarget === null ? undefined : conversationTarget}

@@ -91,7 +91,8 @@ export async function getPublicServerConfig(): Promise<{
   enabled: boolean
   config: PublicServerConfig
 }> {
-  const { getPublicWidgetConfig } = await import('@/lib/server/domains/settings/settings.widget')
+  const { getPublicWidgetConfig, getWidgetConfig } =
+    await import('@/lib/server/domains/settings/settings.widget')
 
   // Public projection: tabs are already flag-gated (e.g. messenger behind
   // the experimental `supportInbox` flag), so this just forwards them.
@@ -99,6 +100,17 @@ export async function getPublicServerConfig(): Promise<{
   if (!widgetConfig.enabled) {
     return { enabled: false, config: {} }
   }
+
+  // The visitor-tracking switches are not in the public projection; they are
+  // read from the parsed settings and resolved against the plan here.
+  const { isVisitorAnalyticsEntitled, resolveVisitorTracking } =
+    await import('@/lib/server/domains/analytics/visitor-tracking')
+  const [stored, entitled] = await Promise.all([getWidgetConfig(), isVisitorAnalyticsEntitled()])
+  const tracking = resolveVisitorTracking({
+    entitled,
+    analytics: stored.visitorAnalytics,
+    deviceId: stored.visitorDeviceTracking,
+  })
 
   const theme: PublicServerTheme = {}
   try {
@@ -111,7 +123,8 @@ export async function getPublicServerConfig(): Promise<{
     const light = brandingConfig.light
     const dark = brandingConfig.dark
     if (light?.primary) theme.lightPrimary = await toHex(light.primary)
-    if (light?.primaryForeground) theme.lightPrimaryForeground = await toHex(light.primaryForeground)
+    if (light?.primaryForeground)
+      theme.lightPrimaryForeground = await toHex(light.primaryForeground)
     if (dark?.primary) theme.darkPrimary = await toHex(dark.primary)
     if (dark?.primaryForeground) theme.darkPrimaryForeground = await toHex(dark.primaryForeground)
     if (light?.radius) theme.radius = light.radius
@@ -137,8 +150,8 @@ export async function getPublicServerConfig(): Promise<{
       theme: Object.keys(theme).length > 0 ? theme : undefined,
       tabs: widgetConfig.tabs,
       hmacRequired: widgetConfig.hmacRequired,
-      visitorAnalytics: true,
-      visitorDeviceTracking: true,
+      visitorAnalytics: tracking.analytics,
+      visitorDeviceTracking: tracking.deviceTracking,
       launcherGreeting: widgetConfig.launcherGreeting?.trim() || undefined,
       launcherLabel: widgetConfig.launcherLabel?.trim() || undefined,
       position:
