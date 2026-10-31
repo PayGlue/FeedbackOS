@@ -76,6 +76,14 @@ export function LinearIcon({ className }: IconProps) {
   )
 }
 
+export function ParsecIcon({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.5 5H14a4 4 0 0 1 0 8h-1.5v2h-2V7Zm2 2v4H14a2 2 0 0 0 0-4h-1.5Z" />
+    </svg>
+  )
+}
+
 export function ShortcutIcon({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -207,6 +215,7 @@ export const INTEGRATION_ICON_MAP: Record<string, ComponentType<IconProps>> = {
   intercom: IntercomIcon,
   jira: JiraIcon,
   linear: LinearIcon,
+  parsec: ParsecIcon,
   shortcut: ShortcutIcon,
   slack: SlackIcon,
   teams: TeamsIcon,

@@ -72,6 +72,14 @@ export interface IntegrationSettingsEntry {
 // Config panels (connected state). Prop shapes differ per provider, so each is
 // wired through its entry's renderConfig; the route wraps them in one Suspense.
 
+const ParsecConfig = lazy(() =>
+  import('@/integrations/parsec/ui/parsec-config').then((m) => ({ default: m.ParsecConfig }))
+)
+const ParsecConnectionActions = lazy(() =>
+  import('@/integrations/parsec/ui/parsec-connection-actions').then((m) => ({
+    default: m.ParsecConnectionActions,
+  }))
+)
 const AsanaConfig = lazy(() =>
   import('@/integrations/asana/ui/asana-config').then((m) => ({ default: m.AsanaConfig }))
 )
@@ -843,6 +851,34 @@ export const INTEGRATION_SETTINGS: Record<string, IntegrationSettingsEntry> = {
     },
   },
 
+  parsec: {
+    type: 'parsec',
+    connectForm: true,
+    catalog: catalogs.parsecCatalog,
+    Icon: getIntegrationIcon('parsec')!,
+    ConnectionActions: ParsecConnectionActions,
+    setup: {
+      title: 'Connect your Parsec instance',
+      description: 'Connect Parsec to create issues from tickets and carry their status back.',
+      steps: [
+        <p key="1">
+          Create a personal API key in your Parsec account settings. Issues appear under that
+          account, so a dedicated one reads better.
+        </p>,
+        <p key="2">Enter the addresses of your instance and paste the key below.</p>,
+        <p key="3">
+          Select the project, turn on status sync and map its columns to your ticket statuses.
+        </p>,
+      ],
+    },
+    renderConfig: ({ integration, isConnected }) => (
+      <ParsecConfig
+        integrationId={integration.id}
+        initialConfig={integration.config}
+        enabled={isConnected}
+      />
+    ),
+  },
   shortcut: {
     type: 'shortcut',
     connectForm: true,
