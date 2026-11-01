@@ -11,6 +11,11 @@ export interface ParsecProjectOption {
   name: string
 }
 
+export interface ParsecIssueOptions {
+  issueTypes: { id: string; name: string }[]
+  members: { id: string; name: string }[]
+}
+
 export const saveParsecConnectionFn = createServerFn({ method: 'POST' })
   .validator(
     z.object({ apiUrl: z.string().min(1), webUrl: z.string().min(1), apiKey: z.string().min(1) })
@@ -64,3 +69,34 @@ export const fetchParsecProjectsFn = createServerFn({ method: 'GET' }).handler(
     return projects.map((p) => ({ id: String(p.id), ref: p.ref, name: p.name }))
   }
 )
+
+export const fetchParsecIssueOptionsFn = createServerFn({ method: 'GET' })
+  .validator(z.object({ projectRef: z.string().min(1) }))
+  .handler(async ({ data }): Promise<ParsecIssueOptions> => {
+    const { requireAuth } = await import('@/lib/server/functions/auth-helpers')
+    const { db, integrations, eq } = await import('@/lib/server/db')
+    const { getIntegrationAuth } = await import('@/lib/server/integrations/token-refresh')
+    const { getParsecProjectSetup } = await import('@/integrations/parsec/server/api')
+
+    await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+
+    const integration = await db.query.integrations.findFirst({
+      where: eq(integrations.integrationType, 'parsec'),
+    })
+
+    if (!integration?.secrets || integration.status !== 'active') {
+      throw new Error('Parsec not connected')
+    }
+
+    const { accessToken, config } = await getIntegrationAuth(integration.id)
+    const { issueTypes, assignees } = await getParsecProjectSetup(
+      { apiUrl: config.apiUrl, accessToken },
+      data.projectRef
+    )
+    return {
+      issueTypes: issueTypes.map((t) => ({ id: String(t.id), name: t.name })),
+      members: assignees
+        .filter((a) => a.kind === 'member')
+        .map((a) => ({ id: a.userId, name: a.name })),
+    }
+  })

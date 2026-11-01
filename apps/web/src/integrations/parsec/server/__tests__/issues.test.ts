@@ -58,11 +58,17 @@ describe('parsecIssues.create', () => {
     { id: 1, name: 'Backlog', stateType: 'backlog', position: 0 },
     { id: 3, name: 'Done', stateType: 'completed', position: 2 },
   ]
+  const issueTypes = [
+    { id: 7, name: 'Task', isDefault: true },
+    { id: 8, name: 'Support', isDefault: false },
+  ]
 
-  it('creates the issue in the first open column', async () => {
+  const setup = { columns, issueTypes, assignees: [] }
+
+  it('creates the issue in the first open column with the project default type', async () => {
     fetchMock
-      .mockResolvedValueOnce(Response.json({ columns }))
-      .mockResolvedValueOnce(Response.json({ identifier: 'PROJ-43' }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json(setup))
+      .mockResolvedValueOnce(Response.json({ id: 9, identifier: 'PROJ-43' }, { status: 201 }))
 
     const ref = await create({ auth, title: 'Broken', bodyMarkdown: 'Details' })
 
@@ -74,7 +80,70 @@ describe('parsecIssues.create', () => {
     const [url, init] = fetchMock.mock.calls[1]
     expect(url).toBe('https://api.example.com/projects/acme.PROJ/issues')
     expect(init.headers['x-api-key']).toBe('key')
-    expect(JSON.parse(init.body)).toEqual({ columnId: 1, title: 'Broken', description: 'Details' })
+    expect(JSON.parse(init.body)).toEqual({
+      columnId: 1,
+      title: 'Broken',
+      description: 'Details',
+      typeId: 7,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('applies the configured type and priority', async () => {
+    fetchMock
+      .mockResolvedValueOnce(Response.json(setup))
+      .mockResolvedValueOnce(Response.json({ id: 9, identifier: 'PROJ-43' }, { status: 201 }))
+
+    await create({
+      auth: { ...auth, issueTypeId: '8', issuePriority: 'medium' },
+      title: 'Broken',
+      bodyMarkdown: '',
+    })
+
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body)
+    expect(body.typeId).toBe(8)
+    expect(body.priority).toBe('medium')
+  })
+
+  it('ignores a priority Parsec does not know', async () => {
+    fetchMock
+      .mockResolvedValueOnce(Response.json(setup))
+      .mockResolvedValueOnce(Response.json({ id: 9, identifier: 'PROJ-43' }, { status: 201 }))
+
+    await create({ auth: { ...auth, issuePriority: 'none' }, title: 'x', bodyMarkdown: '' })
+
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).priority).toBeUndefined()
+  })
+
+  it('subscribes the watcher, then comments so Parsec notifies them', async () => {
+    fetchMock
+      .mockResolvedValueOnce(Response.json(setup))
+      .mockResolvedValueOnce(Response.json({ id: 9, identifier: 'PROJ-43' }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(Response.json({}, { status: 201 }))
+
+    await create({ auth: { ...auth, watcherUserId: 'user-1' }, title: 'x', bodyMarkdown: '' })
+
+    const [watchUrl, watchInit] = fetchMock.mock.calls[2]
+    expect(watchUrl).toBe('https://api.example.com/issues/9/watchers/user-1')
+    expect(watchInit.method).toBe('PUT')
+    expect(fetchMock.mock.calls[3][0]).toBe('https://api.example.com/issues/9/comments')
+  })
+
+  it('keeps the created issue when subscribing the watcher fails', async () => {
+    fetchMock
+      .mockResolvedValueOnce(Response.json(setup))
+      .mockResolvedValueOnce(Response.json({ id: 9, identifier: 'PROJ-43' }, { status: 201 }))
+      .mockResolvedValueOnce(new Response('', { status: 403 }))
+
+    const ref = await create({
+      auth: { ...auth, watcherUserId: 'user-1' },
+      title: 'x',
+      bodyMarkdown: '',
+    })
+
+    expect(ref.externalId).toBe('PROJ-43')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('fails without a project', async () => {
