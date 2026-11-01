@@ -469,6 +469,15 @@
       "fields": []
     },
     {
+      "id": "parsec",
+      "name": "Parsec",
+      "category": "issue_tracking",
+      "iconBg": "bg-[#4F46E5]",
+      "configurable": false,
+      "envPrefix": "INTEGRATION_PARSEC_",
+      "fields": []
+    },
+    {
       "id": "salesforce",
       "name": "Salesforce",
       "category": "support_crm",
