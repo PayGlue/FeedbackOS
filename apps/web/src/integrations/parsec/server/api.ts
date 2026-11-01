@@ -21,6 +21,24 @@ export interface ParsecColumn {
   position: number
 }
 
+export interface ParsecIssueType {
+  id: number
+  name: string
+  isDefault: boolean
+}
+
+export interface ParsecAssignee {
+  userId: string
+  name: string
+  kind: string
+}
+
+export interface ParsecProjectSetup {
+  columns: ParsecColumn[]
+  issueTypes: ParsecIssueType[]
+  assignees: ParsecAssignee[]
+}
+
 export function normalizeOrigin(value: string): string {
   const url = new URL(value.trim())
   if (url.protocol !== 'https:') throw new Error('Use an https:// address')
@@ -53,13 +71,32 @@ export function listParsecProjects(auth: { apiUrl: unknown; accessToken: unknown
   return parsecRequest<ParsecProject[]>(auth, '/projects')
 }
 
-export async function listParsecColumns(
+export function getParsecProjectSetup(
   auth: { apiUrl: unknown; accessToken: unknown },
   projectRef: string
-): Promise<ParsecColumn[]> {
-  const { columns } = await parsecRequest<{ columns: ParsecColumn[] }>(
-    auth,
-    `/projects/${encodeURIComponent(projectRef)}`
-  )
-  return columns
+): Promise<ParsecProjectSetup> {
+  return parsecRequest<ParsecProjectSetup>(auth, `/projects/${encodeURIComponent(projectRef)}`)
+}
+
+/**
+ * For calls that follow a created issue. The issue already exists, so a failure
+ * here must not reach the sync transport, which would report the creation as
+ * uncertain and leave it open to a duplicate.
+ */
+export async function parsecFollowUp(
+  auth: { apiUrl: unknown; accessToken: unknown },
+  path: string,
+  method: 'PUT' | 'POST',
+  body?: unknown
+): Promise<void> {
+  const response = await fetch(`${String(auth.apiUrl)}${path}`, {
+    method,
+    headers: {
+      'x-api-key': String(auth.accessToken),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
 }

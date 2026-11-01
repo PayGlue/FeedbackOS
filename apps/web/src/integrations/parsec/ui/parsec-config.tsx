@@ -18,7 +18,9 @@ import type { ExternalStatus } from '@/components/admin/settings/integrations/st
 import { StatusSyncConfig } from '@/components/admin/settings/integrations/status-sync-config'
 import { TicketStatusSyncConfig } from '@/components/admin/settings/integrations/ticket-status-sync-config'
 import {
+  fetchParsecIssueOptionsFn,
   fetchParsecProjectsFn,
+  type ParsecIssueOptions,
   type ParsecProjectOption,
 } from '@/integrations/parsec/server/functions'
 
@@ -26,6 +28,57 @@ interface ParsecConfigProps {
   integrationId: string
   initialConfig: Record<string, unknown>
   enabled: boolean
+}
+
+const UNSET = '__unset__'
+
+const PRIORITIES = [
+  { id: 'urgent', name: 'Urgent' },
+  { id: 'high', name: 'High' },
+  { id: 'medium', name: 'Medium' },
+  { id: 'low', name: 'Low' },
+]
+
+interface IssueDefaultProps {
+  id: string
+  label: string
+  hint: string
+  unsetLabel: string
+  value: string
+  options: { id: string; name: string }[]
+  disabled: boolean
+  onChange: (value: string) => void
+}
+
+function IssueDefault({
+  id,
+  label,
+  hint,
+  unsetLabel,
+  value,
+  options,
+  disabled,
+  onChange,
+}: IssueDefaultProps) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={value || UNSET} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={UNSET}>{unsetLabel}</SelectItem>
+          {options.map((option) => (
+            <SelectItem key={option.id} value={option.id}>
+              {option.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
+  )
 }
 
 export function ParsecConfig({ integrationId, initialConfig, enabled }: ParsecConfigProps) {
@@ -36,6 +89,14 @@ export function ParsecConfig({ integrationId, initialConfig, enabled }: ParsecCo
   const [selectedProject, setSelectedProject] = useState((initialConfig.channelId as string) || '')
   const [externalStatuses, setExternalStatuses] = useState<ExternalStatus[]>([])
   const [integrationEnabled, setIntegrationEnabled] = useState(enabled)
+  const [projectRef, setProjectRef] = useState((initialConfig.projectRef as string) || '')
+  const [issueOptions, setIssueOptions] = useState<ParsecIssueOptions>({
+    issueTypes: [],
+    members: [],
+  })
+  const [issueTypeId, setIssueTypeId] = useState((initialConfig.issueTypeId as string) || '')
+  const [issuePriority, setIssuePriority] = useState((initialConfig.issuePriority as string) || '')
+  const [watcherUserId, setWatcherUserId] = useState((initialConfig.watcherUserId as string) || '')
 
   const fetchProjects = useCallback(async () => {
     setLoadingProjects(true)
@@ -60,6 +121,13 @@ export function ParsecConfig({ integrationId, initialConfig, enabled }: ParsecCo
     fetchStatuses()
   }, [fetchProjects, fetchStatuses])
 
+  useEffect(() => {
+    if (!projectRef) return
+    fetchParsecIssueOptionsFn({ data: { projectRef } })
+      .then(setIssueOptions)
+      .catch(() => {})
+  }, [projectRef])
+
   const handleEnabledChange = (checked: boolean) => {
     setIntegrationEnabled(checked)
     updateMutation.mutate({ id: integrationId, enabled: checked })
@@ -69,10 +137,28 @@ export function ParsecConfig({ integrationId, initialConfig, enabled }: ParsecCo
     const project = projects.find((p) => p.id === projectId)
     if (!project) return
     setSelectedProject(projectId)
+    setProjectRef(project.ref)
+    // Types and members belong to a project, so the old choices go with it.
+    setIssueTypeId('')
+    setWatcherUserId('')
     updateMutation.mutate(
-      { id: integrationId, config: { channelId: projectId, projectRef: project.ref } },
+      {
+        id: integrationId,
+        config: {
+          channelId: projectId,
+          projectRef: project.ref,
+          issueTypeId: '',
+          watcherUserId: '',
+        },
+      },
       { onSuccess: fetchStatuses }
     )
+  }
+
+  const saveIssueDefault = (key: string, value: string, apply: (next: string) => void) => {
+    const next = value === UNSET ? '' : value
+    apply(next)
+    updateMutation.mutate({ id: integrationId, config: { [key]: next } })
   }
 
   const saving = updateMutation.isPending
@@ -143,6 +229,40 @@ export function ParsecConfig({ integrationId, initialConfig, enabled }: ParsecCo
         <p className="text-xs text-muted-foreground">
           Issues created from tickets land in this project. Change it before turning on status sync.
         </p>
+      </div>
+
+      <div className="space-y-4">
+        <Label className="text-base font-medium">New issues</Label>
+        <IssueDefault
+          id="issue-type-select"
+          label="Issue type"
+          hint="Issues created from tickets get this type."
+          unsetLabel="Project default"
+          value={issueTypeId}
+          options={issueOptions.issueTypes}
+          disabled={saving || !integrationEnabled || !projectRef}
+          onChange={(v) => saveIssueDefault('issueTypeId', v, setIssueTypeId)}
+        />
+        <IssueDefault
+          id="issue-priority-select"
+          label="Priority"
+          hint="Issues created from tickets start with this priority."
+          unsetLabel="No priority"
+          value={issuePriority}
+          options={PRIORITIES}
+          disabled={saving || !integrationEnabled}
+          onChange={(v) => saveIssueDefault('issuePriority', v, setIssuePriority)}
+        />
+        <IssueDefault
+          id="issue-watcher-select"
+          label="Watcher"
+          hint="This person watches every new issue and gets a comment on it, so Parsec notifies them."
+          unsetLabel="Nobody"
+          value={watcherUserId}
+          options={issueOptions.members}
+          disabled={saving || !integrationEnabled || !projectRef}
+          onChange={(v) => saveIssueDefault('watcherUserId', v, setWatcherUserId)}
+        />
       </div>
 
       {saving && (

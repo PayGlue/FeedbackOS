@@ -1,5 +1,5 @@
 import type { ExternalStatusItem } from '@/lib/server/integrations/types'
-import { listParsecColumns } from '@/integrations/parsec/server/api'
+import { getParsecProjectSetup } from '@/integrations/parsec/server/api'
 
 /** The connected project's columns for the status-mapping UI, in board order. */
 export async function fetchParsecStatuses(params: {
@@ -8,7 +8,7 @@ export async function fetchParsecStatuses(params: {
 }): Promise<ExternalStatusItem[]> {
   const projectRef = params.config.projectRef
   if (typeof projectRef !== 'string' || !projectRef) return []
-  const columns = await listParsecColumns(
+  const { columns } = await getParsecProjectSetup(
     { apiUrl: params.config.apiUrl, accessToken: params.accessToken },
     projectRef
   )
