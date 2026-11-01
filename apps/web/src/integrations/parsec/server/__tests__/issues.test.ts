@@ -22,6 +22,15 @@ describe('parsecIssues.parseRef', () => {
     })
   })
 
+  it('reads a bare number as an issue in the connected project', () => {
+    expect(parseRef('42', config)?.externalId).toBe('PROJ-42')
+    expect(parseRef(' #42 ', config)?.externalId).toBe('PROJ-42')
+  })
+
+  it('needs a connected project for a bare number', () => {
+    expect(parseRef('42', { ...config, projectRef: undefined })).toBeNull()
+  })
+
   it('reads an issue URL', () => {
     const url = 'https://tracker.example.com/acme/issue/PROJ-42?tab=activity'
     expect(parseRef(url, config)?.externalId).toBe('PROJ-42')

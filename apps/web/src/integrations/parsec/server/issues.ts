@@ -20,6 +20,7 @@ const PRIORITIES = ['urgent', 'high', 'medium', 'low']
 const ISSUE_URL_RE =
   /^https?:\/\/([^/\s]+)\/[^/\s]+\/issue\/([A-Za-z][A-Za-z0-9]*-\d+)\/?(?:[?#].*)?$/
 const KEY_RE = /^([A-Za-z][A-Za-z0-9]*-\d+)$/
+const NUMBER_RE = /^#?(\d+)$/
 
 function issueUrl(config: Record<string, unknown>, identifier: string): string | null {
   const { webUrl, projectRef } = config
@@ -52,7 +53,14 @@ export const parsecIssues: IssueTrackerCapability = {
   parseRef(input: string, config: Record<string, unknown>): ParsedIssueRef | null {
     const trimmed = input.trim()
     const urlMatch = ISSUE_URL_RE.exec(trimmed)
-    const key = (urlMatch?.[2] ?? KEY_RE.exec(trimmed)?.[1])?.toUpperCase()
+    const projectKey = typeof config.projectRef === 'string' ? config.projectRef.split('.')[1] : ''
+    // The connection pins one project, so a bare number can only mean an issue in it.
+    const number = projectKey ? NUMBER_RE.exec(trimmed)?.[1] : undefined
+    const key = (
+      urlMatch?.[2] ??
+      KEY_RE.exec(trimmed)?.[1] ??
+      (number ? `${projectKey}-${number}` : undefined)
+    )?.toUpperCase()
     if (!key) return null
 
     if (urlMatch && typeof config.webUrl === 'string') {
@@ -65,7 +73,6 @@ export const parsecIssues: IssueTrackerCapability = {
     }
     // Issue numbers are only unique per project, and inbound sync is fenced to
     // the connected one, so a foreign key would link and then never update.
-    const projectKey = typeof config.projectRef === 'string' ? config.projectRef.split('.')[1] : ''
     if (projectKey && !key.startsWith(`${projectKey.toUpperCase()}-`))
       throw new ValidationError(
         'PROJECT_MISMATCH',
