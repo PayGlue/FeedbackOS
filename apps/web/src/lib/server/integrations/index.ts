@@ -24,6 +24,7 @@ import { n8nIntegration } from '@/integrations/n8n/server'
 import { makeIntegration } from '@/integrations/make/server'
 import { segmentIntegration } from '@/integrations/segment/server'
 import { ntfyIntegration } from '@/integrations/ntfy/server'
+import { parsecIntegration } from '@/integrations/parsec/server'
 
 const registry = new Map<string, IntegrationDefinition>([
   [slackIntegration.id, slackIntegration],
@@ -51,6 +52,7 @@ const registry = new Map<string, IntegrationDefinition>([
   [makeIntegration.id, makeIntegration],
   [segmentIntegration.id, segmentIntegration],
   [ntfyIntegration.id, ntfyIntegration],
+  [parsecIntegration.id, parsecIntegration],
 ])
 
 export function getIntegration(type: string): IntegrationDefinition | undefined {

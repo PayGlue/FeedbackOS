@@ -28,6 +28,7 @@ import {
   NotionIcon,
   NtfyIcon,
   SalesforceIcon,
+  ParsecIcon,
   ShortcutIcon,
   SlackIcon,
   StripeIcon,
@@ -147,6 +148,12 @@ export const INTEGRATION_UI: Record<string, IntegrationUiManifest> = {
     icon: SalesforceIcon,
     displayName: 'Salesforce',
     badge: 'bg-sky-100 dark:bg-sky-900/80 text-sky-600 dark:text-sky-400',
+  },
+  parsec: {
+    icon: ParsecIcon,
+    displayName: 'Parsec',
+    actionVerb: 'Archive',
+    itemNoun: 'issue',
   },
   shortcut: {
     icon: ShortcutIcon,
