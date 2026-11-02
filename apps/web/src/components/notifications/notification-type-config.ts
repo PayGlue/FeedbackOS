@@ -49,6 +49,11 @@ export const notificationTypeConfigs: Record<NotificationType, NotificationTypeC
     iconClass: 'text-green-500',
     bgClass: 'bg-green-500/10',
   },
+  post_submitted: {
+    icon: InboxArrowDownIcon,
+    iconClass: 'text-green-500',
+    bgClass: 'bg-green-500/10',
+  },
   chat_message: {
     icon: ChatBubbleLeftRightIcon,
     iconClass: 'text-teal-500',

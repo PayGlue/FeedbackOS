@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "Bestätigung, wenn dein Ticket bei uns eingeht",
   "portal.settings.notifications.type.changelogPublished.label": "Neuigkeiten veröffentlicht",
   "portal.settings.notifications.type.changelogPublished.description": "Ein neuer Eintrag bei den Neuigkeiten wird veröffentlicht",
+  "portal.settings.notifications.type.postSubmitted.label": "Neues Feedback",
+  "portal.settings.notifications.type.postSubmitted.description": "Jemand außerhalb des Teams postet Feedback",
   "portal.settings.notifications.type.statusIncident.label": "Statusvorfall",
   "portal.settings.notifications.type.statusIncident.description": "Ein Statusvorfall oder ein Wartungsfenster wird veröffentlicht",
   "portal.settings.notifications.loadFailed": "Die Einstellungen konnten nicht geladen werden",

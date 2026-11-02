@@ -92,6 +92,9 @@ export function getNotificationTarget(
     return { to: '/admin/inbox', search: { i: notification.ticketId } }
   }
 
+  // A published post links through `post` above, so what lands here waits for approval.
+  if (notification.type === 'post_submitted') return { to: '/admin/feedback/moderation' }
+
   // One approval bell counts every new request, so it opens the approvals queue.
   if (notification.type === 'approval_requested') return { to: '/admin/approvals' }
 

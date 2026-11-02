@@ -70,6 +70,7 @@ import { ConversationClosedEmail } from './templates/conversation-closed'
 import { isEmailBillable } from './mail-class'
 import { PostMentionEmail } from './templates/post-mention'
 import { NoteMentionEmail } from './templates/note-mention'
+import { NewFeedbackEmail } from './templates/new-feedback'
 import { TicketEventEmail } from './templates/ticket-event'
 import { ChangelogPublishedEmail } from './templates/changelog-published'
 import { FeedbackLinkedEmail } from './templates/feedback-linked'
@@ -1552,6 +1553,34 @@ export async function sendNoteMentionEmail(args: SendNoteMentionEmailArgs): Prom
     references,
     emailType: 'NoteMentionEmail',
     preview: { conversationUrl },
+  })
+}
+
+export interface SendNewFeedbackEmailArgs {
+  to: string
+  title: string
+  /** Plain-text post preview. Empty string suppresses the quote block. */
+  preview: string
+  /** Display name of the author; empty for an anonymous post. */
+  authorName: string
+  boardName: string
+  /** True while the post waits for approval. */
+  held: boolean
+  url: string
+  workspaceName: string
+  preferencesUrl?: string
+  logoUrl?: string
+}
+
+/** Alert the team that someone outside it posted feedback. */
+export async function sendNewFeedbackEmail(args: SendNewFeedbackEmailArgs): Promise<EmailResult> {
+  const { to, ...props } = args
+  return sendEmail({
+    to,
+    subject: args.held ? `Approve new feedback: ${args.title}` : `New feedback: ${args.title}`,
+    react: NewFeedbackEmail(props),
+    emailType: 'NewFeedbackEmail',
+    preview: { url: args.url },
   })
 }
 

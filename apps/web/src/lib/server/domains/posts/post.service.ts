@@ -324,6 +324,21 @@ export async function createPost(
       metadata: { boardName: board.name },
     })
 
+    // Unlike the dispatch below, this does not wait for moderation: a held post
+    // is exactly the one nobody will see unless the team hears about it.
+    if (!testIdea)
+      import('./post.team-alert')
+        .then(({ alertTeamToNewPost }) =>
+          alertTeamToNewPost({
+            post: { id: post.id, title: post.title, content: post.content ?? '' },
+            board: { slug: board.slug, name: board.name },
+            authorPrincipalId: author.principalId,
+            authorName: author.displayName ?? author.name ?? '',
+            held: moderationState === 'pending',
+          })
+        )
+        .catch((err) => log.error({ err, post_id: post.id }, 'team alert failed'))
+
     // External dispatch (webhooks, Slack, @-mention emails) is deferred until
     // the post is visible. A held post must not trigger integrations until a
     // moderator approves it — approvePostFn calls announcePublishedPost() then.
