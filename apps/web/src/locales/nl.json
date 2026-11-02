@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "Bevestiging wanneer we je ticket ontvangen",
   "portal.settings.notifications.type.changelogPublished.label": "Changelog gepubliceerd",
   "portal.settings.notifications.type.changelogPublished.description": "Er is een nieuw changelog-item gepubliceerd",
+  "portal.settings.notifications.type.postSubmitted.label": "Nieuwe feedback",
+  "portal.settings.notifications.type.postSubmitted.description": "Iemand buiten het team plaatst feedback",
   "portal.settings.notifications.type.statusIncident.label": "Statusincident",
   "portal.settings.notifications.type.statusIncident.description": "Er is een statusincident of onderhoudsvenster geplaatst",
   "portal.settings.notifications.loadFailed": "Voorkeuren laden mislukt",

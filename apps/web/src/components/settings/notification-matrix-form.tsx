@@ -119,6 +119,16 @@ export const TYPE_LABELS: Partial<
       defaultMessage: 'Confirmation when we receive your ticket',
     },
   },
+  post_submitted: {
+    label: {
+      id: 'portal.settings.notifications.type.postSubmitted.label',
+      defaultMessage: 'New feedback',
+    },
+    description: {
+      id: 'portal.settings.notifications.type.postSubmitted.description',
+      defaultMessage: 'Someone outside the team posts feedback',
+    },
+  },
   changelog_published: {
     label: {
       id: 'portal.settings.notifications.type.changelogPublished.label',

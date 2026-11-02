@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "Potwierdzenie, że otrzymaliśmy Twoją sprawę",
   "portal.settings.notifications.type.changelogPublished.label": "Nowości na liście zmian",
   "portal.settings.notifications.type.changelogPublished.description": "Na liście zmian pojawia się nowy wpis",
+  "portal.settings.notifications.type.postSubmitted.label": "Nowa opinia",
+  "portal.settings.notifications.type.postSubmitted.description": "Ktoś spoza zespołu publikuje opinię",
   "portal.settings.notifications.type.statusIncident.label": "Incydenty i prace serwisowe",
   "portal.settings.notifications.type.statusIncident.description": "Na stronie statusu pojawia się incydent lub zaplanowane prace serwisowe",
   "portal.settings.notifications.loadFailed": "Nie udało się wczytać preferencji",

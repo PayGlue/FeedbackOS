@@ -29,6 +29,7 @@ export const EMAIL_BILLABLE: Record<string, boolean> = {
   NewCommentEmail: false,
   PostMentionEmail: false,
   NoteMentionEmail: false,
+  NewFeedbackEmail: false,
   FeedbackLinkedEmail: false,
   WelcomeEmail: false,
   OnboardingWelcomeEmail: false,

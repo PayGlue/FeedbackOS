@@ -65,6 +65,13 @@ export const NOTIFICATION_CATALOG: readonly NotificationTypeMeta[] = [
     group: 'feedback',
     surfaces: ['admin'],
   },
+  {
+    type: 'post_submitted',
+    label: 'New feedback',
+    description: 'Someone outside the team posts feedback',
+    group: 'feedback',
+    surfaces: ['admin'],
+  },
   // Support
   {
     type: 'chat_message',

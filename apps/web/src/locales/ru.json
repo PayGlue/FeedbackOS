@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "Подтверждение, когда мы получаем ваш тикет",
   "portal.settings.notifications.type.changelogPublished.label": "Новая запись в журнале изменений",
   "portal.settings.notifications.type.changelogPublished.description": "Опубликована новая запись в журнале изменений",
+  "portal.settings.notifications.type.postSubmitted.label": "Новый отзыв",
+  "portal.settings.notifications.type.postSubmitted.description": "Кто-то вне команды оставляет отзыв",
   "portal.settings.notifications.type.statusIncident.label": "Инцидент статуса",
   "portal.settings.notifications.type.statusIncident.description": "Опубликован инцидент или окно обслуживания",
   "portal.settings.notifications.loadFailed": "Не удалось загрузить настройки",

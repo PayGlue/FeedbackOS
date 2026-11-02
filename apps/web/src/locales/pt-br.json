@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "Confirmação quando recebermos seu ticket",
   "portal.settings.notifications.type.changelogPublished.label": "Changelog publicado",
   "portal.settings.notifications.type.changelogPublished.description": "Uma nova entrada do changelog é publicada",
+  "portal.settings.notifications.type.postSubmitted.label": "Novo feedback",
+  "portal.settings.notifications.type.postSubmitted.description": "Alguém de fora da equipe publica um feedback",
   "portal.settings.notifications.type.statusIncident.label": "Incidente de status",
   "portal.settings.notifications.type.statusIncident.description": "Um incidente de status ou uma janela de manutenção é publicado",
   "portal.settings.notifications.loadFailed": "Falha ao carregar as preferências",

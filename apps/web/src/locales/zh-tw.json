@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "收到你的工單時的確認通知",
   "portal.settings.notifications.type.changelogPublished.label": "更新日誌已發布",
   "portal.settings.notifications.type.changelogPublished.description": "發布新的更新日誌項目時",
+  "portal.settings.notifications.type.postSubmitted.label": "新回饋",
+  "portal.settings.notifications.type.postSubmitted.description": "團隊以外的人發布了回饋",
   "portal.settings.notifications.type.statusIncident.label": "狀態事件",
   "portal.settings.notifications.type.statusIncident.description": "發布狀態事件或維護時段時",
   "portal.settings.notifications.loadFailed": "無法載入偏好設定",
