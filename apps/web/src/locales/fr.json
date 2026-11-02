@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "Confirmation à la réception de votre ticket",
   "portal.settings.notifications.type.changelogPublished.label": "Nouveauté publiée",
   "portal.settings.notifications.type.changelogPublished.description": "Une nouvelle entrée est publiée dans les nouveautés",
+  "portal.settings.notifications.type.postSubmitted.label": "Nouveau retour",
+  "portal.settings.notifications.type.postSubmitted.description": "Une personne extérieure à l’équipe publie un retour",
   "portal.settings.notifications.type.statusIncident.label": "Incident de service",
   "portal.settings.notifications.type.statusIncident.description": "Un incident ou une fenêtre de maintenance est publié",
   "portal.settings.notifications.loadFailed": "Échec du chargement des préférences",

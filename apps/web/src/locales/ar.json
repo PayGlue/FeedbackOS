@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "تأكيد عند استلام تذكرتك",
   "portal.settings.notifications.type.changelogPublished.label": "نشر تحديث جديد",
   "portal.settings.notifications.type.changelogPublished.description": "نشر إدخال جديد في آخر المستجدات",
+  "portal.settings.notifications.type.postSubmitted.label": "ملاحظات جديدة",
+  "portal.settings.notifications.type.postSubmitted.description": "شخص من خارج الفريق ينشر ملاحظات",
   "portal.settings.notifications.type.statusIncident.label": "حادثة في الحالة",
   "portal.settings.notifications.type.statusIncident.description": "نشر حادثة أو نافذة صيانة في صفحة الحالة",
   "portal.settings.notifications.loadFailed": "فشل تحميل التفضيلات",

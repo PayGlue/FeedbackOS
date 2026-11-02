@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "Підтвердження, що ми отримали ваше звернення",
   "portal.settings.notifications.type.changelogPublished.label": "Публікація в журналі змін",
   "portal.settings.notifications.type.changelogPublished.description": "Опубліковано новий запис журналу змін",
+  "portal.settings.notifications.type.postSubmitted.label": "Новий відгук",
+  "portal.settings.notifications.type.postSubmitted.description": "Хтось поза командою залишає відгук",
   "portal.settings.notifications.type.statusIncident.label": "Інцидент на сторінці статусу",
   "portal.settings.notifications.type.statusIncident.description": "Опубліковано інцидент або вікно технічного обслуговування",
   "portal.settings.notifications.loadFailed": "Не вдалося завантажити налаштування",

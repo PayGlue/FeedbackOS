@@ -479,6 +479,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "การยืนยันเมื่อเรารับคำร้องของคุณ",
   "portal.settings.notifications.type.changelogPublished.label": "เผยแพร่บันทึกการเปลี่ยนแปลง",
   "portal.settings.notifications.type.changelogPublished.description": "มีการเผยแพร่บันทึกการเปลี่ยนแปลงรายการใหม่",
+  "portal.settings.notifications.type.postSubmitted.label": "ความคิดเห็นใหม่",
+  "portal.settings.notifications.type.postSubmitted.description": "บุคคลภายนอกทีมโพสต์ความคิดเห็น",
   "portal.settings.notifications.type.statusIncident.label": "เหตุการณ์สถานะ",
   "portal.settings.notifications.type.statusIncident.description": "มีการประกาศเหตุการณ์หรือช่วงบำรุงรักษา",
   "portal.settings.notifications.loadFailed": "โหลดค่ากำหนดไม่สำเร็จ",

@@ -2048,6 +2048,8 @@
   "portal.settings.notifications.type.ticketCreated.description": "收到你的工单时发送确认",
   "portal.settings.notifications.type.changelogPublished.label": "更新日志发布",
   "portal.settings.notifications.type.changelogPublished.description": "发布了新的更新日志条目",
+  "portal.settings.notifications.type.postSubmitted.label": "新反馈",
+  "portal.settings.notifications.type.postSubmitted.description": "团队外的人发布了反馈",
   "portal.settings.notifications.type.statusIncident.label": "状态事件",
   "portal.settings.notifications.type.statusIncident.description": "发布了状态事件或维护窗口",
   "portal.settings.notifications.loadFailed": "加载偏好设置失败",

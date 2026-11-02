@@ -36,6 +36,7 @@ const MAIL_CLASS: Record<string, 'account' | 'sealed' | 'contact' | 'unused'> = 
   sendNewCommentEmail: 'contact',
   sendPostMentionEmail: 'contact',
   sendNoteMentionEmail: 'contact',
+  sendNewFeedbackEmail: 'contact',
   sendChangelogPublishedEmail: 'contact',
   sendStatusIncidentPublishedEmail: 'contact',
   sendStatusMaintenanceScheduledEmail: 'contact',
