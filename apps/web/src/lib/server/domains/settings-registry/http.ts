@@ -28,28 +28,24 @@ export function assertSettingsScope(
 }
 
 /**
- * A key acts for the teammate who created it, with the authority the REST API
- * resolved for the key. An approval it files names the key as the requester
- * and the teammate as the person whose authority it borrows.
+ * A personal key acts for the teammate who created it, and a workspace key for
+ * itself, with the authority the REST API resolved for the key. The audit row
+ * of a change names the key.
  */
 export function settingsCallerFromApiAuth(auth: ApiAuthContext): SettingsCaller {
-  const owner = auth.apiKey.createdById ?? auth.principalId
+  // A workspace key belongs to nobody, so it acts as its own principal and
+  // its own role; a personal key acts as the teammate who created it.
+  const workspace = auth.apiKey.kind === 'workspace'
+  const principalId = workspace ? auth.principalId : (auth.apiKey.createdById ?? auth.principalId)
   return {
     // A scoped key also needs the scope its area's permission maps to.
     assertAreaScope: (area) => assertApiPermissions(auth, [SETTINGS_AREA_META[area].permission]),
     actor: {
-      principalId: owner,
+      principalId,
       role: auth.role,
-      principalType: 'user',
+      principalType: workspace ? 'service' : 'user',
       segmentIds: new Set(),
       permissions: auth.permissions,
-    },
-    requester: {
-      via: 'api',
-      requestedById: auth.principalId,
-      onBehalfOfPrincipalId: owner,
-      credentialId: auth.apiKey.id,
-      clientName: auth.apiKey.name,
     },
   }
 }
@@ -59,11 +55,9 @@ export function etag(revision: string): string {
   return `"${revision}"`
 }
 
-/** The response to a change: 202 for a filed approval, 200 for everything else. */
+/** The response to a change. */
 export function changeResponse(result: ChangeSettingsResult): Response {
   switch (result.status) {
-    case 'approval_required':
-      return successResponse(result.approval, { status: 202 })
     case 'applied':
       return withEtag(
         successResponse({ status: result.status, receipt: result.receipt }),
@@ -84,9 +78,7 @@ export function withEtag(response: Response, revision: string): Response {
   return response
 }
 
-/** The response to an undo: 202 when it was filed as an approval, 200 when it was applied. */
+/** The response to an undo. */
 export function undoResponse(outcome: UndoSettingsOutcome): Response {
-  return outcome.status === 'approval_required'
-    ? successResponse(outcome.approval, { status: 202 })
-    : successResponse(outcome.result)
+  return successResponse(outcome.result)
 }
