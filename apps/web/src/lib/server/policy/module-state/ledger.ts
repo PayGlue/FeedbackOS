@@ -115,6 +115,15 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'CloudCredentialSource reads only the process environment populated before startup. Cross-workspace calls return the same centrally managed OAuth application credentials; per-workspace installation tokens remain in workspace databases.',
   },
   {
+    file: 'apps/web/src/lib/server/domains/assistant/workspace-semantic-search.ts',
+    name: 'vectors',
+    category: 'workspace-keyed',
+    reason:
+      'Query embeddings for workspace search, kept a few minutes so paging reuses one request. ' +
+      'A cross-workspace hit would reveal that another workspace searched the same words and ' +
+      'skip the embedding request billed to this one.',
+  },
+  {
     file: 'apps/web/src/lib/server/auth/index.ts',
     name: 'authConfigVersions',
     category: 'workspace-keyed',
@@ -558,6 +567,14 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'Constructed from OPENAI_API_KEY and OPENAI_BASE_URL alone. §8 established the AI key is ' +
       'fleet-wide (the control plane writes one key into every workspace); no workspace value reaches ' +
       'the constructor and no request attaches per-caller headers.',
+  },
+  {
+    file: 'apps/web/src/lib/server/github-star-count.ts',
+    name: 'readStarCount',
+    category: 'fleet-wide',
+    reason:
+      "The public repo's star count and its backoff, shown on the star prompt's button. It is the " +
+      'same number for every workspace, so a cross-workspace hit returns the right answer.',
   },
   {
     file: 'apps/web/src/lib/server/functions/version.ts',

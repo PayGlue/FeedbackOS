@@ -93,7 +93,10 @@ All API endpoints require authentication using an API key. Include your API key 
 Authorization: Bearer qb_your_api_key_here
 \`\`\`
 
-API keys can be created in the Quackback admin dashboard under Settings > Developers.
+There are two kinds of API key:
+
+- **Personal keys** act as the teammate who created them. A personal key can see and do only what its creator can, right now, narrowed by its scopes, and it stops working when its creator leaves the workspace. Teammates create them in their own account settings, under API keys.
+- **Workspace keys** belong to nobody. Each one holds its own workspace role, which sets what it can see and do, narrowed by its scopes, and it keeps working when people join or leave. Key managers create them under Settings > Developers.
 
 ## Rate Limiting
 
@@ -145,8 +148,7 @@ Example: \`post_01h455vb4pex5vsknk084sn02q\`
       },
       {
         name: 'Settings',
-        description:
-          'Read and change workspace settings by area, with revisions, approvals and undo',
+        description: 'Read and change workspace settings by area, with revisions and undo',
       },
       { name: 'Roadmaps', description: 'Manage roadmaps' },
       { name: 'Changelog', description: 'Manage changelog entries' },
@@ -158,11 +160,6 @@ Example: \`post_01h455vb4pex5vsknk084sn02q\`
         name: 'Status',
         description: 'Manage the status page: components, incidents, and maintenance',
       },
-      {
-        name: 'Approvals',
-        description:
-          'Follow requests for a person to approve a change. People decide them in the app.',
-      },
     ],
     paths: registeredPaths,
     components: {
@@ -171,7 +168,8 @@ Example: \`post_01h455vb4pex5vsknk084sn02q\`
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'API Key',
-          description: 'API key authentication. Format: Bearer qb_xxx',
+          description:
+            'API key authentication. Format: Bearer qb_xxx. A personal key acts as its creator; a workspace key holds its own role.',
         },
         sessionCookie: {
           type: 'apiKey',

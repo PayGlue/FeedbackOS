@@ -38,7 +38,7 @@ import {
 import type { SQL } from 'drizzle-orm'
 import type { PrincipalId, TicketId, TicketStatusId } from '@quackback/ids'
 import { can } from '@/lib/server/policy/authorize'
-import type { Actor } from '@/lib/server/policy/types'
+import { rowScopePrincipalId, type Actor } from '@/lib/server/policy/types'
 import { ticketFilter } from '@/lib/server/policy/tickets'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import type { PermissionKey } from '@/lib/shared/permissions'
@@ -255,8 +255,8 @@ export async function listTickets(filter: TicketListFilter, actor: Actor): Promi
 
   const assigneeCondition =
     filter.assignee === 'me'
-      ? actor.principalId
-        ? eq(tickets.assigneePrincipalId, actor.principalId)
+      ? rowScopePrincipalId(actor)
+        ? eq(tickets.assigneePrincipalId, rowScopePrincipalId(actor)!)
         : sql`false`
       : filter.assignee === 'unassigned'
         ? isNull(tickets.assigneePrincipalId)
@@ -370,16 +370,19 @@ export async function createTicket(input: CreateTicketInput, actor: Actor): Prom
       .limit(1)
     assigneePrincipalId = conversation?.assigned ?? null
   }
-  if (!assigneePrincipalId && actor.principalId) {
+  // A personal API key assigns to its creator, so the ticket stays inside the
+  // scope the key reads with; the key itself stays the author for attribution.
+  const defaultAssignee = rowScopePrincipalId(actor)
+  if (!assigneePrincipalId && defaultAssignee) {
     const [creator] = await db
       .select({ role: principal.role, type: principal.type })
       .from(principal)
-      .where(eq(principal.id, actor.principalId))
+      .where(eq(principal.id, defaultAssignee))
       .limit(1)
     // FeedbackOS: an API key or integration (a service principal) is never the
     // assignee; a ticket it files arrives unassigned for the team to pick up.
     if (creator && isTeamMember(creator.role) && creator.type !== 'service')
-      assigneePrincipalId = actor.principalId
+      assigneePrincipalId = defaultAssignee
   }
 
   // Company propagation: the requester's own company fills in when nothing

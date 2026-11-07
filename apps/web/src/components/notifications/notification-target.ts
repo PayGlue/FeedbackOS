@@ -95,9 +95,6 @@ export function getNotificationTarget(
   // A published post links through `post` above, so what lands here waits for approval.
   if (notification.type === 'post_submitted') return { to: '/admin/feedback/moderation' }
 
-  // One approval bell counts every new request, so it opens the approvals queue.
-  if (notification.type === 'approval_requested') return { to: '/admin/approvals' }
-
   // Sending domain bells open the email channel settings, where the records are.
   if (
     notification.type === 'sending_domain_live' ||
