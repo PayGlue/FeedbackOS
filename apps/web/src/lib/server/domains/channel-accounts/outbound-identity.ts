@@ -65,7 +65,7 @@
  * `domains/conversation` entirely, which is a move across modules this change
  * does not otherwise touch. The cycle is the deliberate choice until then.
  */
-import { addressDomain, applyDisplayName, parseAddress } from '@quackback/email/ses'
+import { addressDomain, applyDisplayName, bareAddress } from '@quackback/email/ses'
 import type { SendingIdentity } from '@quackback/email/sender'
 import { logger } from '@/lib/server/logger'
 import { db, eq, emailSendingDomains } from '@/lib/server/db'
@@ -87,11 +87,8 @@ const EMAIL_FROM_ENV = 'EMAIL_FROM'
 
 type EnvLike = Record<string, string | undefined>
 
-/** The bare addr-spec of an `addr` or `Name <addr>` value, lower-cased. */
-function bareAddress(value: string): string {
-  const parsed = parseAddress(value)
-  return (typeof parsed === 'string' ? parsed : parsed.address).trim().toLowerCase()
-}
+/** The bare addr-spec of an `addr` or `Name <addr>` value, lower-cased: how this module compares them. */
+const comparedAddress = (value: string): string => bareAddress(value).toLowerCase()
 
 /**
  * The one spelling every domain comparison in this module is made in.
@@ -187,7 +184,7 @@ export interface SendingIdentityContext {
  * environment or a provider. Every caller that produces a From goes through it.
  */
 export function isSendingIdentityPermitted(from: string, ctx: SendingIdentityContext): boolean {
-  const address = bareAddress(from)
+  const address = comparedAddress(from)
   const rawDomain = addressDomain(from)
   if (!rawDomain) return false
   const domain = toAsciiDomain(rawDomain)
@@ -199,7 +196,7 @@ export function isSendingIdentityPermitted(from: string, ctx: SendingIdentityCon
     if (isAtOrUnder(domain, toAsciiDomain(verified))) return true
   }
 
-  if (ctx.platformFrom && address === bareAddress(ctx.platformFrom)) return true
+  if (ctx.platformFrom && address === comparedAddress(ctx.platformFrom)) return true
 
   // The slug is the whole of what separates two workspaces on the shared
   // minting domain. Only that domain: widening this to every domain the fleet
@@ -258,13 +255,25 @@ export function withSendingDisplayName(
 }
 
 export async function permittedSendingIdentity(
-  from: string | null
+  from: string | null,
+  /**
+   * A context the caller already gathered, so a caller checking several
+   * candidates for one send reads the verified domains once, not per candidate.
+   */
+  given?: SendingIdentityContext,
+  /**
+   * `quiet` for a read that only asks what a send would do (a settings page
+   * showing the From): a refusal there is not a refused send, so it is not
+   * logged as one.
+   */
+  options: { quiet?: boolean } = {}
 ): Promise<SendingIdentity | null> {
   if (!from) return null
-  const ctx = await sendingIdentityContext()
+  const ctx = given ?? (await sendingIdentityContext())
   // The one cast to the brand, alongside its twin below. Reached only after the
   // rule above has said yes, which is the whole meaning of the type.
   if (isSendingIdentityPermitted(from, ctx)) return from as SendingIdentity
+  if (options.quiet) return null
   // The domain, never the local part: the domain is the configuration that is
   // wrong and the local part beside it is a person.
   log.warn(
@@ -276,6 +285,7 @@ export async function permittedSendingIdentity(
 
 /** Thrown when an address is configured that this workspace could not send as. */
 export class SendingIdentityRefusedError extends Error {
+  readonly statusCode = 400
   constructor(readonly address: string) {
     super(
       `This workspace cannot send as ${address}. Add and verify its domain under sending ` +

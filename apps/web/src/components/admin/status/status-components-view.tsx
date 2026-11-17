@@ -89,6 +89,7 @@ import {
 } from './status-admin-colors'
 import { FormattedMessage, useIntl } from 'react-intl'
 import type { StatusUptimeDay } from '@/lib/client/queries/status'
+import { toastError } from '@/lib/client/error-notice'
 
 interface ComponentFormValues {
   name: string
@@ -377,7 +378,7 @@ export function StatusComponentsView() {
     try {
       await deleteComponentMutation.mutateAsync(deleteComponent.id)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete service')
+      toastError(error, 'Failed to delete service')
     } finally {
       setDeleteComponent(null)
     }
@@ -388,7 +389,7 @@ export function StatusComponentsView() {
     try {
       await deleteGroupMutation.mutateAsync(deleteGroup.id)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete group')
+      toastError(error, 'Failed to delete group')
     } finally {
       setDeleteGroup(null)
     }
@@ -399,7 +400,7 @@ export function StatusComponentsView() {
       <AdminListHeader
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search services..."
+        searchPlaceholder="Search services…"
         action={
           <>
             <Button variant="outline" size="sm" onClick={() => setCreateGroupDialogOpen(true)}>
@@ -716,7 +717,7 @@ function SortableComponentRow({
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium truncate">{component.name}</span>
           {component.segmentIds.length > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 px-2 py-0.5 text-[11px] font-medium">
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted text-foreground px-2 py-0.5 text-[11px] font-medium">
               <UsersIcon className="h-2.5 w-2.5" />
               {component.segmentIds.length} segment{component.segmentIds.length === 1 ? '' : 's'}
             </span>
@@ -791,7 +792,7 @@ function CreateGroupDialog({
       await createGroup.mutateAsync({ name: name.trim() })
       onOpenChange(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create group')
+      toastError(error, 'Failed to create group')
     }
   }
 
@@ -890,7 +891,7 @@ function ComponentFormDialog({
       }
       onOpenChange(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save service')
+      toastError(error, 'Failed to save service')
     }
   }
 

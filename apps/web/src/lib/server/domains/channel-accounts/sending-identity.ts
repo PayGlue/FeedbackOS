@@ -24,7 +24,9 @@
  *   found. Only it knows that, and its scans are the thing a send is checked
  *   against.
  * - **We** decide whether this WORKSPACE owns the domain, from a record whose
- *   value is minted per row and stored nowhere else. A second workspace adding
+ *   value is minted per row and stored only in this workspace's database (a
+ *   row on the provider's keys may share the token of the domain this
+ *   workspace added at the same name, see `sending-domain-token.ts`). A second workspace adding
  *   the same domain gets a different token and cannot publish it, because
  *   publishing it means writing in a zone it does not control.
  *
@@ -68,12 +70,11 @@ import {
 import { checkSendingDomainOwnership, type ZoneReader } from './domain-verification'
 import { interactiveResolver, systemResolver } from '@/lib/server/dns/resolver'
 import { checkRecords } from './record-check'
-import { readDmarc, runPreflight } from './preflight'
+import { readDmarc, readHostedZone, runPreflight } from './preflight'
 import { generateDkimKey, isKeyRecord } from './dkim-key'
 import { returnPathTarget as operatorReturnPathTarget } from './return-path'
 import {
   OWNERSHIP_VALUE_PREFIX,
-  mintOwnershipToken,
   ownershipRecord,
   ownershipRecordsOf,
   sendingDomainDnsRecords,
@@ -91,10 +92,24 @@ export {
   withPreviousChecks,
 } from './sending-domain-records'
 import { notifySendingDomainLive, notifySendingDomainNeedsAttention } from './sending-domain-notify'
+import {
+  deliverOwnershipWarning,
+  GRACE_CLEARED,
+  ownershipGrace,
+  startOwnershipGrace,
+} from './ownership-grace'
 import { enqueueSesTenantReconcile } from './ses-tenant-queue'
+import { saveSendingDomainCheck } from './sending-domain-check-write'
 import { rekeyToHeldSigningKey, sealSigningKey, shouldHoldSigningKey } from './pending-signing-key'
 import { MAIL_DOMAIN_RE } from '@/lib/server/utils/mail-domain'
-import { isAtOrUnder, platformSendingDomains, toAsciiDomain } from './outbound-identity'
+import { issueOwnershipToken } from './sending-domain-token'
+import { SendingDomainRefusedError, normalizeSendingDomain } from './sending-domain-name'
+
+export {
+  SendingDomainRefusedError,
+  domainsOverlap,
+  normalizeSendingDomain,
+} from './sending-domain-name'
 
 const log = logger.child({
   component: 'sending-identity',
@@ -120,14 +135,6 @@ export const LEGACY_MAIL_FROM_LABEL = 'bounce'
 
 /** How long a new or restarted domain is checked automatically. */
 export const AUTO_CHECK_WINDOW_MS = 72 * 60 * 60 * 1000
-
-/** Thrown when a domain cannot be added at all, with a reason for the operator. */
-export class SendingDomainRefusedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'SendingDomainRefusedError'
-  }
-}
 
 /** The one line a person sees when this server cannot provision a domain at all. */
 export const CUSTOM_DOMAINS_UNAVAILABLE_MESSAGE =
@@ -157,67 +164,6 @@ export function customSendingDomainsAvailable(env: NodeJS.ProcessEnv = process.e
 /** The MAIL FROM subdomain for a domain, under the label its row stores. */
 export function mailFromDomainFor(domain: string, label: string): string {
   return `${label}.${domain}`
-}
-
-/**
- * Is `candidate` the same as, under, or above `domain`?
- *
- * Both directions matter. A workspace claiming a subdomain of a platform domain
- * would be claiming addresses the platform mints for other workspaces; a
- * workspace claiming a PARENT of one would be worse, because a verified parent
- * domain covers every subdomain under it at the provider.
- */
-export function domainsOverlap(candidate: string, domain: string): boolean {
-  const a = toAsciiDomain(candidate)
-  const b = toAsciiDomain(domain)
-  if (!a || !b) return false
-  // The same dot-anchored test the send guard applies, run both ways round. One
-  // reading of "is this domain under that one", so the two cannot drift.
-  return isAtOrUnder(a, b) || isAtOrUnder(b, a)
-}
-
-/**
- * Normalise and refuse a domain that must never become a sending identity.
- *
- * The platform check is a security boundary, not tidiness. The platform's own
- * domains are already verified on the shared provider account, so a workspace
- * that got one of them into its table would be handed a verified identity it
- * never proved anything about — and the platform's inbound domain is where every
- * other workspace's reply addresses live.
- */
-export function normalizeSendingDomain(
-  input: string,
-  env: NodeJS.ProcessEnv = process.env
-): string {
-  const typed = input
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/.*$/, '')
-    .replace(/\.$/, '')
-  if (typed.includes('@')) {
-    throw new SendingDomainRefusedError('Enter a domain, not an email address.')
-  }
-  // Stored in the A-label form, because that is the form DNS resolves, the form
-  // the provider registers an identity under, and the form the send-time guard
-  // compares against. Normalising at the door means a customer who typed their
-  // domain in its own script and a reply addressed in ASCII are the same domain
-  // rather than two that never match.
-  const domain = toAsciiDomain(typed)
-  // The shared rule, not a copy of it: what a customer may claim and what the
-  // platform may be configured with are the same question, and two spellings of
-  // the answer are two answers waiting to drift.
-  if (!MAIL_DOMAIN_RE.test(domain)) {
-    throw new SendingDomainRefusedError(`${input.trim()} is not a valid domain name.`)
-  }
-  for (const platform of platformSendingDomains(env)) {
-    if (domainsOverlap(domain, platform)) {
-      throw new SendingDomainRefusedError(
-        `${domain} cannot be added: it is part of the platform's own mail domain.`
-      )
-    }
-  }
-  return domain
 }
 
 /**
@@ -480,7 +426,7 @@ export async function refreshSendingDomain(
   const existing = ownershipRecordsOf(stored.dnsRecords ?? [])
   const ownershipToken = byo
     ? undefined
-    : existing[0]?.value.slice(OWNERSHIP_VALUE_PREFIX.length) || mintOwnershipToken()
+    : existing[0]?.value.slice(OWNERSHIP_VALUE_PREFIX.length) || (await issueOwnershipToken(stored))
   // Only ever this row's own proof records. Anything else in the set is a value
   // published from our instructions and therefore identical for every
   // workspace, which is the definition of a record that proves nothing.
@@ -501,11 +447,14 @@ export async function refreshSendingDomain(
     checkSendingDomainOwnership(stored.domain, proofRecords, readZone),
   ])
   // Proven only on a read that found the proof: the owner-only writes below
-  // need it. A verified row whose lookup went unanswered keeps the proof it
-  // already has for its status, so only the zone saying the record is gone, or
-  // the provider changing its answer, can demote it.
+  // need it. The ownership record has to stay published (see
+  // `ownership-grace.ts`). A verified row whose lookup went unanswered keeps
+  // the proof it already has; one whose record the zone says is gone keeps it
+  // for the grace period from the first miss, and is demoted after it.
+  const now = new Date()
   const ownershipProven = ownership === 'proven'
   const ownershipKept = wasVerified && ownership === 'unknown'
+  const grace = ownershipGrace(stored, ownership, now)
   if (ownershipKept) {
     log.warn(
       { sending_domain_id: id, domain: stored.domain },
@@ -515,7 +464,9 @@ export async function refreshSendingDomain(
 
   let identity = found
   // A row holding its own key re-keys the identity once, after it proves
-  // ownership; until then the identity's key is not one anybody can publish.
+  // ownership on this read; until then the identity's key is not one anybody
+  // can publish. A row kept verified through an unanswered lookup or the grace
+  // period has not proved anything on this read, so it writes nothing.
   const rekey = await rekeyToHeldSigningKey(stored, identity, ownershipProven)
   const row = rekey.row
   if (rekey.rekeyed) identity = (await getSesDomainIdentity(row.domain)) ?? identity
@@ -533,11 +484,10 @@ export async function refreshSendingDomain(
   // that key failing is not this row's verdict.
   const verdict = sendingDomainStatusFrom({
     identity,
-    ownershipProven: ownershipProven || ownershipKept,
+    ownershipProven: ownershipProven || ownershipKept || grace.inGrace,
   })
   const status = verdict === 'failed' && row.pendingSigningKey ? 'pending' : verdict
 
-  const now = new Date()
   // Each record's own state, for the person publishing them. Recorded beside
   // the status and never feeding it: the provider's scan is what decides.
   const composed = withPreviousChecks(
@@ -554,25 +504,62 @@ export async function refreshSendingDomain(
     row.dnsRecords ?? []
   )
   // DMARC is read on every check because it is one lookup and the owner may
-  // add one while setting up; a failed read keeps what was there.
-  const [dnsRecords, dmarc] = await Promise.all([
-    checkRecords(row.domain, composed, resolver, now),
+  // add one while setting up; a failed read keeps what was there. The zone is
+  // read until it is known, which a domain set up before it was kept is not:
+  // its record names are shown relative to the zone from then on.
+  const [dnsRecords, dmarc, zone] = await Promise.all([
+    checkRecords(row.domain, composed, resolver, now, row.preflight?.zone),
     readDmarc(row.domain, resolver),
+    row.preflight?.zone ? undefined : readHostedZone(row.domain, resolver),
   ])
-  // Every field but the move to verified, which is made below on its own.
+  // Every field but the move to verified, which is made below on its own. A
+  // demotion is reported by the one check that made it (see the module).
   const promoted = status === 'verified'
-  const [written] = await db
-    .update(emailSendingDomains)
-    .set({
-      ...(promoted ? {} : { status }),
+  const { demoted, written } = await saveSendingDomainCheck(id, {
+    status,
+    wasVerified,
+    now,
+    fields: {
       dnsRecords,
-      ...(dmarc ? { preflight: { ...row.preflight, dmarc } } : {}),
+      ...(dmarc || zone
+        ? { preflight: { ...row.preflight, ...zone, ...(dmarc ? { dmarc } : {}) } }
+        : {}),
+      // Found again: the clock for a missing record starts over.
+      ...(ownershipProven ? GRACE_CLEARED : {}),
       lastCheckedAt: now,
       updatedAt: now,
-    })
-    .where(eq(emailSendingDomains.id, id))
-    .returning()
+    },
+  })
   let updated = written
+
+  // The record found may be the token of the domain added at this name, which
+  // this row was issued: the same finding verifies that domain. Only when the
+  // row holds one proof record, so the record found is known to be that one.
+  if (written && ownershipProven && !byo && proofRecords.length === 1) {
+    const { verifyDomainOnFoundRecord } =
+      await import('@/lib/server/domains/domain-proof/domains.service')
+    await verifyDomainOnFoundRecord(row.domain, proofRecords[0], now)
+  }
+
+  if (written && demoted) {
+    // Named at warn because it is a live deliverability change for a
+    // customer: replies for this domain go out as the platform sender from
+    // now on. The domain is configuration, not a person.
+    log.warn(
+      { sending_domain_id: id, domain: row.domain, status },
+      'sending domain is no longer verified; falling back to the platform sender'
+    )
+    // Told after the write, so the notice names the records as this check found them.
+    await notifySendingDomainNeedsAttention(written)
+  }
+
+  // A verified row inside its grace period: the first miss starts the period,
+  // and every check that finds the record still gone warns the managers unless
+  // the warning for this period was already delivered.
+  if (written && grace.since && status === 'verified') {
+    const started = row.ownershipMissingSince ? null : await startOwnershipGrace(id, grace.since)
+    updated = await deliverOwnershipWarning(started ?? written)
+  }
 
   // The one place a domain goes live, whether the watch job, the daily sweep or
   // a person's click got it there. Conditional, so when two checks find it
@@ -609,19 +596,39 @@ export async function refreshSendingDomain(
 }
 
 /**
- * Open a fresh automatic check window on a domain and check it now: the
- * "Verify" action, for a domain whose window ran out before its records
- * were published.
+ * How soon after a check a person asking for another is given that check's
+ * answer. The provider's management API is shared by every workspace on the
+ * server, so pressing the button repeatedly must not cost it a call each time.
+ */
+const MANUAL_CHECK_COOLDOWN_MS = 30_000
+
+/**
+ * Check a domain now, because a person asked: "Check now" while it is being
+ * set up, "Verify" once its window ran out or it stopped verifying.
+ *
+ * A window that ran out (or never opened) is opened afresh, so the automatic
+ * checks resume. One still open keeps its deadline: asking early is not a
+ * reason to be checked for longer. A domain checked within the last moments,
+ * inside an open window, is answered from that check.
  */
 export async function restartSendingDomainChecks(
   id: SendingDomainId
 ): Promise<EmailSendingDomain | null> {
-  const [row] = await db
-    .update(emailSendingDomains)
-    .set({ autoCheckUntil: new Date(Date.now() + AUTO_CHECK_WINDOW_MS), updatedAt: new Date() })
-    .where(eq(emailSendingDomains.id, id))
-    .returning({ id: emailSendingDomains.id })
-  if (!row) return null
+  const stored = await getSendingDomain(id)
+  if (!stored) return null
+  const now = Date.now()
+  const windowOpen = stored.autoCheckUntil !== null && stored.autoCheckUntil.getTime() > now
+  if (!windowOpen) {
+    await db
+      .update(emailSendingDomains)
+      .set({ autoCheckUntil: new Date(now + AUTO_CHECK_WINDOW_MS), updatedAt: new Date() })
+      .where(eq(emailSendingDomains.id, id))
+  } else if (
+    stored.lastCheckedAt &&
+    now - stored.lastCheckedAt.getTime() < MANUAL_CHECK_COOLDOWN_MS
+  ) {
+    return stored
+  }
   return refreshSendingDomain(id)
 }
 
@@ -634,19 +641,25 @@ export async function restartSendingDomainChecks(
  * make about the past. Three things can stop being true after a row is marked
  * verified, and none of them announces itself:
  *
- * - the ownership TXT is deleted, so the workspace no longer demonstrably
- *   controls the zone it is sending as;
+ * - the ownership record is deleted, so the workspace no longer demonstrably
+ *   controls the zone it is sending as. The provider's identity is shared by
+ *   every workspace that adds the domain, so its verdict cannot answer this;
+ *   only the row's own record can;
  * - the MAIL FROM MX is removed or moved, so the envelope sender falls back to
  *   the provider's own domain and SPF stops aligning, leaving DMARC resting on
  *   DKIM alone — the arrangement that fails as soon as a message is forwarded;
  * - the provider stops signing, so mail leaves unsigned as a domain whose DMARC
  *   policy tells receivers to reject exactly that.
  *
- * Each demotes the row here, and a row that is not verified is not an identity
- * the send guard will hand out, so the workspace drops back to the platform
- * sender. That is a visible, honest degradation instead of three silent ones,
- * and it is the reason the provider's MAIL FROM failure behaviour can be the
- * lenient one.
+ * The last two demote the row on the check that finds them. A missing
+ * ownership record is warned about on the first check that finds it gone, and
+ * demotes the row only when it is still gone after the grace period
+ * (`ownership-grace.ts`), because a record removed by mistake is common and a
+ * domain is worth a week's notice. A row that is not verified is not an
+ * identity the send guard will hand out, so the workspace drops back to the
+ * platform sender. That is a visible, honest degradation instead of three
+ * silent ones, and it is the reason the provider's MAIL FROM failure behaviour
+ * can be the lenient one.
  *
  * ## Why it does nothing when identity provisioning is not configured
  *
@@ -664,17 +677,8 @@ export async function sweepSendingDomains(): Promise<{ checked: number; demoted:
     try {
       const updated = await refreshSendingDomain(row.id)
       checked += 1
-      if (row.status === 'verified' && updated && updated.status !== 'verified') {
-        demoted += 1
-        // Named at warn because it is a live deliverability change for a
-        // customer: replies for this domain go out as the platform sender from
-        // now on. The domain is configuration, not a person.
-        log.warn(
-          { sending_domain_id: row.id, domain: row.domain, status: updated.status },
-          'sending domain is no longer verified; falling back to the platform sender'
-        )
-        await notifySendingDomainNeedsAttention(updated)
-      }
+      // The check that demotes a row tells its managers (`refreshSendingDomain`).
+      if (row.status === 'verified' && updated && updated.status !== 'verified') demoted += 1
     } catch (err) {
       // One domain's provider or DNS failure must not stop the rest being
       // checked: the whole value of the sweep is that it runs on every row.

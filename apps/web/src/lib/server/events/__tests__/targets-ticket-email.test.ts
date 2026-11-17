@@ -42,9 +42,9 @@ vi.mock('@/lib/server/domains/settings/settings.support', () => ({
 }))
 
 // --- watcher service ---
-const getTicketWatchersForEvent = vi.fn<() => Promise<string[]>>()
+const getTicketNotifiableWatchers = vi.fn<() => Promise<string[]>>()
 vi.mock('@/lib/server/domains/tickets/ticket-subscription.service', () => ({
-  getTicketWatchersForEvent: () => getTicketWatchersForEvent(),
+  getTicketNotifiableWatchers: () => getTicketNotifiableWatchers(),
   getTicketAgentWatchersForEvent: vi.fn().mockResolvedValue([]),
 }))
 
@@ -55,10 +55,19 @@ vi.mock('@/lib/server/domains/teams', () => ({
 }))
 
 // --- channel-account From resolution ---
-const resolveSendingAddress = vi.fn<() => Promise<string | null>>()
-vi.mock('@/lib/server/domains/channel-accounts/channel-account.service', () => ({
-  resolveSendingAddress: () => resolveSendingAddress(),
+// A ticket's From: its linked conversation's thread sender, else support's
+// address. Which of the two it is is pinned in sender-resolver.db.test.ts; this
+// suite pins what the requester's config does with the answer.
+type Sender = { from: string; source: string; senderName: string | null }
+const resolveTicketSender = vi.fn<(...args: unknown[]) => Promise<Sender | null>>()
+vi.mock('@/lib/server/domains/channel-accounts/sender-resolver', () => ({
+  resolveTicketSender: (...args: unknown[]) => resolveTicketSender(...args),
 }))
+const sender = (from: string, senderName: string | null = null): Sender => ({
+  from,
+  source: 'surface',
+  senderName,
+})
 
 // --- reply-to minting ---
 // Arguments are forwarded, not swallowed: the second one is the workspace's mail
@@ -98,9 +107,9 @@ const context: HookContext = {
 beforeEach(() => {
   selectQueue.length = 0
   isSupportTicketsEnabled.mockReset().mockResolvedValue(true)
-  getTicketWatchersForEvent.mockReset().mockResolvedValue([])
+  getTicketNotifiableWatchers.mockReset().mockResolvedValue([])
   listTeamMemberPrincipalIds.mockReset().mockResolvedValue([])
-  resolveSendingAddress.mockReset().mockResolvedValue(null)
+  resolveTicketSender.mockReset().mockResolvedValue(null)
   inboundTicketReplyToAddress.mockReset().mockReturnValue(null)
   getStageLabels.mockReset().mockResolvedValue({ received: 'Received', resolved: 'Resolved' })
   batchGetNotificationPreferences.mockReset().mockResolvedValue(new Map())
@@ -197,14 +206,42 @@ describe('getTicketCreatedEmailTargets', () => {
     expect(targets[0].target).toMatchObject({ email: 'real@x.com' })
   })
 
-  it('carries the per-team From and signed reply-to when configured', async () => {
+  it("carries the ticket's From and signed reply-to when configured", async () => {
     queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
-    resolveSendingAddress.mockResolvedValue('support@team.example')
+    resolveTicketSender.mockResolvedValue(sender('support@team.example'))
     inboundTicketReplyToAddress.mockReturnValue('reply+tkt-1.sig@inbound.example')
     const targets = await getTicketCreatedEmailTargets(createdEvent(), context)
+    expect(resolveTicketSender).toHaveBeenCalledWith('ticket_1')
     expect(targets[0].config).toMatchObject({
       from: 'support@team.example',
       replyTo: 'reply+tkt-1.sig@inbound.example',
+    })
+  })
+
+  it("names the requester's email after the workspace when the address has no name", async () => {
+    // Kept apart from `from` so the name survives the send-time re-check, and
+    // still applies when that re-check falls back to the platform default.
+    queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
+    let targets = await getTicketCreatedEmailTargets(createdEvent(), context)
+    expect(targets[0].config).toMatchObject({ fromDisplayName: 'W' })
+    expect((targets[0].config as Record<string, unknown>).from).toBeUndefined()
+
+    queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
+    resolveTicketSender.mockResolvedValue(sender('support@team.example'))
+    targets = await getTicketCreatedEmailTargets(createdEvent(), context)
+    expect(targets[0].config).toMatchObject({
+      from: 'support@team.example',
+      fromDisplayName: 'W',
+    })
+  })
+
+  it("names the requester's email after the address's sender name when it has one", async () => {
+    queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
+    resolveTicketSender.mockResolvedValue(sender('support@team.example', 'Team Support'))
+    const targets = await getTicketCreatedEmailTargets(createdEvent(), context)
+    expect(targets[0].config).toMatchObject({
+      from: 'support@team.example',
+      fromDisplayName: 'Team Support',
     })
   })
 
@@ -265,7 +302,7 @@ describe('getTicketRepliedEmailTargets', () => {
   })
 
   it('emails the requester (portal CTA) and agent watchers (inbox CTA), actor excluded', async () => {
-    getTicketWatchersForEvent.mockResolvedValue([
+    getTicketNotifiableWatchers.mockResolvedValue([
       'principal_requester',
       'principal_agent_1',
       'principal_agent_actor',
@@ -296,7 +333,7 @@ describe('getTicketRepliedEmailTargets', () => {
   })
 
   it('drops a synthetic-anon requester', async () => {
-    getTicketWatchersForEvent.mockResolvedValue(['principal_requester'])
+    getTicketNotifiableWatchers.mockResolvedValue(['principal_requester'])
     queueSelect([
       { id: 'principal_requester', email: 'temp-x@anon.quackback.io', contactEmail: null },
     ])
@@ -309,7 +346,7 @@ describe('getTicketRepliedEmailTargets', () => {
   })
 
   it('returns [] when emailMuted / matrix denies the only recipient', async () => {
-    getTicketWatchersForEvent.mockResolvedValue(['principal_requester'])
+    getTicketNotifiableWatchers.mockResolvedValue(['principal_requester'])
     queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
     batchGetNotificationPreferences.mockResolvedValue(
       new Map([['principal_requester', { emailMuted: true }]])
@@ -343,7 +380,7 @@ function statusEvent(overrides: Record<string, unknown> = {}): EventData {
 
 describe('getTicketResolvedEmailTargets', () => {
   it('fires on open→closed and emails the watching requester with stage labels', async () => {
-    getTicketWatchersForEvent.mockResolvedValue(['principal_requester'])
+    getTicketNotifiableWatchers.mockResolvedValue(['principal_requester'])
     queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
     queueSelect([{ conversationId: 'conversation_1' }]) // the pair (requester CTA target)
     const targets = await getTicketResolvedEmailTargets(statusEvent(), context)
@@ -363,7 +400,7 @@ describe('getTicketResolvedEmailTargets', () => {
   })
 
   it('B22: a null-stage close emails with the generic Closed label + closedGeneric copy', async () => {
-    getTicketWatchersForEvent.mockResolvedValue(['principal_requester'])
+    getTicketNotifiableWatchers.mockResolvedValue(['principal_requester'])
     queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
     const targets = await getTicketResolvedEmailTargets(statusEvent({ stage: null }), context)
     expect(targets).toHaveLength(1)
@@ -511,7 +548,7 @@ describe('getSlaEmailTargets', () => {
 
 describe('customer-type gate on requester-facing emails', () => {
   it('a non-customer ticket yields agent-facing targets only (no portal CTA, no reply-to)', async () => {
-    getTicketWatchersForEvent.mockResolvedValue(['principal_requester', 'principal_agent_1'])
+    getTicketNotifiableWatchers.mockResolvedValue(['principal_requester', 'principal_agent_1'])
     queueSelect([
       { id: 'principal_requester', email: 'req@example.com', contactEmail: null },
       { id: 'principal_agent_1', email: 'agent1@example.com', contactEmail: null },

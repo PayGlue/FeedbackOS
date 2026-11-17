@@ -1406,6 +1406,7 @@
   "ask.destination.settings_workflows": "Workflows",
   "ask.destination.settings_general": "Geral",
   "ask.destination.settings_domains": "Domínios",
+  "ask.destination.settings_email": "E-mail",
   "ask.destination.settings_notifications": "Notificações",
   "ask.destination.settings_portal": "Portal",
   "ask.destination.settings_widget": "Widget",
@@ -1421,7 +1422,7 @@
   "ask.destination.settings_imports": "Importações e exportações",
   "ask.destination.settings_widget_install": "Instalar",
   "ask.destination.settings_channels_messenger": "Widget da Web",
-  "ask.destination.settings_channels_email": "E-mail",
+  "ask.destination.settings_channels_email": "E-mail de suporte",
   "ask.destination.settings_channels_github": "GitHub",
   "ask.starter.branding": "Definir a cor da minha marca",
   "ask.starter.invite": "Convidar minha equipe",
@@ -1906,6 +1907,8 @@
   "common.errorPage.error.title": "Algo deu errado",
   "common.errorPage.error.description": "Ocorreu um erro inesperado. Tente novamente ou volte para a página inicial.",
   "common.errorPage.technicalDetails": "Detalhes técnicos",
+  "common.errorPage.reference": "Referência",
+  "common.errorPage.copyReference": "Copiar referência",
   "common.errorPage.tryAgain": "Tente novamente",
   "common.errorPage.goHome": "Ir para o início",
   "portal.header.auth.accountMenu": "Abrir menu da conta",
@@ -2264,5 +2267,11 @@
   "portal.feedback.list.searchWidenedMost": "Nenhum post tem todas as suas palavras. Mostrando posts com a maioria delas.",
   "portal.feedback.list.searchWidenedSimilar": "Nenhum resultado exato. Mostrando posts com grafia parecida.",
   "settings.labs.empty.title": "Nenhum experimento no momento",
-  "settings.labs.empty.description": "Os recursos que você pode testar antes do lançamento aparecem aqui."
+  "settings.labs.empty.description": "Os recursos que você pode testar antes do lançamento aparecem aqui.",
+  "admin.integrations.oauthError.denied": "A conexão foi recusada no {name}. Conecte novamente para permitir o acesso.",
+  "admin.integrations.oauthError.expired": "A solicitação de conexão expirou ou não era válida. Tente conectar novamente.",
+  "admin.integrations.oauthError.session": "Não conseguimos confirmar seu login. Entre novamente e depois conecte.",
+  "admin.integrations.oauthError.credentials": "Adicione as credenciais do app {name} antes de conectar.",
+  "admin.integrations.oauthError.elsewhere": "Esta conta do {name} já está conectada a outro espaço de trabalho do Quackback.",
+  "admin.integrations.oauthError.failed": "A conexão com {name} não foi concluída. Tente conectar novamente."
 }

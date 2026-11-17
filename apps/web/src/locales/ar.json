@@ -1396,7 +1396,7 @@
   "ask.destination.settings_notifications": "الإشعارات",
   "ask.destination.settings_portal": "البوابة",
   "ask.destination.settings_channels_messenger": "أداة الويب",
-  "ask.destination.settings_channels_email": "البريد الإلكتروني",
+  "ask.destination.settings_channels_email": "بريد الدعم",
   "apiKeys.scopes.settings": "الإعدادات",
   "apiKeys.scopes.read": "تمت القراءة",
   "ask.destination.analytics": "التحليلات",
@@ -1412,6 +1412,7 @@
   "ask.destination.settings_ticket-statuses": "حالات التذاكر",
   "ask.destination.settings_general": "عام",
   "ask.destination.settings_domains": "النطاقات",
+  "ask.destination.settings_email": "البريد الإلكتروني",
   "ask.destination.settings_widget": "الأداة",
   "ask.destination.settings_members": "الأعضاء والفرق",
   "ask.destination.settings_security_authentication": "الوصول والأمان",
@@ -1906,6 +1907,8 @@
   "common.errorPage.error.title": "حدث خطأ ما",
   "common.errorPage.error.description": "حدث خطأ غير متوقع. حاول مرة أخرى أو عد إلى الصفحة الرئيسية.",
   "common.errorPage.technicalDetails": "التفاصيل التقنية",
+  "common.errorPage.reference": "المرجع",
+  "common.errorPage.copyReference": "نسخ المرجع",
   "common.errorPage.tryAgain": "حاول مرة أخرى",
   "common.errorPage.goHome": "العودة إلى الرئيسية",
   "portal.header.auth.accountMenu": "فتح قائمة الحساب",
@@ -2264,5 +2267,11 @@
   "portal.feedback.list.searchWidenedMost": "لا يوجد منشور يحتوي على كل كلماتك. نعرض المنشورات التي تحتوي على معظمها.",
   "portal.feedback.list.searchWidenedSimilar": "لا توجد نتائج مطابقة تمامًا. نعرض منشورات بتهجئة مشابهة.",
   "settings.labs.empty.title": "لا توجد تجارب حاليًا",
-  "settings.labs.empty.description": "تظهر هنا الميزات التي يمكنك تجربتها قبل إطلاقها."
+  "settings.labs.empty.description": "تظهر هنا الميزات التي يمكنك تجربتها قبل إطلاقها.",
+  "admin.integrations.oauthError.denied": "تم رفض الاتصال على {name}. اتصل مرة أخرى للسماح بالوصول.",
+  "admin.integrations.oauthError.expired": "انتهت صلاحية طلب الاتصال أو لم يكن صالحًا. حاول الاتصال مرة أخرى.",
+  "admin.integrations.oauthError.session": "تعذّر التحقق من تسجيل دخولك. سجّل الدخول مرة أخرى، ثم اربط.",
+  "admin.integrations.oauthError.credentials": "أضف بيانات اعتماد تطبيق {name} قبل الاتصال.",
+  "admin.integrations.oauthError.elsewhere": "حساب {name} هذا متصل بالفعل بمساحة عمل Quackback أخرى.",
+  "admin.integrations.oauthError.failed": "لم يكتمل الاتصال بـ {name}. حاول الربط مرة أخرى."
 }

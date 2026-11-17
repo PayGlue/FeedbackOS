@@ -313,9 +313,7 @@ function ScopeMenuSection({
   return (
     <>
       <DropdownMenuSeparator />
-      <DropdownMenuLabel className="uppercase tracking-wide text-muted-foreground">
-        {title}
-      </DropdownMenuLabel>
+      <DropdownMenuLabel className="text-muted-foreground">{title}</DropdownMenuLabel>
       {rows.map((r) => {
         const item = makeItem(r.id)
         return (
@@ -428,7 +426,7 @@ function ViewsFilterSection({
                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 >
                   {v.isPinned ? (
-                    <StarIcon className="size-4 shrink-0 text-amber-500" />
+                    <StarIcon className="size-4 shrink-0 text-warning" />
                   ) : (
                     <FunnelIcon className={cn('size-4 shrink-0', active && 'text-primary')} />
                   )}
@@ -684,9 +682,7 @@ export function InboxScopeMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel className="uppercase tracking-wide text-muted-foreground">
-          Conversations
-        </DropdownMenuLabel>
+        <DropdownMenuLabel className="text-muted-foreground">Conversations</DropdownMenuLabel>
         {CONVERSATION_VIEWS.map(({ view, label, Icon }) => {
           const item: InboxNavItem = { kind: 'view', view }
           const count = countForConversationView(view, counts)
@@ -717,9 +713,7 @@ export function InboxScopeMenu({
         {showTickets && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="uppercase tracking-wide text-muted-foreground">
-              Tickets
-            </DropdownMenuLabel>
+            <DropdownMenuLabel className="text-muted-foreground">Tickets</DropdownMenuLabel>
             {TICKET_INBOX_VIEWS.map(({ view, label, Icon }) => {
               const item: InboxNavItem = { kind: 'view', view }
               const count = countForTicketView(view, counts)
@@ -756,9 +750,7 @@ export function InboxScopeMenu({
         {(views ?? []).length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="uppercase tracking-wide text-muted-foreground">
-              Saved views
-            </DropdownMenuLabel>
+            <DropdownMenuLabel className="text-muted-foreground">Saved views</DropdownMenuLabel>
             {(views ?? []).map((v) => {
               const item: InboxNavItem = { kind: 'custom', viewId: v.id }
               return (
@@ -768,7 +760,7 @@ export function InboxScopeMenu({
                   className={cn('gap-2', activeKey === inboxNavKey(item) && 'text-primary')}
                 >
                   {v.isPinned ? (
-                    <StarIcon className="h-4 w-4 text-amber-500" />
+                    <StarIcon className="h-4 w-4 text-warning" />
                   ) : (
                     <FunnelIcon className="h-4 w-4" />
                   )}

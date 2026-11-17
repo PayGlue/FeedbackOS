@@ -47,6 +47,7 @@ import { workflowCloseSpamSchema } from '@/lib/shared/workflows/close-spam'
 import { defaultSlaPolicySchema } from '@/lib/shared/sla/default-policy'
 import { MAX_TRUSTED_SENDERS } from '@/lib/shared/trusted-senders'
 import { logger } from '@/lib/server/logger'
+import { ForbiddenError, UnauthorizedError } from '@/lib/shared/errors'
 
 const log = logger.child({ component: 'settings' })
 
@@ -261,12 +262,12 @@ export const fetchUserProfile = createServerFn({ method: 'GET' })
     log.debug({ user_id: data }, 'fetch user profile')
     const session = await getSession()
     if (!session?.user) {
-      throw new Error('Authentication required')
+      throw new UnauthorizedError('Authentication required')
     }
 
     const userId = data as UserId
     if (session.user.id !== userId) {
-      throw new Error("Access denied: Cannot view other users' profiles")
+      throw new ForbiddenError('FORBIDDEN', "Access denied: Cannot view other users' profiles")
     }
 
     // Profile-page sections (Password, 2FA) depend on the user's auth
@@ -1115,6 +1116,7 @@ export const getEmailChannelStatusFn = createServerFn({ method: 'GET' }).handler
     await import('@/lib/server/domains/conversation/conversation.email-channel')
   const { customSendingDomainsAvailable } =
     await import('@/lib/server/domains/channel-accounts/sending-identity')
+  const { isPooledTenancy } = await import('@/lib/server/workspaces/mode')
   let fromAddress: string | null = null
   try {
     fromAddress = getEmailFrom()
@@ -1132,6 +1134,9 @@ export const getEmailChannelStatusFn = createServerFn({ method: 'GET' }).handler
     customDomains: customSendingDomainsAvailable()
       ? ('available' as const)
       : ('unavailable' as const),
+    // Whether the server is this workspace's own to read about. On one shared
+    // by many workspaces the page leaves the transport out.
+    ownServer: !isPooledTenancy(),
   }
 })
 

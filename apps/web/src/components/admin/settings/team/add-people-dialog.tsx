@@ -55,6 +55,7 @@ import {
   type RoleChoice,
 } from '@/components/admin/settings/team/add-people'
 import { RoleNotes, RoleSelect, useRoleChoice } from '@/components/admin/settings/team/role-select'
+import { toastError } from '@/lib/client/error-notice'
 
 const SEARCH_DEBOUNCE_MS = 250
 
@@ -180,7 +181,7 @@ function AddPeopleForm({
       await invalidate()
       onUndone?.()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't undo. Try again.")
+      toastError(err, "Couldn't undo. Try again.")
     }
   }
 
@@ -303,7 +304,7 @@ function AddPeopleForm({
           Cancel
         </Button>
         <Button type="submit" disabled={chips.length === 0 || over || submitting}>
-          {submitting ? 'Adding...' : primaryLabel(chips)}
+          {submitting ? 'Adding…' : primaryLabel(chips)}
         </Button>
       </DialogFooter>
     </form>
@@ -763,7 +764,7 @@ function PendingInviteRow({ invite }: { invite: PendingInvite }) {
       }
     } catch (err) {
       setState('idle')
-      toast.error(err instanceof Error ? err.message : "Couldn't resend. Try again.")
+      toastError(err, "Couldn't resend. Try again.")
     }
   }
 

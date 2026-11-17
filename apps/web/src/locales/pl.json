@@ -1396,7 +1396,7 @@
   "ask.destination.settings_notifications": "Powiadomienia",
   "ask.destination.settings_portal": "Portal",
   "ask.destination.settings_channels_messenger": "Messenger",
-  "ask.destination.settings_channels_email": "E-mail",
+  "ask.destination.settings_channels_email": "E-mail wsparcia",
   "apiKeys.scopes.settings": "Ustawienia",
   "apiKeys.scopes.read": "Odczyt",
   "ask.destination.analytics": "Analityka",
@@ -1412,6 +1412,7 @@
   "ask.destination.settings_ticket-statuses": "Statusy zgłoszeń",
   "ask.destination.settings_general": "Ogólne",
   "ask.destination.settings_domains": "Domeny",
+  "ask.destination.settings_email": "E-mail",
   "ask.destination.settings_widget": "Widget",
   "ask.destination.settings_members": "Członkowie i zespoły",
   "ask.destination.settings_security_authentication": "Dostęp i bezpieczeństwo",
@@ -1906,6 +1907,8 @@
   "common.errorPage.error.title": "Coś poszło nie tak",
   "common.errorPage.error.description": "Wystąpił nieoczekiwany błąd. Spróbuj ponownie lub wróć na stronę główną.",
   "common.errorPage.technicalDetails": "Szczegóły techniczne",
+  "common.errorPage.reference": "Numer referencyjny",
+  "common.errorPage.copyReference": "Kopiuj numer referencyjny",
   "common.errorPage.tryAgain": "Spróbuj ponownie",
   "common.errorPage.goHome": "Przejdź do strony głównej",
   "portal.header.auth.accountMenu": "Otwórz menu konta",
@@ -2264,5 +2267,11 @@
   "portal.feedback.list.searchWidenedMost": "Żaden wpis nie zawiera wszystkich słów. Pokazujemy wpisy z większością z nich.",
   "portal.feedback.list.searchWidenedSimilar": "Brak dokładnych wyników. Pokazujemy wpisy o podobnej pisowni.",
   "settings.labs.empty.title": "Brak eksperymentów",
-  "settings.labs.empty.description": "Tutaj pojawiają się funkcje, które możesz wypróbować przed premierą."
+  "settings.labs.empty.description": "Tutaj pojawiają się funkcje, które możesz wypróbować przed premierą.",
+  "admin.integrations.oauthError.denied": "Połączenie zostało odrzucone w {name}. Połącz ponownie, aby zezwolić na dostęp.",
+  "admin.integrations.oauthError.expired": "Żądanie połączenia wygasło lub było nieprawidłowe. Spróbuj połączyć ponownie.",
+  "admin.integrations.oauthError.session": "Nie udało się potwierdzić logowania. Zaloguj się ponownie, a następnie połącz.",
+  "admin.integrations.oauthError.credentials": "Dodaj dane uwierzytelniające aplikacji {name} przed połączeniem.",
+  "admin.integrations.oauthError.elsewhere": "To konto {name} jest już połączone z innym obszarem roboczym Quackback.",
+  "admin.integrations.oauthError.failed": "Połączenie z {name} nie zostało ukończone. Spróbuj połączyć ponownie."
 }

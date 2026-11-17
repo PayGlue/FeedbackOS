@@ -203,7 +203,7 @@ export function CreatePostDialog({
                             <LazyRichTextEditor
                               value={contentJson || ''}
                               onDocumentChange={handleContentChange}
-                              placeholder="Add more details... Type / for commands"
+                              placeholder="Add more details… Type / for commands"
                               minHeight="200px"
                               borderless
                               toolbarPosition="bottom"
@@ -510,7 +510,7 @@ export function CreatePostDialog({
 
             <ModalFooter
               onCancel={() => setOpen(false)}
-              submitLabel={createPostMutation.isPending ? 'Creating...' : 'Create post'}
+              submitLabel={createPostMutation.isPending ? 'Creating…' : 'Create post'}
               isPending={createPostMutation.isPending}
               hintAction="to create"
             />

@@ -706,6 +706,15 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'different From addresses. Null falls through to EMAIL_FROM, which is the self-host path.',
   },
   {
+    file: 'packages/email/src/default-from.ts',
+    name: 'shared',
+    category: 'process-lifetime',
+    reason:
+      'Holds a function pointer installed at boot that answers one question about the process: ' +
+      'whether it serves many workspaces. The answer is the same for every workspace in it, and ' +
+      'nothing about a workspace is kept in here.',
+  },
+  {
     file: 'packages/email/src/index.ts',
     name: 'smtpTransporter',
     category: 'fleet-wide',
@@ -1426,5 +1435,60 @@ export const MODULE_STATE_LEDGER: readonly LedgerEntry[] = [
       'of untested providers across the fleet. It holds no workspace data and gates nothing but ' +
       'a log line: a wrong hit would drop one informational line, never change which providers ' +
       'are trusted.',
+  },
+  {
+    file: 'apps/web/src/lib/server/auth/index.ts',
+    name: 'pendingClientScopeReconciles',
+    category: 'workspace-keyed',
+    reason:
+      'Whether this workspace has an MCP client scope reconcile to retry, and when it last tried. ' +
+      'A cross-workspace hit would retry the update against the wrong workspace, or skip the ' +
+      'retry a workspace still needs.',
+  },
+  {
+    file: 'apps/web/src/lib/server/backfills/batched.ts',
+    name: 'backfillState',
+    category: 'workspace-keyed',
+    reason:
+      'The registry this process last saw every startup backfill done for, per workspace. A ' +
+      'cross-workspace hit would shut the startup-backfill schedule for a workspace whose ' +
+      'backfills have not finished.',
+  },
+  {
+    file: 'apps/web/src/lib/server/backfills/upgrade-done.ts',
+    name: 'notedBuild',
+    category: 'workspace-keyed',
+    reason:
+      'The build whose upgrade work this process has noted done, per workspace. A cross-workspace ' +
+      'hit would drop the one "upgrade work done" line for a workspace that has not logged it.',
+  },
+  {
+    file: 'apps/web/src/lib/server/backfills/batched.ts',
+    name: 'overrides',
+    category: 'process-lifetime',
+    reason:
+      'Test seam holding a replacement backfill registry, null in production so ' +
+      'registeredBackfills() returns the compile-time BATCHED_BACKFILLS constant. Holds no ' +
+      'workspace value.',
+  },
+  {
+    file: 'apps/web/src/lib/server/backfills/deferred-indexes.ts',
+    name: 'overrides',
+    category: 'process-lifetime',
+    reason:
+      'Test seam holding a replacement background index list, null in production so ' +
+      'deferredIndexSpecs() returns the compile-time DEFERRED_INDEX_SPECS constant. Holds no ' +
+      'workspace value.',
+  },
+  {
+    file: 'apps/web/src/lib/server/backfills/deferred-indexes.ts',
+    name: 'indexPassState',
+    category: 'workspace-keyed',
+    reason:
+      "What this worker process knows about one workspace's background indexes: whether it has " +
+      'made its first pass (which is how a restart retries a stopped build), which stopped builds ' +
+      'it has warned about, and the list it last saw fully built. A cross-workspace hit would skip ' +
+      'a restart retry, drop a warning, or shut the build schedule for a workspace whose indexes ' +
+      'are still missing.',
   },
 ]

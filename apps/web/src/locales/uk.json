@@ -1406,6 +1406,7 @@
   "ask.destination.settings_workflows": "Робочі процеси",
   "ask.destination.settings_general": "Загальні",
   "ask.destination.settings_domains": "Домени",
+  "ask.destination.settings_email": "Електронна пошта",
   "ask.destination.settings_notifications": "Сповіщення",
   "ask.destination.settings_portal": "Портал",
   "ask.destination.settings_widget": "Віджет",
@@ -1421,7 +1422,7 @@
   "ask.destination.settings_imports": "Імпорт і експорт",
   "ask.destination.settings_widget_install": "Встановлення",
   "ask.destination.settings_channels_messenger": "Messenger",
-  "ask.destination.settings_channels_email": "Електронна пошта",
+  "ask.destination.settings_channels_email": "Пошта підтримки",
   "ask.destination.settings_channels_github": "GitHub",
   "ask.starter.branding": "Задати колір бренду",
   "ask.starter.invite": "Запросити команду",
@@ -1906,6 +1907,8 @@
   "common.errorPage.error.title": "Щось пішло не так",
   "common.errorPage.error.description": "Сталася неочікувана помилка. Спробуйте ще раз або поверніться на головну сторінку.",
   "common.errorPage.technicalDetails": "Технічні подробиці",
+  "common.errorPage.reference": "Код помилки",
+  "common.errorPage.copyReference": "Скопіювати код",
   "common.errorPage.tryAgain": "Спробувати ще раз",
   "common.errorPage.goHome": "На головну",
   "portal.header.auth.accountMenu": "Відкрити меню акаунта",
@@ -2264,5 +2267,11 @@
   "portal.feedback.list.searchWidenedMost": "Жоден допис не містить усіх ваших слів. Показано дописи з більшістю з них.",
   "portal.feedback.list.searchWidenedSimilar": "Точних збігів немає. Показано дописи зі схожим написанням.",
   "settings.labs.empty.title": "Зараз експериментів немає",
-  "settings.labs.empty.description": "Тут з’являються функції, які можна спробувати до випуску."
+  "settings.labs.empty.description": "Тут з’являються функції, які можна спробувати до випуску.",
+  "admin.integrations.oauthError.denied": "Підключення відхилено в {name}. Підключіться знову, щоб надати доступ.",
+  "admin.integrations.oauthError.expired": "Термін запиту на підключення минув, або він недійсний. Спробуйте підключитися знову.",
+  "admin.integrations.oauthError.session": "Не вдалося підтвердити ваш вхід. Увійдіть знову, а потім підключіть.",
+  "admin.integrations.oauthError.credentials": "Додайте облікові дані застосунку {name} перед підключенням.",
+  "admin.integrations.oauthError.elsewhere": "Цей обліковий запис {name} уже підключено до іншого робочого простору Quackback.",
+  "admin.integrations.oauthError.failed": "Підключення до {name} не завершилося. Спробуйте підключити ще раз."
 }

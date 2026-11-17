@@ -93,10 +93,15 @@ vi.mock('@/lib/server/domains/settings/settings.support', () => ({
 // conversation answered from the customer's own support address is a thread
 // that changes identity halfway through.
 const resolveConversationFrom = vi.fn<(...a: unknown[]) => Promise<string | null>>(async () => null)
-vi.mock('@/lib/server/domains/channel-accounts/channel-account.service', async (orig) => ({
-  ...(await orig<typeof import('@/lib/server/domains/channel-accounts/channel-account.service')>()),
+vi.mock('@/lib/server/domains/channel-accounts/sender-resolver', async (orig) => ({
+  ...(await orig<typeof import('@/lib/server/domains/channel-accounts/sender-resolver')>()),
   resolveConversationFrom: (...a: unknown[]) => resolveConversationFrom(...a),
+  resolveConversationSender: async (...a: unknown[]) => {
+    const from = await resolveConversationFrom(...a)
+    return from ? { from, source: 'surface', senderName: senderName.current } : null
+  },
 }))
+const senderName = vi.hoisted(() => ({ current: null as string | null }))
 
 // The group-thread fan-out (§4.8): which added customers a reply goes out to.
 // Default none — the pre-group-thread assertions below keep their call counts.
@@ -192,6 +197,9 @@ beforeEach(() => {
   visitorRows = []
   limitQueue = []
   vi.clearAllMocks()
+  // clearAllMocks keeps implementations, so a case that set a From would leak
+  // it into every later case without this.
+  resolveConversationFrom.mockReset().mockResolvedValue(null)
   // Silence the fire-and-forget warning logs.
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   buildHookContext.mockResolvedValue(ctx)
@@ -753,6 +761,9 @@ describe('conversation email send retry', () => {
 // rating-request email, since the in-app emoji row is inert in an email client.
 describe('notifyCsatRequestEmail', () => {
   const visitorPrincipalId = 'principal_visitor' as PrincipalId
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
 
   it('does not send an email when the conversation channel is not email', async () => {
     limitQueue = [[{ channel: 'messenger', visitorPrincipalId }]]
@@ -802,11 +813,48 @@ describe('notifyCsatRequestEmail', () => {
         'https://acme.example.com/csat?token=signed-token&rating=4',
         'https://acme.example.com/csat?token=signed-token&rating=5',
       ],
+      // No name of its own for the platform address: the email package names
+      // it for `workspaceName` (platform-display-name.test.ts).
       workspaceName: 'Acme',
       logoUrl: undefined,
       from: undefined,
+      conversationSubject: undefined,
+      replyTo: undefined,
+      // No sending domain configured, so there is nothing to mint an id on.
+      messageId: undefined,
+      inReplyTo: undefined,
+      references: undefined,
       conversationId,
     })
+  })
+
+  it('threads the rating request into the conversation, like the closing notice', async () => {
+    vi.stubEnv('EMAIL_FROM', 'Platform <noreply@mail.example>')
+    limitQueue = [
+      [{ channel: 'email', visitorPrincipalId, subject: 'Help with billing' }],
+      [{ type: 'user', email: 'visitor@example.com', contactEmail: null }],
+    ]
+    mintCsatEmailToken.mockReturnValue('signed-token')
+    sendCsatRequestEmail.mockResolvedValue({ sent: true })
+    threadIdsForOutbound.mockResolvedValue({
+      inbound: ['cust-inbound@mail.example'],
+      outbound: ['c.1.aaa@mail.example'],
+      merged: ['cust-inbound@mail.example', 'c.1.aaa@mail.example'],
+    })
+
+    await notifyCsatRequestEmail(conversationId, 'How did we do?')
+
+    const call = sendCsatRequestEmail.mock.calls[0][0]
+    expect(call).toMatchObject({
+      conversationSubject: 'Help with billing',
+      inReplyTo: 'cust-inbound@mail.example',
+      references: ['cust-inbound@mail.example', 'c.1.aaa@mail.example'],
+      workspaceName: 'Acme',
+    })
+    expect(call.fromDisplayName).toBeUndefined()
+    // The id that went out is recorded, so a reply quoting it routes home.
+    expect(call.messageId).toEqual(expect.any(String))
+    expect(recordOutboundEmail).toHaveBeenCalledWith(call.messageId, conversationId)
   })
 
   it('asks the rating from the address the thread is already being answered from', async () => {
@@ -826,7 +874,9 @@ describe('notifyCsatRequestEmail', () => {
 
     expect(resolveConversationFrom).toHaveBeenCalledWith(conversationId)
     expect(sendCsatRequestEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ from: 'support@tenant-a.example' })
+      expect.objectContaining({
+        from: 'Acme <support@tenant-a.example>',
+      })
     )
   })
 
@@ -1214,6 +1264,63 @@ describe('threading headers (P4.6 regression guard)', () => {
       expect(call.inReplyTo).toBe('c.1.bbb@tenaevexeo.resend.app')
     })
 
+    it('names a messenger reply after the agent and the workspace', async () => {
+      isPrincipalOnline.mockResolvedValue(false)
+      visitorRows = [{ type: 'user', email: 'account@x.com' }]
+
+      await notifyAgentReply({
+        conversationId,
+        visitorPrincipalId,
+        content: 'answer',
+        agentName: 'Alex',
+        channel: 'messenger',
+      })
+
+      const call = sendConversationMessageEmail.mock.calls[0][0]
+      expect(call.from).toBeUndefined()
+      expect(call.fromDisplayName).toBe('Alex from Acme')
+    })
+
+    it("names a messenger reply sent from the thread's own address", async () => {
+      isPrincipalOnline.mockResolvedValue(false)
+      visitorRows = [{ type: 'user', email: 'account@x.com' }]
+      resolveConversationFrom.mockResolvedValueOnce('help@home.example')
+
+      await notifyAgentReply({
+        conversationId,
+        visitorPrincipalId,
+        content: 'answer',
+        agentName: 'Alex',
+        channel: 'messenger',
+      })
+
+      const call = sendConversationMessageEmail.mock.calls[0][0]
+      expect(call.from).toBe('Alex from Acme <help@home.example>')
+      expect(call.fromDisplayName).toBeUndefined()
+    })
+
+    it("names the reply after the address's sender name when it has one", async () => {
+      isPrincipalOnline.mockResolvedValue(false)
+      visitorRows = [{ type: 'user', email: 'account@x.com' }]
+      resolveConversationFrom.mockResolvedValueOnce('help@home.example')
+      senderName.current = 'Acme Support'
+
+      try {
+        await notifyAgentReply({
+          conversationId,
+          visitorPrincipalId,
+          content: 'answer',
+          agentName: 'Alex',
+          channel: 'messenger',
+        })
+      } finally {
+        senderName.current = null
+      }
+
+      const call = sendConversationMessageEmail.mock.calls[0][0]
+      expect(call.from).toBe('Alex from Acme Support <help@home.example>')
+    })
+
     it('forwards the stored conversation subject to the sender', async () => {
       isPrincipalOnline.mockResolvedValue(false)
       visitorRows = [{ type: 'user', email: 'account@x.com' }]
@@ -1263,7 +1370,7 @@ describe('threading headers (P4.6 regression guard)', () => {
       // fromDisplayName so dispatch can wrap EMAIL_FROM.
       expect(
         [call.from, call.fromDisplayName].some(
-          (value) => typeof value === 'string' && value.includes('Agent (Acme)')
+          (value) => typeof value === 'string' && value.includes('Agent from Acme')
         )
       ).toBe(true)
     })

@@ -2,11 +2,11 @@ import { memo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { BuildingOffice2Icon } from '@heroicons/react/24/outline'
-import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { qualifyCompanyFn } from '@/lib/server/functions/companies'
 import { conversationPanelQueries } from '@/lib/client/queries/conversation-panels'
+import { toastError } from '@/lib/client/error-notice'
 
 /**
  * Company context for the conversation detail panel: the visitor's company with
@@ -165,7 +165,7 @@ function QualificationEditor({
       })
       onQualified()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to set company')
+      toastError(error, 'Failed to set company')
     } finally {
       setSaving(false)
     }
@@ -201,7 +201,7 @@ function QualificationEditor({
         disabled={!name.trim() || saving}
         onClick={() => void commit()}
       >
-        {saving ? 'Saving...' : 'Save company'}
+        {saving ? 'Saving…' : 'Save company'}
       </Button>
       <p className="text-[11px] leading-snug text-muted-foreground">
         Saving links this user to an existing company with the same name, or creates one.

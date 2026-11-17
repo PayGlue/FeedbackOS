@@ -130,10 +130,17 @@ export interface EmailConfig {
   commenterName?: string
   commentPreview?: string
   isTeamMember?: boolean
+  /** post.mentioned: who mentioned the recipient (null when unknown). */
+  mentionerName?: string | null
   logoUrl?: string
   /** Link to the portal's per-type x per-channel notification preferences
    *  page. Not token-based — requires the recipient to be logged in. */
   preferencesUrl?: string
+  /** The surface's From as resolved at enqueue (sender-resolver.ts); re-checked
+   *  at send. Absent = EMAIL_FROM. */
+  from?: string
+  /** The resolved address's sender name; used only while that address sends. */
+  fromDisplayName?: string
 }
 
 /**
@@ -168,8 +175,11 @@ export interface TicketEmailConfig {
   closedGeneric?: boolean
   clockLabel?: string
   dueLabel?: string
-  /** Per-team From (resolveSendingAddress result); absent = EMAIL_FROM. */
+  /** Ticket From (resolveTicketSender result, sender-resolver.ts); absent = EMAIL_FROM. */
   from?: string
+  /** The resolved address's sender name (requester mail only); used only while
+   *  that address sends, else the workspace name. */
+  fromDisplayName?: string
   /** Signed per-ticket inbound reply address; absent = no reply-by-email. */
   replyTo?: string
   logoUrl?: string
