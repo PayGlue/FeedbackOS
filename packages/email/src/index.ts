@@ -1770,6 +1770,7 @@ export async function sendNewFeedbackEmail(args: SendNewFeedbackEmailArgs): Prom
     subject: args.held ? `Approve new feedback: ${args.title}` : `New feedback: ${args.title}`,
     react: NewFeedbackEmail(props),
     emailType: 'NewFeedbackEmail',
+    workspaceName: args.workspaceName,
     preview: { url: args.url },
   })
 }
@@ -2030,7 +2031,7 @@ export async function sendCsatRequestEmail(
     react: CsatRequestEmail({ promptText, ratingUrls, workspaceName, logoUrl }),
     from: params.from,
     fromDisplayName: params.fromDisplayName,
-    replyTo: params.replyTo,
+    replyTo: namedReplyTo(params.replyTo, workspaceName),
     messageId: params.messageId,
     inReplyTo: params.inReplyTo,
     references: params.references,

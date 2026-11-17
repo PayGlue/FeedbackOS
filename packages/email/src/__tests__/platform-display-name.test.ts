@@ -190,6 +190,17 @@ const workspaceSenders: Record<string, Drive> = {
       conversationUrl: 'https://acme.test/admin/inbox',
       workspaceName: w!,
     }),
+  sendNewFeedbackEmail: (w) =>
+    email.sendNewFeedbackEmail({
+      to,
+      title: 'Dark mode',
+      preview: 'Please add it',
+      authorName: 'Sam',
+      boardName: 'Ideas',
+      held: false,
+      url: 'https://acme.test/p/1',
+      workspaceName: w!,
+    }),
   sendChangelogPublishedEmail: (w, extra) =>
     email.sendChangelogPublishedEmail({
       to,

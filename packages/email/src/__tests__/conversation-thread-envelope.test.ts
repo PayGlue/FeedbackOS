@@ -102,7 +102,9 @@ describe('sendCsatRequestEmail', () => {
     expect(wire()).toMatchObject({
       from: 'Example Co <help@home.example>',
       subject: 'Re: Help with billing',
-      replyTo: 'reply+c1@mail.platform.example',
+      // FeedbackOS: the reply address carries the support name, as on every
+      // other mail in the thread.
+      replyTo: 'Example Co Support <reply+c1@mail.platform.example>',
       messageId: '<c.1.csat@mail.platform.example>',
       inReplyTo: '<cust@example.org>',
       references: '<cust@example.org> <c.1.ack@mail.platform.example>',
