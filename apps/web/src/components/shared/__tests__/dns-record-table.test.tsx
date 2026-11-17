@@ -18,7 +18,7 @@ describe('<DnsRecordTable>', () => {
             problem: 'not shown while found',
           },
           {
-            label: 'Ownership',
+            label: 'Verification',
             type: 'TXT',
             name: '_quackback-verify.acme.com',
             value: 'qb-domain-verify=abc',
@@ -39,12 +39,40 @@ describe('<DnsRecordTable>', () => {
     const rows = document.querySelectorAll('[data-slot="dns-record"]')
     expect([...rows].map((r) => r.textContent)).toEqual([
       'Found: Routinghelp.acme.comCNAMEapp.example.com',
-      'Needs a fix: Ownership_quackback-verify.acme.comTXTqb-domain-verify=abc',
+      'Needs a fix: Verification_quackback-verify.acme.comTXTqb-domain-verify=abc',
       'Waiting: DKIMqb._domainkeyTXTv=DKIM1; p=xyz',
     ])
     const fixes = document.querySelectorAll('[data-slot="dns-record-fix"]')
     expect([...fixes].map((r) => r.textContent)).toEqual(['Replace it with the value above.'])
     expect(screen.getByRole('button', { name: 'Copy value for help.acme.com' })).toBeInTheDocument()
+  })
+})
+
+describe('<DnsRecordTable> in a narrow space', () => {
+  it('names each cell, since the header row is not shown above a stacked record', () => {
+    render(
+      <DnsRecordTable
+        records={[
+          {
+            label: 'DKIM',
+            type: 'CNAME',
+            name: 'k1._domainkey',
+            value: 'k1.dkim.example.com',
+            state: 'waiting',
+          },
+        ]}
+      />
+    )
+    const row = document.querySelector('[data-slot="dns-record"]')!
+    // The record's own name needs no label; the other three say what they are.
+    expect([...row.querySelectorAll('td')].map((c) => c.getAttribute('data-label'))).toEqual([
+      null,
+      'Name',
+      'Type',
+      'Value',
+    ])
+    // Stacks by the room it has, not the screen's: it sits beside a sidebar.
+    expect(document.querySelector('table')!.parentElement).toHaveClass('@container')
   })
 })
 

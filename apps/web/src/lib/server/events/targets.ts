@@ -287,6 +287,21 @@ export async function getSubscriberTargets(
 }
 
 /**
+ * The From a kind of email is sent from and its sender name, resolved once per
+ * event and carried on every target for the email hook to re-check at send
+ * time (see `checkedSender` in handlers/email.ts). Empty: the platform default
+ * under the workspace name.
+ */
+async function surfaceSender(
+  surface: 'feedback' | 'changelog' | 'status'
+): Promise<{ from?: string; fromDisplayName?: string }> {
+  const { resolveSender } = await import('@/lib/server/domains/channel-accounts/sender-resolver')
+  const resolved = await resolveSender({ surface })
+  if (!resolved) return {}
+  return { from: resolved.from, fromDisplayName: resolved.senderName ?? undefined }
+}
+
+/**
  * Build email hook targets from pre-filtered subscribers.
  */
 async function buildEmailTargets(
@@ -311,13 +326,16 @@ async function buildEmailTargets(
   if (eligibleSubscribers.length === 0) return []
 
   // Batch generate unsubscribe tokens (single insert instead of N inserts)
-  const tokenMap = await batchGenerateUnsubscribeTokens(
-    eligibleSubscribers.map((s) => ({
-      principalId: s.principalId,
-      postId,
-      action: 'unsubscribe_post' as const,
-    }))
-  )
+  const [sender, tokenMap] = await Promise.all([
+    surfaceSender('feedback'),
+    batchGenerateUnsubscribeTokens(
+      eligibleSubscribers.map((s) => ({
+        principalId: s.principalId,
+        postId,
+        action: 'unsubscribe_post' as const,
+      }))
+    ),
+  ])
 
   // `Subscriber.email` is the IDENTITY field `isActorSubscriber` compares
   // against the actor, so it is read, never overwritten. The delivery address is
@@ -339,6 +357,7 @@ async function buildEmailTargets(
           logoUrl: context.logoUrl ?? undefined,
           preferencesUrl: `${context.portalBaseUrl}/settings/preferences`,
           ...eventConfig,
+          ...sender,
         }
       ),
     ]
@@ -526,6 +545,30 @@ async function buildNotificationConfig(
 // Mention Targets
 // ============================================================================
 
+/**
+ * The mentioning principal's current display name, or the actor's name when
+ * the event still carries one (an in-process emission). Null when neither is
+ * known; the bell and the email then fall back to their own wording.
+ */
+async function mentionerNameOf(
+  mentioningPrincipalId: string | undefined,
+  actor: EventActor
+): Promise<string | null> {
+  if (mentioningPrincipalId) {
+    const [row] = await db
+      .select({ displayName: principal.displayName, userName: user.name })
+      .from(principal)
+      .leftJoin(user, eq(user.id, principal.userId))
+      .where(eq(principal.id, mentioningPrincipalId as PrincipalId))
+      .limit(1)
+    const name = row?.displayName?.trim() || row?.userName?.trim()
+    if (name) return name
+  }
+  // A relayed service actor's displayName is the event source ('api', 'mcp'),
+  // not a name, so only a user actor's name is used.
+  return (actor.type === 'user' && actor.displayName?.trim()) || null
+}
+
 /** Principal roles that are eligible to receive mention notifications */
 const MENTION_ELIGIBLE_ROLES = new Set(['admin', 'member', 'user'])
 
@@ -602,6 +645,11 @@ export async function getMentionTargets(
   ])
   if (allowedIds.length === 0) return []
 
+  // Who mentioned them, for the bell and the email. The event the outbox
+  // relays keeps the actor's type and id but not their name
+  // (to-legacy-event.ts), so it is read from the mentioning principal.
+  const mentionerName = await mentionerNameOf(event.data.mentioningPrincipalId, event.actor)
+
   const targets: HookTarget[] = []
 
   targets.push({
@@ -612,6 +660,7 @@ export async function getMentionTargets(
       postTitle,
       postUrl,
       eventType: 'post.mentioned',
+      mentionerName,
     },
   })
 
@@ -628,12 +677,15 @@ export async function getMentionTargets(
     const prefsMap = await batchGetNotificationPreferences([row.id as PrincipalId])
     const prefs = prefsMap.get(row.id as PrincipalId)
     if (!prefs || shouldNotify(prefs, 'post_mentioned', 'email')) {
-      const tokenMap = await batchGenerateUnsubscribeTokens([
-        {
-          principalId: row.id as PrincipalId,
-          postId: event.data.postId as PostId,
-          action: 'unsubscribe_all',
-        },
+      const [sender, tokenMap] = await Promise.all([
+        surfaceSender('feedback'),
+        batchGenerateUnsubscribeTokens([
+          {
+            principalId: row.id as PrincipalId,
+            postId: event.data.postId as PostId,
+            action: 'unsubscribe_all',
+          },
+        ]),
       ])
       const token = tokenMap.get(row.id as PrincipalId)
       targets.push(
@@ -644,6 +696,8 @@ export async function getMentionTargets(
           logoUrl: context.logoUrl ?? undefined,
           preferencesUrl: `${context.portalBaseUrl}/settings/preferences`,
           eventType: 'post.mentioned',
+          mentionerName,
+          ...sender,
         })
       )
     }
@@ -904,7 +958,7 @@ export async function getConversationNoteMentionedEmailTargets(
  *
  * STOP-WATCHING HONORED (B18): the requester is reached THROUGH the
  * subscription row like any other watcher — it is no longer added
- * unconditionally. `getTicketWatchersForEvent` already returns the requester
+ * unconditionally. `getTicketNotifiableWatchers` returns the requester
  * exactly when their row exists and is unmuted (they are auto-subscribed at
  * ticket creation with reason 'requester'), so deleting the row via the
  * portal's "Stop watching" toggle quiets this bell; a later requester reply
@@ -916,20 +970,25 @@ export async function getConversationNoteMentionedEmailTargets(
  * historical event data.
  */
 /**
- * Active watchers to notify for a ticket event, actor-excluded. `agentsOnly`
- * narrows to team-member watchers (internal-note recipients). Dynamic import
- * avoids a static cycle through the tickets domain.
+ * Active watchers to notify for a ticket event, actor-excluded: team-member
+ * watchers plus the ticket's requester while they still watch; any other
+ * watcher is not a recipient. `agentsOnly` narrows to team-member watchers
+ * (internal-note recipients). Dynamic import avoids a static cycle through the
+ * tickets domain.
  */
 async function actorExcludedTicketWatchers(
   ticketId: TicketId,
   actorPrincipalId: string | undefined,
-  opts?: { agentsOnly?: boolean }
+  opts?: { agentsOnly?: boolean; requesterPrincipalId?: string | null }
 ): Promise<PrincipalId[]> {
-  const { getTicketWatchersForEvent, getTicketAgentWatchersForEvent } =
+  const { getTicketNotifiableWatchers, getTicketAgentWatchersForEvent } =
     await import('@/lib/server/domains/tickets/ticket-subscription.service')
   const watchers = opts?.agentsOnly
     ? await getTicketAgentWatchersForEvent(ticketId)
-    : await getTicketWatchersForEvent(ticketId)
+    : await getTicketNotifiableWatchers(
+        ticketId,
+        (opts?.requesterPrincipalId as PrincipalId | null | undefined) ?? null
+      )
   return watchers.filter((id) => id !== actorPrincipalId)
 }
 
@@ -947,7 +1006,9 @@ export async function getTicketStatusChangedTargets(event: EventData): Promise<H
   // The requester rides the subscription row (B18): present + unmuted ⇔ in
   // this watcher set already, so "Stop watching" quiets the bell.
   const recipients = new Set<PrincipalId>(
-    await actorExcludedTicketWatchers(ticket.id as TicketId, event.actor.principalId)
+    await actorExcludedTicketWatchers(ticket.id as TicketId, event.actor.principalId, {
+      requesterPrincipalId: requesterPrincipalId as string | undefined,
+    })
   )
   if (recipients.size === 0) return null
 
@@ -975,11 +1036,11 @@ export async function getTicketStatusChangedTargets(event: EventData): Promise<H
 }
 
 /**
- * Notification target for `ticket.replied`: everyone watching the ticket
- * (ticket_subscriptions; the service already drops active mutes) minus the
- * actor, in ONE combined target. An agent reply bells the
- * requester-as-watcher plus agent watchers; a requester reply bells agent
- * watchers (the requester is the actor, excluded).
+ * Notification target for `ticket.replied`: the ticket's team-member watchers
+ * plus the requester while they watch (ticket_subscriptions; the service
+ * already drops active mutes) minus the actor, in ONE combined target. An
+ * agent reply bells the requester-as-watcher plus agent watchers; a requester
+ * reply bells agent watchers (the requester is the actor, excluded).
  */
 export async function getTicketRepliedTargets(event: EventData): Promise<HookTarget | null> {
   if (event.type !== 'ticket.replied') return null
@@ -987,7 +1048,8 @@ export async function getTicketRepliedTargets(event: EventData): Promise<HookTar
 
   const recipients = await actorExcludedTicketWatchers(
     ticket.id as TicketId,
-    event.actor.principalId
+    event.actor.principalId,
+    { requesterPrincipalId }
   )
   if (recipients.length === 0) return null
 
@@ -1311,27 +1373,37 @@ function baseTicketConfig(params: BaseTicketConfigParams): Record<string, unknow
 }
 
 /**
- * Requester-facing config: per-team From (resolveSendingAddress) and, when an
- * inbound-capable email channel is configured, a signed per-ticket Reply-To for
- * reply-by-email (D8/D9). Both are null-safe — absent means branded EMAIL_FROM
- * and a portal-only footer.
+ * Requester-facing config: the ticket's From (resolveTicketSender: the linked
+ * conversation's thread sender, else support's address) under its sender name
+ * or the workspace name, and, when an inbound-capable email channel is configured, a signed
+ * per-ticket Reply-To for reply-by-email (D8/D9). Both are null-safe: absent
+ * means branded EMAIL_FROM and a portal-only footer.
+ *
+ * The name travels as its own field rather than inside `from`, so it survives
+ * the send-time re-check of the address and still applies when that re-check
+ * falls back to the platform default.
  */
 async function requesterFacingConfig(
   params: BaseTicketConfigParams & { ticketId: TicketId; assignedTeamId: TeamId | null }
 ): Promise<Record<string, unknown>> {
-  const { resolveSendingAddress } =
-    await import('@/lib/server/domains/channel-accounts/channel-account.service')
+  const { resolveTicketSender } =
+    await import('@/lib/server/domains/channel-accounts/sender-resolver')
   const { inboundTicketReplyToAddress } =
     await import('@/lib/server/domains/conversation/conversation.email-channel')
   const { currentMailSlug } =
     await import('@/lib/server/domains/conversation/conversation.mail-slug')
-  const from = (await resolveSendingAddress(params.assignedTeamId, 'support')) ?? undefined
+  const sender = await resolveTicketSender(params.ticketId)
   // The mail slug names this workspace in the address, which is what lets a
   // shared inbound domain route the reply back. With none to mint under there is
   // no routable address: the ticket email then carries no Reply-To and its
   // footer points at the portal thread.
   const replyTo = inboundTicketReplyToAddress(params.ticketId, currentMailSlug()) ?? undefined
-  return { ...baseTicketConfig(params), from, replyTo }
+  return {
+    ...baseTicketConfig(params),
+    from: sender?.from,
+    fromDisplayName: sender?.senderName ?? params.context.workspaceName,
+    replyTo,
+  }
 }
 
 /** Agent-facing config: branded EMAIL_FROM, no reply-by-email, inbox CTA. */
@@ -1343,7 +1415,7 @@ function agentFacingConfig(
 
 /**
  * One target per recipient, routing the requester to requesterFacingConfig
- * (portal CTA, per-team From, reply-by-email) and every other watcher to
+ * (portal CTA, the ticket's sender, reply-by-email) and every other watcher to
  * agentFacingConfig (inbox CTA, branded From). Shared by the replied + resolved
  * builders, whose only differences are `kind` and the carried facts.
  */
@@ -1450,10 +1522,11 @@ export async function getTicketCreatedEmailTargets(
 }
 
 /**
- * `ticket.replied` (agent reply only) → the ticket's watcher set minus the
- * actor, filtered by email preference. Each recipient gets kind `reply` with the
+ * `ticket.replied` (agent reply only) → the ticket's team-member watchers plus
+ * the emailable (customer-ticket) requester while they watch, minus the actor,
+ * filtered by email preference. Each recipient gets kind `reply` with the
  * full reply body; the requester's target is requester-facing (portal CTA,
- * per-team From, reply-by-email), agent watchers get the inbox CTA and branded
+ * the ticket's sender, reply-by-email), agent watchers get the inbox CTA and branded
  * From (D3 sequencing note).
  */
 export async function getTicketRepliedEmailTargets(
@@ -1473,11 +1546,11 @@ export async function getTicketRepliedEmailTargets(
       : null
 
   const ticketId = ticket.id as TicketId
-  const { getTicketWatchersForEvent } =
+  const { getTicketNotifiableWatchers } =
     await import('@/lib/server/domains/tickets/ticket-subscription.service')
-  const watchers = (await getTicketWatchersForEvent(ticketId)).filter(
-    (id) => id !== event.actor.principalId
-  )
+  const watchers = (
+    await getTicketNotifiableWatchers(ticketId, emailableRequester as PrincipalId | null)
+  ).filter((id) => id !== event.actor.principalId)
   if (watchers.length === 0) return []
 
   const { recipients, emailMap } = await resolveEligibleRecipients(watchers, 'ticket_replied')
@@ -1505,10 +1578,11 @@ export async function getTicketRepliedEmailTargets(
  * `ticket.status_changed` → a resolution email, but only on a genuine category
  * crossing INTO `closed` (deliberately narrower than the bell, which fires on
  * any public stage crossing; both ride the `ticket_status_changed` matrix key).
- * Recipients = the watcher set minus the actor — the requester INCLUDED ONLY
- * THROUGH their subscription row (B18: auto-subscribed at creation with reason
- * 'requester', so the portal's "Stop watching" toggle — which deletes the row —
- * also quiets this email; a later requester reply re-subscribes them).
+ * Recipients = team-member watchers plus the emailable requester, minus the
+ * actor. The requester is INCLUDED ONLY THROUGH their subscription row (B18:
+ * auto-subscribed at creation with reason 'requester', so the portal's "Stop
+ * watching" toggle, which deletes the row, also quiets this email; a later
+ * requester reply re-subscribes them).
  * `emailableRequester` below is NOT recipient sourcing: it only splits the
  * watching requester's config onto the requester-facing shape (portal CTA,
  * reply-by-email) vs the agent-facing one.
@@ -1537,11 +1611,13 @@ export async function getTicketResolvedEmailTargets(
       : null
 
   const ticketId = ticket.id as TicketId
-  const { getTicketWatchersForEvent } =
+  const { getTicketNotifiableWatchers } =
     await import('@/lib/server/domains/tickets/ticket-subscription.service')
   // B18: no unconditional requester add — the row decides (see the doc).
   const recipientIds = new Set<PrincipalId>(
-    (await getTicketWatchersForEvent(ticketId)).filter((id) => id !== event.actor.principalId)
+    (await getTicketNotifiableWatchers(ticketId, emailableRequester as PrincipalId | null)).filter(
+      (id) => id !== event.actor.principalId
+    )
   )
   if (recipientIds.size === 0) return []
 
@@ -1726,8 +1802,6 @@ export async function getChangelogSubscriberTargets(
     eq: eqOp,
   } = await import('@/lib/server/db')
   const { getChangelogSettings } = await import('@/lib/server/domains/settings/settings.changelog')
-  const { resolveSendingAddress } =
-    await import('@/lib/server/domains/channel-accounts/channel-account.service')
   const { batchGenerateChangelogUnsubscribeTokens } =
     await import('@/lib/server/domains/subscriptions/subscription.service')
 
@@ -1857,10 +1931,10 @@ export async function getChangelogSubscriberTargets(
       })()
 
   if (eligibleSubscribers.length > 0) {
-    const from = (await resolveSendingAddress(null, 'changelog')) ?? undefined
-    const tokenMap = await batchGenerateChangelogUnsubscribeTokens(
-      eligibleSubscribers.map((s) => s.principalId)
-    )
+    const [sender, tokenMap] = await Promise.all([
+      surfaceSender('changelog'),
+      batchGenerateChangelogUnsubscribeTokens(eligibleSubscribers.map((s) => s.principalId)),
+    ])
 
     // Both address fields already came back with the subscriber rows, so the
     // delivery address is decided here rather than in a second batched query.
@@ -1883,7 +1957,7 @@ export async function getChangelogSubscriberTargets(
             contentPreview: event.data.changelog.contentPreview,
             contentHtml: event.data.changelog.contentHtml,
             eventType: 'changelog.published',
-            from,
+            ...sender,
           }
         )
       )
@@ -2121,9 +2195,10 @@ export async function getStatusSubscriberTargets(
         return prefs ? shouldNotify(prefs, 'status_incident', 'email') : true
       })
       if (emailable.length > 0) {
-        const tokenMap = await batchGenerateStatusUnsubscribeTokens(
-          emailable.map((p) => p.id as PrincipalId)
-        )
+        const [tokenMap, sender] = await Promise.all([
+          batchGenerateStatusUnsubscribeTokens(emailable.map((p) => p.id as PrincipalId)),
+          surfaceSender('status'),
+        ])
         for (const p of emailable) {
           targets.push(
             emailTarget(
@@ -2146,6 +2221,7 @@ export async function getStatusSubscriberTargets(
                 scheduledEndLabel: incident.scheduledEndAt
                   ? formatStatusDate(incident.scheduledEndAt)
                   : null,
+                ...sender,
               }
             )
           )

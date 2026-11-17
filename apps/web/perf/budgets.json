@@ -89,7 +89,7 @@
       "serverRequests": 3,
       "requests": 135,
       "jsRequests": 130,
-      "jsKB": 450,
+      "jsKB": 459.2,
       "htmlTransferKB": 18,
       "componentRenders": 203
     },
@@ -116,7 +116,7 @@
       "serverRequests": 5,
       "requests": 88,
       "jsRequests": 79,
-      "jsKB": 383.8,
+      "jsKB": 391.8,
       "htmlTransferKB": 1.1,
       "componentRenders": 348
     },
@@ -280,9 +280,9 @@
     "sweep:ui:admin:/admin/analytics": {
       "dbQueries": 31,
       "serverRequests": 2,
-      "requests": 100,
+      "requests": 101,
       "jsRequests": 95,
-      "jsKB": 483.3,
+      "jsKB": 494.5,
       "htmlTransferKB": 28.3,
       "componentRenders": 330
     },
@@ -293,9 +293,9 @@
     "sweep:ui:admin:/admin/settings/agent": {
       "dbQueries": 16,
       "serverRequests": 3,
-      "requests": 130,
+      "requests": 132,
       "jsRequests": 126,
-      "jsKB": 460.4,
+      "jsKB": 469.8,
       "htmlTransferKB": 31.1,
       "componentRenders": 548
     },
@@ -306,9 +306,9 @@
     "sweep:ui:admin:/admin/settings/connectors": {
       "dbQueries": 7,
       "serverRequests": 1,
-      "requests": 108,
+      "requests": 109,
       "jsRequests": 104,
-      "jsKB": 397.3,
+      "jsKB": 406.2,
       "htmlTransferKB": 31.4,
       "componentRenders": 405
     },
@@ -319,9 +319,9 @@
     "sweep:ui:admin:/admin/settings/copilot": {
       "dbQueries": 16,
       "serverRequests": 3,
-      "requests": 127,
+      "requests": 129,
       "jsRequests": 121,
-      "jsKB": 442.0,
+      "jsKB": 450.9,
       "htmlTransferKB": 30.4,
       "componentRenders": 467
     },
@@ -332,9 +332,9 @@
     "sweep:ui:admin:/admin/settings/skills": {
       "dbQueries": 7,
       "serverRequests": 1,
-      "requests": 108,
+      "requests": 109,
       "jsRequests": 104,
-      "jsKB": 396.9,
+      "jsKB": 405.8,
       "htmlTransferKB": 30.1,
       "componentRenders": 375
     },
@@ -410,7 +410,7 @@
     "sweep:ui:admin:/admin/notifications": {
       "dbQueries": 14,
       "serverRequests": 2,
-      "requests": 96,
+      "requests": 97,
       "jsRequests": 90,
       "jsKB": 392.4,
       "htmlTransferKB": 27.2,
@@ -436,7 +436,7 @@
     "sweep:ui:admin:/admin/users?sort=newest": {
       "dbQueries": 21,
       "serverRequests": 1,
-      "requests": 130,
+      "requests": 133,
       "jsRequests": 126,
       "jsKB": 432.5,
       "htmlTransferKB": 33.4,
@@ -456,28 +456,28 @@
       "componentRenders": 348
     },
     "sweep:doc:admin:/admin/settings/boards": {
-      "dbQueries": 8,
+      "dbQueries": 9,
       "htmlKB": 74.5
     },
     "sweep:ui:admin:/admin/settings/boards": {
-      "dbQueries": 8,
+      "dbQueries": 9,
       "serverRequests": 1,
-      "requests": 122,
+      "requests": 123,
       "jsRequests": 117,
       "jsKB": 426,
       "htmlTransferKB": 30.8,
       "componentRenders": 426
     },
     "sweep:doc:admin:/admin/settings/changelog": {
-      "dbQueries": 8,
-      "htmlKB": 77.2
+      "dbQueries": 13,
+      "htmlKB": 78.5
     },
     "sweep:ui:admin:/admin/settings/changelog": {
-      "dbQueries": 8,
+      "dbQueries": 13,
       "serverRequests": 1,
       "requests": 124,
       "jsRequests": 119,
-      "jsKB": 424.3,
+      "jsKB": 432.6,
       "htmlTransferKB": 31.9,
       "componentRenders": 399
     },
@@ -490,20 +490,20 @@
       "serverRequests": 1,
       "requests": 111,
       "jsRequests": 106,
-      "jsKB": 394.2,
+      "jsKB": 403.3,
       "htmlTransferKB": 31.6,
       "componentRenders": 414
     },
     "sweep:doc:admin:/admin/settings/channels/email": {
-      "dbQueries": 12,
-      "htmlKB": 90.5
+      "dbQueries": 13,
+      "htmlKB": 95.2
     },
     "sweep:ui:admin:/admin/settings/channels/email": {
-      "dbQueries": 12,
+      "dbQueries": 13,
       "serverRequests": 1,
-      "requests": 128,
-      "jsRequests": 124,
-      "jsKB": 431.5,
+      "requests": 134,
+      "jsRequests": 127,
+      "jsKB": 440.7,
       "htmlTransferKB": 32.5,
       "componentRenders": 464
     },
@@ -516,7 +516,7 @@
       "serverRequests": 1,
       "requests": 118,
       "jsRequests": 113,
-      "jsKB": 404.6,
+      "jsKB": 412.8,
       "htmlTransferKB": 30.0,
       "componentRenders": 355
     },
@@ -542,7 +542,7 @@
       "serverRequests": 1,
       "requests": 124,
       "jsRequests": 119,
-      "jsKB": 416.3,
+      "jsKB": 425.5,
       "htmlTransferKB": 30.6,
       "componentRenders": 416
     },
@@ -555,7 +555,7 @@
       "serverRequests": 1,
       "requests": 125,
       "jsRequests": 120,
-      "jsKB": 420.4,
+      "jsKB": 429.2,
       "htmlTransferKB": 32.6,
       "componentRenders": 423
     },
@@ -573,17 +573,37 @@
       "componentRenders": 431
     },
     "sweep:doc:admin:/admin/settings/domains": {
-      "dbQueries": 11,
-      "htmlKB": 67.9
+      "dbQueries": 16,
+      "htmlKB": 73.0
     },
     "sweep:ui:admin:/admin/settings/domains": {
-      "dbQueries": 11,
+      "dbQueries": 16,
       "serverRequests": 1,
-      "requests": 107,
-      "jsRequests": 103,
+      "requests": 111,
+      "jsRequests": 104,
       "jsKB": 404.2,
       "htmlTransferKB": 29.7,
       "componentRenders": 346
+    },
+    "sweep:doc:admin:/admin/settings/domains/acme.com": {
+      "dbQueries": 29
+    },
+    "sweep:ui:admin:/admin/settings/domains/acme.com": {
+      "dbQueries": 29,
+      "jsKB": 431.4
+    },
+    "sweep:doc:admin:/admin/settings/email": {
+      "dbQueries": 13,
+      "htmlKB": 95.2
+    },
+    "sweep:ui:admin:/admin/settings/email": {
+      "dbQueries": 13,
+      "serverRequests": 1,
+      "requests": 128,
+      "jsRequests": 124,
+      "jsKB": 431.5,
+      "htmlTransferKB": 32.5,
+      "componentRenders": 464
     },
     "sweep:doc:admin:/admin/settings/general": {
       "dbQueries": 8,
@@ -605,7 +625,7 @@
     "sweep:ui:admin:/admin/settings/help-center": {
       "dbQueries": 6,
       "serverRequests": 1,
-      "requests": 123,
+      "requests": 126,
       "jsRequests": 119,
       "jsKB": 430.8,
       "htmlTransferKB": 30.8,
@@ -620,7 +640,7 @@
       "serverRequests": 1,
       "requests": 112,
       "jsRequests": 107,
-      "jsKB": 408.5,
+      "jsKB": 417.1,
       "htmlTransferKB": 32,
       "componentRenders": 397
     },
@@ -659,7 +679,7 @@
       "serverRequests": 1,
       "requests": 133,
       "jsRequests": 129,
-      "jsKB": 425.9,
+      "jsKB": 435.6,
       "htmlTransferKB": 30.5,
       "componentRenders": 404
     },
@@ -685,7 +705,7 @@
       "serverRequests": 1,
       "requests": 111,
       "jsRequests": 106,
-      "jsKB": 405.7,
+      "jsKB": 414.8,
       "htmlTransferKB": 32.1,
       "componentRenders": 415
     },
@@ -698,7 +718,7 @@
       "serverRequests": 1,
       "requests": 106,
       "jsRequests": 101,
-      "jsKB": 392.1,
+      "jsKB": 401.1,
       "htmlTransferKB": 30.8,
       "componentRenders": 403
     },
@@ -724,7 +744,7 @@
       "serverRequests": 1,
       "requests": 114,
       "jsRequests": 109,
-      "jsKB": 415.8,
+      "jsKB": 424.6,
       "htmlTransferKB": 30.5,
       "componentRenders": 395
     },
@@ -737,7 +757,7 @@
       "serverRequests": 1,
       "requests": 125,
       "jsRequests": 120,
-      "jsKB": 417.2,
+      "jsKB": 426.4,
       "htmlTransferKB": 30.4,
       "componentRenders": 409
     },
@@ -776,7 +796,7 @@
       "serverRequests": 1,
       "requests": 120,
       "jsRequests": 115,
-      "jsKB": 418.8,
+      "jsKB": 428.4,
       "htmlTransferKB": 32.2,
       "componentRenders": 416
     },
@@ -802,7 +822,7 @@
       "serverRequests": 1,
       "requests": 117,
       "jsRequests": 112,
-      "jsKB": 423.5,
+      "jsKB": 432.6,
       "htmlTransferKB": 31.6,
       "componentRenders": 569
     },
@@ -828,7 +848,7 @@
       "serverRequests": 1,
       "requests": 115,
       "jsRequests": 110,
-      "jsKB": 421.2,
+      "jsKB": 430.2,
       "htmlTransferKB": 32.4,
       "componentRenders": 626
     },
@@ -880,7 +900,7 @@
       "serverRequests": 4,
       "requests": 106,
       "jsRequests": 99,
-      "jsKB": 392.8,
+      "jsKB": 401.9,
       "htmlTransferKB": 18.3,
       "componentRenders": 771
     },
@@ -906,7 +926,7 @@
       "serverRequests": 3,
       "requests": 102,
       "jsRequests": 96,
-      "jsKB": 432.9,
+      "jsKB": 441.6,
       "htmlTransferKB": 17.6,
       "componentRenders": 173
     },
@@ -919,7 +939,7 @@
       "serverRequests": 2,
       "requests": 85,
       "jsRequests": 80,
-      "jsKB": 361.8,
+      "jsKB": 370.3,
       "htmlTransferKB": 15.9,
       "componentRenders": 152
     },
@@ -984,7 +1004,7 @@
       "serverRequests": 3,
       "requests": 86,
       "jsRequests": 80,
-      "jsKB": 361.8,
+      "jsKB": 370.3,
       "htmlTransferKB": 16.4,
       "componentRenders": 240
     },

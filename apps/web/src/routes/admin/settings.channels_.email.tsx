@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { PERMISSIONS } from '@/lib/shared/permissions'
+import { EMAIL_SENDING_PERMISSION } from '@/lib/shared/email-sending-permissions'
 import { assertRoutePermission } from '@/lib/shared/route-permission'
 import { isProductEnabled } from '@/lib/shared/types/settings'
 import { settingsQueries } from '@/lib/client/queries/settings'
@@ -12,7 +13,12 @@ export const Route = createFileRoute('/admin/settings/channels_/email')({
   head: adminPageHead('Email channel settings'),
   beforeLoad: ({ context }) => {
     if (!isProductEnabled(context.settings?.featureFlags, 'support')) {
-      throw redirect({ to: '/admin/settings/general' })
+      // Sending addresses used to live here, and old links still point here.
+      throw redirect({
+        to: context.permissions?.includes(EMAIL_SENDING_PERMISSION)
+          ? '/admin/settings/email'
+          : '/admin/settings/general',
+      })
     }
   },
   loader: async ({ context }) => {
@@ -23,14 +29,10 @@ export const Route = createFileRoute('/admin/settings/channels_/email')({
       import('@/lib/client/queries/channel-accounts'),
     ])
     // Every card's read is warmed with the page so it renders complete from
-    // the document. A miss leaves a card to its own fetch, as before; the
-    // transport card's read needs settings.manage, which this page does not.
+    // the document. A miss leaves a card to its own fetch, as before.
     const ensure = readBatch(queryClient)
     await Promise.all([
       ensure(settingsQueries.spamFilterConfig()),
-      permissions?.includes(PERMISSIONS.SETTINGS_MANAGE)
-        ? warmQuery(ensure, channels.emailStatus())
-        : undefined,
       warmQuery(ensure, emailChannelConfigQuery()),
       warmQuery(ensure, channels.emailAutoAck()),
       warmQuery(ensure, channels.emailActivity()),

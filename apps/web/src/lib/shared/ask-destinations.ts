@@ -78,10 +78,21 @@ const KEYWORDS: Record<string, string[]> = {
   '/admin/settings/widget/install': ['install', 'snippet', 'website', 'embed'],
   '/admin/settings/portal': ['branding', 'logo', 'color', 'theme', 'header'],
   '/admin/settings/general': ['modules', 'workspace', 'name'],
+  '/admin/settings/email': ['sender', 'from address', 'sending domain', 'dkim', 'reply address'],
 }
 
-function destination(href: string, label: string): AskDestination {
+/**
+ * A name of its own in the palette, where a page's nav label would repeat
+ * another's. A channel is called by its bare name beside its sibling channels,
+ * but in a flat list "Email" is also the workspace's sending settings.
+ */
+const PALETTE_LABELS: Record<string, string> = {
+  '/admin/settings/channels/email': 'Support email',
+}
+
+function destination(href: string, navLabel: string): AskDestination {
   const id = href.replace(/^\/admin\/?/, '').replaceAll('/', '_') || 'home'
+  const label = PALETTE_LABELS[href] ?? navLabel
   return {
     id,
     href,

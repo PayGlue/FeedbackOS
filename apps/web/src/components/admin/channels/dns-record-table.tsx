@@ -2,7 +2,8 @@
  * A sending domain's records in the shared record table, with what our last
  * lookup found for each.
  *
- * Names are relative to the domain, since most DNS hosts append it.
+ * Names are relative to the zone the domain sits in, since most DNS hosts
+ * append it: the domain itself, or the parent that holds a subdomain.
  */
 import {
   DnsRecordTable,
@@ -10,7 +11,16 @@ import {
   type DnsRecordState,
 } from '@/components/shared/dns-record-table'
 import type { DnsRecordDTO, SendingDomainDTO } from '@/lib/server/functions/channel-accounts'
-import { recordLabel, recordTypeLabel, signingMode, type DomainPhase } from './sending-domain-view'
+import {
+  ownershipWarning,
+  provesOwnership,
+  recordLabel,
+  recordName,
+  recordTypeLabel,
+  signingMode,
+  zoneOf,
+  type DomainPhase,
+} from './sending-domain-view'
 
 /** A record's state and, when it needs fixing, the one sentence that says how. */
 export function recordStatus(
@@ -70,11 +80,15 @@ export function SendingRecordTable({
   return (
     <DnsRecordTable
       records={domain.dnsRecords.map((r): DnsRecordRow => {
-        const status = recordStatus(r, { domain: domain.domain, phase })
+        // The doubled-name fix names what the form appended, which is the zone.
+        const status = recordStatus(r, { domain: zoneOf(domain), phase })
+        // A live domain's missing ownership record says when it has to be back by.
+        const warning = provesOwnership(domain, r) ? ownershipWarning(domain) : null
+        if (warning && status.state === 'problem') status.fix = warning
         return {
           label: recordLabel(r, signingMode(domain)),
           type: recordTypeLabel(r),
-          name: r.host,
+          name: recordName(r, domain),
           value: r.value,
           state: status.state,
           problem: status.fix,

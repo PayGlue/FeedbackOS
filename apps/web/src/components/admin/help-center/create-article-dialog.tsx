@@ -27,6 +27,7 @@ import {
 } from './help-center-metadata-sidebar'
 import type { JSONContent } from '@tiptap/react'
 import type { EditorDocument } from '@/components/ui/rich-text-editor'
+import { errorText } from '@/lib/client/error-text'
 
 interface CreateArticleDialogProps {
   /** Controlled open state. When provided, the built-in trigger button is hidden. */
@@ -109,7 +110,7 @@ export function CreateArticleDialog({
           articleId = (await createArticleMutation.mutateAsync(content)).id
         }
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : String(error))
+        setSaveError(errorText(error, "Couldn't save article"))
         return
       }
       try {
@@ -187,7 +188,7 @@ export function CreateArticleDialog({
 
             <ModalFooter
               onCancel={() => handleOpenChange(false)}
-              submitLabel={isPending ? 'Saving...' : canPublish ? 'Publish' : 'Save draft'}
+              submitLabel={isPending ? 'Saving…' : canPublish ? 'Publish' : 'Save draft'}
               isPending={isPending}
               {...(canPublish ? { submitType: 'button' as const, onSubmit: handlePublish } : {})}
             >

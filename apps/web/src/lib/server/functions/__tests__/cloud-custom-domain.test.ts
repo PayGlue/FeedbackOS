@@ -1,6 +1,6 @@
 /**
  * The web address server functions: when a proven zone travels with a
- * hostname to the operator, and when the page is told a hostname is covered.
+ * hostname to the operator, and when the page is told the operator accepted it.
  *
  * `createServerFn` is mocked so each `.handler()` is captured in export order.
  * The operator double records every request it is sent, and the proof double
@@ -40,6 +40,10 @@ const h = vi.hoisted(() => ({
   sent: [] as unknown[],
   instructions: [] as unknown[],
   proofReads: 0,
+  ensured: [] as string[],
+  added: [] as string[],
+  operatorFails: false,
+  ensureFails: false,
 }))
 
 vi.mock('@/lib/server/db', () => ({
@@ -69,6 +73,7 @@ vi.mock('../auth-helpers', () => ({
 }))
 vi.mock('@/lib/server/control-plane/client', () => ({
   requestWorkspaceIdentityMutation: async (input: unknown) => {
+    if (h.operatorFails) throw new Error('operator refused')
     h.sent.push(input)
     return { projectionToken: 'signed' }
   },
@@ -88,6 +93,15 @@ vi.mock('@/lib/server/domains/domain-proof/hostname-proof', () => ({
   },
 }))
 
+vi.mock('@/lib/server/domains/domain-proof/domains.service', () => ({
+  listDomains: async () => h.added.map((name) => ({ name })),
+  ensureDomain: async (name: string) => {
+    if (h.ensureFails) throw new Error('domains table unavailable')
+    h.ensured.push(name)
+    return null
+  },
+}))
+
 await import('../cloud-identity')
 const getCustomDomains = handlers[2]!
 const mutateCustomDomain = handlers[4]!
@@ -99,6 +113,10 @@ beforeEach(() => {
   h.sent.length = 0
   h.instructions = []
   h.proofReads = 0
+  h.ensured.length = 0
+  h.added = []
+  h.operatorFails = false
+  h.ensureFails = false
 })
 afterEach(() => {
   delete process.env[FLAG]
@@ -143,6 +161,35 @@ describe('mutateCloudCustomDomainFn', () => {
   })
 })
 
+describe('mutateCloudCustomDomainFn and Settings > Domains', () => {
+  it('puts an added hostname on Settings > Domains in the same step', async () => {
+    await mutate('add', 'feedback.acme.com')
+    expect(h.ensured).toEqual(['feedback.acme.com'])
+  })
+
+  it('adds no second domain for a hostname under a domain already added', async () => {
+    h.added = ['acme.com']
+    await mutate('add', 'feedback.acme.com')
+    expect(h.ensured).toEqual([])
+  })
+
+  it('still reports the add as done when putting it on Settings > Domains fails', async () => {
+    h.ensureFails = true
+    await expect(mutate('add', 'feedback.acme.com')).resolves.toMatchObject({
+      projection: { canonicalOrigin: 'https://acme.example.com' },
+    })
+  })
+
+  it('adds no domain for any other action, or when the operator refuses the add', async () => {
+    await mutate('refresh', 'feedback.acme.com')
+    await mutate('makePrimary', 'feedback.acme.com')
+    await mutate('remove', 'feedback.acme.com')
+    h.operatorFails = true
+    await expect(mutate('add', 'feedback.acme.com')).rejects.toThrow('operator refused')
+    expect(h.ensured).toEqual([])
+  })
+})
+
 describe('getCloudCustomDomainsFn', () => {
   const pending = (hostname: string, extra: Record<string, unknown> = {}) => ({
     hostname,
@@ -155,26 +202,29 @@ describe('getCloudCustomDomainsFn', () => {
     ...extra,
   })
 
-  it('marks a covered hostname with its source, named only to who may see it', async () => {
+  it('marks a hostname proven only when the operator accepted the proof', async () => {
     process.env[FLAG] = 'true'
-    h.instructions = [pending('feedback.acme.com'), pending('feedback.example.com')]
+    // feedback.acme.com sits under a zone this workspace proved, but the
+    // operator has not accepted that proof yet.
+    h.instructions = [
+      pending('feedback.acme.com'),
+      pending('help.acme.com', {
+        ownershipProof: null,
+        ownership: 'proven-zone',
+        ownershipSource: 'email-sending',
+      }),
+    ]
 
-    h.permissions = [PERMISSIONS.SETTINGS_CUSTOM_DOMAIN, PERMISSIONS.CHANNEL_ACCOUNT_MANAGE]
+    h.permissions = [PERMISSIONS.SETTINGS_CUSTOM_DOMAIN, PERMISSIONS.SETTINGS_MANAGE]
     const named = (await getCustomDomains({})) as { hostname: string; provenBy: unknown }[]
     expect(named.map((d) => [d.hostname, d.provenBy])).toEqual([
-      ['feedback.acme.com', 'email-sending'],
-      ['feedback.example.com', null],
+      ['feedback.acme.com', null],
+      ['help.acme.com', 'email-sending'],
     ])
 
     h.permissions = [PERMISSIONS.SETTINGS_CUSTOM_DOMAIN]
     const generic = (await getCustomDomains({})) as { hostname: string; provenBy: unknown }[]
-    expect(generic.map((d) => d.provenBy)).toEqual(['workspace', null])
-  })
-
-  it('marks nothing from its own read while the operator does not accept proofs', async () => {
-    h.instructions = [pending('feedback.acme.com')]
-    const rows = (await getCustomDomains({})) as { provenBy: unknown }[]
-    expect(rows.map((d) => d.provenBy)).toEqual([null])
+    expect(generic.map((d) => d.provenBy)).toEqual([null, 'workspace'])
     expect(h.proofReads).toBe(0)
   })
 

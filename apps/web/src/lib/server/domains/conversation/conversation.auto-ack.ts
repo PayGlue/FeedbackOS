@@ -74,8 +74,10 @@ export async function maybeSendColdInboundAck(opts: {
       await import('./conversation.email-channel')
     const { currentMailSlug } = await import('./conversation.mail-slug')
     const { typedAddressRecipient } = await import('@/lib/server/email/recipient')
-    const { recordOutboundEmail } = await import('./conversation.email-store')
+    const { recordSent } = await import('./conversation.email-envelope')
     const { requireSettings } = await import('@/lib/server/domains/settings/settings.helpers')
+    const { senderFrom, resolveConversationSender } =
+      await import('@/lib/server/domains/channel-accounts/sender-resolver')
     const org = await requireSettings()
     const workspaceName = org.name ?? 'Support'
     const to = typedAddressRecipient(sender)
@@ -83,18 +85,24 @@ export async function maybeSendColdInboundAck(opts: {
     const replyTo = inboundReplyToAddress(opts.conversationId, currentMailSlug())
     const inboundId = opts.parsed.messageId
     const minted = mintOutboundMessageId(opts.conversationId) ?? undefined
+    // Usually the thread's first outbound email, so this is also the call that
+    // fixes the address every later reply on it sends from. Automated mail
+    // speaks as the address's sender name (else the workspace), not as any one
+    // teammate.
+    const resolved = await resolveConversationSender(opts.conversationId)
+    const from = senderFrom(resolved, workspaceName)
     const result = await sendConversationAutoAckEmail({
       to,
       workspaceName,
       conversationSubject: opts.conversationSubject,
       replyTo: replyTo ?? undefined,
+      from,
       messageId: minted,
       inReplyTo: inboundId ?? undefined,
       references: inboundId ? [inboundId] : undefined,
       conversationId: opts.conversationId,
     })
-    const outboundId = result.messageId === undefined ? minted : (result.messageId ?? undefined)
-    if (outboundId) await recordOutboundEmail(outboundId, opts.conversationId)
+    await recordSent(opts.conversationId, minted, result)
     return 'sent'
   } catch (err) {
     log.warn({ err }, 'auto-ack send failed')

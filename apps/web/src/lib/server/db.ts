@@ -259,6 +259,10 @@ export {
   channelThreads,
   emailSendingDomains,
   emailSesTenants,
+  emailSenders,
+  // Schema tables - domains added by name (Settings > Domains)
+  domains,
+  EMAIL_SENDER_SURFACES,
   // Schema tables - office hours + SLA (support platform §4.6)
   officeHoursSchedules,
   slaPolicies,
@@ -528,6 +532,13 @@ export {
   notTestTicket,
 } from '@quackback/db'
 
+// Background index list and builder, for the deferred-index-build job.
+export {
+  DEFERRED_INDEX_SPECS,
+  ensureConcurrentIndexes,
+  type ConcurrentIndexSpec,
+} from '@quackback/db/schema-ops'
+
 // Re-export schema types not covered by @quackback/db/types
 export type {
   AssistantInvolvementSource,
@@ -545,6 +556,7 @@ export type {
   MacroAction,
 } from '@quackback/db'
 export type { ServiceMetadata } from '@quackback/db'
+export type { Domain, DomainStatus } from '@quackback/db'
 export type { FileRecord, NewFileRecord } from '@quackback/db'
 export type { IdentityProviderClaimMapping, ClaimRoleMapping } from '@quackback/db'
 export type { PermissionKey, PermissionCategory, SystemRoleKey } from '@quackback/db'
@@ -552,6 +564,9 @@ export type {
   ChannelAccount,
   EmailSendingDomain,
   EmailSesTenant,
+  EmailSender,
+  EmailSenderSurface,
+  EmailSenderMode,
   ChannelAccountConfig,
   SendingDomainDnsRecord,
   SendingDomainOwnershipRecord,

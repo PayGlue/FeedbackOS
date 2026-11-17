@@ -13,7 +13,7 @@ import {
   sendTicketEventEmail,
   sendNoteMentionEmail,
 } from '@quackback/email'
-import type { EmailResult, IncidentImpact } from '@quackback/email'
+import type { EmailResult, IncidentImpact, SendingIdentity } from '@quackback/email'
 import type { TicketId } from '@quackback/ids'
 import type {
   HookHandler,
@@ -116,6 +116,29 @@ function noteMentionThreading(cfg: NoteMentionEmailConfig): {
 
 const log = logger.child({ component: 'email' })
 
+/**
+ * The From and display name a send goes out with, re-asked HERE rather than
+ * trusted from the payload. The target builder resolved the address when the
+ * event was enqueued, and this send happens after the queue, which may be
+ * minutes later and is certainly after a re-check could have demoted the
+ * domain. Sending is the moment the claim is made, so it is the moment the
+ * claim is checked; the enqueue-time resolution stays because it decides WHICH
+ * address to try, and this decides whether it may be used.
+ *
+ * The address's sender name goes with the address. Mail that falls back to the
+ * platform address carries no name from here: the email package names it for
+ * the `workspaceName` every sender is already given.
+ */
+async function checkedSender(cfg: {
+  from?: string
+  fromDisplayName?: string
+  workspaceName: string
+}): Promise<{ from: SendingIdentity | undefined; fromDisplayName: string | undefined }> {
+  // No From asked for: nothing to check.
+  const from = cfg.from ? ((await permittedSendingIdentity(cfg.from)) ?? undefined) : undefined
+  return { from, fromDisplayName: from ? (cfg.fromDisplayName ?? cfg.workspaceName) : undefined }
+}
+
 const BROADCAST_EMAIL_EVENTS = new Set([
   'changelog.published',
   'status.incident_created',
@@ -157,6 +180,9 @@ async function deliverEmail(
       }
     }
 
+    // The From the config asks for, once the send guard permits it; nothing
+    // when it asks for none.
+    const sender = await checkedSender(cfg)
     let result: EmailResult
 
     if (event.type === 'post.status_changed') {
@@ -170,6 +196,7 @@ async function deliverEmail(
         unsubscribeUrl,
         preferencesUrl: cfg.preferencesUrl,
         logoUrl: cfg.logoUrl,
+        ...sender,
       })
     } else if (event.type === 'comment.created') {
       result = await sendNewCommentEmail({
@@ -183,12 +210,16 @@ async function deliverEmail(
         unsubscribeUrl,
         preferencesUrl: cfg.preferencesUrl,
         logoUrl: cfg.logoUrl,
+        ...sender,
       })
     } else if (event.type === 'post.mentioned') {
       const data = event.data as EventPostMentionedData
       result = await sendPostMentionEmail({
         to: email,
-        mentionerName: event.actor.displayName ?? '',
+        mentionerName:
+          cfg.mentionerName?.trim() ||
+          (event.actor.type === 'user' ? event.actor.displayName?.trim() : undefined) ||
+          '',
         postTitle: data.postTitle,
         excerpt: data.excerpt,
         postUrl: data.postUrl,
@@ -196,6 +227,7 @@ async function deliverEmail(
         unsubscribeUrl,
         preferencesUrl: cfg.preferencesUrl,
         logoUrl: cfg.logoUrl,
+        ...sender,
       })
     } else if (event.type === 'conversation.note_mentioned') {
       const c = config as unknown as NoteMentionEmailConfig
@@ -221,9 +253,7 @@ async function deliverEmail(
         unsubscribeUrl,
         preferencesUrl: cfg.preferencesUrl,
         logoUrl: cfg.logoUrl,
-        from:
-          (await permittedSendingIdentity((changelogCfg.from as string | undefined) ?? null)) ??
-          undefined,
+        ...sender,
       })
     } else if (event.type === 'status.incident_created') {
       const c = config as Record<string, unknown>
@@ -239,6 +269,7 @@ async function deliverEmail(
         unsubscribeUrl: unsubscribeUrl ?? '',
         preferencesUrl: cfg.preferencesUrl,
         logoUrl: cfg.logoUrl,
+        ...sender,
       })
     } else if (event.type === 'status.maintenance_scheduled') {
       const c = config as Record<string, unknown>
@@ -256,6 +287,7 @@ async function deliverEmail(
         unsubscribeUrl: unsubscribeUrl ?? '',
         preferencesUrl: cfg.preferencesUrl,
         logoUrl: cfg.logoUrl,
+        ...sender,
       })
     } else if (TICKET_EMAIL_EVENT_TYPES.has(event.type)) {
       // All six ticket/SLA event types map onto sendTicketEventEmail; the
@@ -268,14 +300,10 @@ async function deliverEmail(
       result = await sendTicketEventEmail({
         to: email,
         ...t,
-        // Re-asked HERE rather than trusted from the payload. The target
-        // builder resolved this address when the event was enqueued, and this
-        // send happens after the queue, which may be minutes later and is
-        // certainly after a re-check could have demoted the domain. Sending
-        // is the moment the claim is made, so it is the moment the claim is
-        // checked; the enqueue-time resolution stays because it decides
-        // WHICH address to try, and this decides whether it may be used.
-        from: (await permittedSendingIdentity(t.from ?? null)) ?? undefined,
+        // Agent-facing ticket mail carries no From, so no name either: it goes
+        // from the platform address, which the email package names for
+        // `workspaceName`.
+        ...sender,
         ...ticketThreading(t),
       })
     } else {
