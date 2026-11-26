@@ -44,7 +44,9 @@ import {
 // Key and teammate scripts start the app's modules (about a second each).
 test.describe.configure({ timeout: 60_000 })
 
+// FeedbackOS: entries carry their labels (categories) as well.
 const ENTRY_KEYS = [
+  'categories',
   'content',
   'createdAt',
   'displayDate',

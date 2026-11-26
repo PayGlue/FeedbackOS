@@ -57,6 +57,7 @@ import {
   waitForMailMatching,
 } from '../../support/email-journeys'
 import { testEmailAlias } from '../../../src/lib/server/domains/conversation/conversation.email-channel'
+import { addressOf } from '../../support/fork'
 
 const DMARC_PASS = 'mx.inbound.test; dmarc=pass header.from=customers.example'
 const DMARC_QUARANTINE = 'mx.inbound.test; dmarc=fail (p=quarantine dis=none) header.from=x'
@@ -724,7 +725,7 @@ test.describe('replies to an existing conversation', () => {
 
       const mail = await waitForMailMatching({ to: customerEmail, body: replyText })
       const headers = await getMailHeaders(mail.ID)
-      const replyTo = header(headers, 'Reply-To')
+      const replyTo = addressOf(header(headers, 'Reply-To'))
       expect(replyTo).toBe(conversationReplyAddress(cold.id))
 
       const reply = await deliver(request, {
@@ -1202,7 +1203,7 @@ test.describe('auto-acknowledgement', () => {
       const cold = await coldConversation(request, customerEmail, marker, { subject })
       const ack = await waitForMailMatching({ to: customerEmail, subject })
       const headers = await getMailHeaders(ack.ID)
-      expect(header(headers, 'Reply-To')).toBe(conversationReplyAddress(cold.id))
+      expect(addressOf(header(headers, 'Reply-To'))).toBe(conversationReplyAddress(cold.id))
       expect(header(headers, 'In-Reply-To')).toBe(cold.messageId)
       expect(header(headers, 'References')).toContain(cold.messageId)
       const ackId = header(headers, 'Message-ID')!

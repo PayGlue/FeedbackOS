@@ -543,6 +543,10 @@ test(
         await fn(fp.voter.api, 'createCommentFn', { postId: fp.postId, content: `${marker} c${n}` })
       }
       await waitForBells(watcher.principalId, fp.postId, (r) => r.length === 3)
+      // FeedbackOS: the customer's new post also rang the team's "New feedback"
+      // bell; this test is about the comment bells only.
+      await supportDb()`DELETE FROM in_app_notifications
+        WHERE principal_id = ${uuid(watcher.principalId)} AND type = 'post_submitted'`
 
       const page = await watcher.newPage(browser)
       await page.goto('/admin/notifications')
@@ -958,11 +962,17 @@ test(
         expect.arrayContaining(['post.created', 'post.voted'])
       )
       for (const id of [post.id, teamPost.id]) {
+        // FeedbackOS: a customer's new post rings the team's "New feedback"
+        // bell and mail by design; nothing else may reach a teammate.
         const bells = await supportDb()`SELECT principal_id FROM in_app_notifications
-          WHERE post_id = ${uuid(id)}`
+          WHERE post_id = ${uuid(id)} AND type <> 'post_submitted'`
         expect(bells).toEqual([])
       }
-      expect(await emailLogFor(owner.email)).toEqual([])
+      expect(
+        (await emailLogFor(owner.email)).filter(
+          (row) => !/^(Approve new feedback|New feedback): /.test(row.subject ?? '')
+        )
+      ).toEqual([])
     } finally {
       await author.close()
       await voter.close()

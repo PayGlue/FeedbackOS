@@ -59,6 +59,7 @@ import {
   waitForVisitorPresence,
 } from '../../support/email-journeys'
 import { conversationIdFromInboundAddress } from '../../../src/lib/server/domains/conversation/conversation.email-channel'
+import { addressOf } from '../../support/fork'
 
 const WORKSPACE = 'Acme Corp'
 const ADMIN_NAME = 'Ada Admin'
@@ -146,7 +147,9 @@ test.describe('agent replies by email', () => {
       const cta = linksIn(mail).find((href) => href.includes(conversationTypeId(row.id)))
       expect(cta).toBe(`${supportEnv().baseUrl}/support/${conversationTypeId(row.id)}`)
       const headers = await getMailHeaders(mail.ID)
-      expect(header(headers, 'Reply-To')).toBe(conversationReplyAddress(conversationTypeId(row.id)))
+      expect(addressOf(header(headers, 'Reply-To'))).toBe(
+        conversationReplyAddress(conversationTypeId(row.id))
+      )
 
       // The customer's row: a teammate alert on the same thread shares the type.
       const log = await pollFor('the email_log row', async () => {
@@ -379,7 +382,7 @@ test.describe('agent replies by email', () => {
       const expected = conversationReplyAddress(thread.id)
       expect(expected).toMatch(/^reply\+c[a-z0-9]{26}\.[A-Za-z0-9_-]{22}@inbound\.test$/)
       for (const mail of [ack, reply, close]) {
-        const replyTo = header(await getMailHeaders(mail.ID), 'Reply-To')
+        const replyTo = addressOf(header(await getMailHeaders(mail.ID), 'Reply-To'))
         expect(replyTo, mail.Subject).toBe(expected)
         expect(conversationIdFromInboundAddress(replyTo!, supportEnv().app)).toBe(thread.id)
       }
@@ -602,7 +605,7 @@ test.describe('agent replies by email', () => {
       for (const guest of guests) {
         const mail = await waitForMailMatching({ to: guest, body: reply })
         expect(mail.Subject).toBe(primary.Subject)
-        expect(header(await getMailHeaders(mail.ID), 'Reply-To')).toBe(expectedReplyTo)
+        expect(addressOf(header(await getMailHeaders(mail.ID), 'Reply-To'))).toBe(expectedReplyTo)
         expect(await mailsMatching({ to: guest, body: reply })).toHaveLength(1)
       }
       expect(await mailsMatching({ to: customerEmail, body: reply })).toHaveLength(1)
@@ -799,7 +802,7 @@ test.describe('ticket emails to the requester', () => {
       )
       expect(linksIn(mail)).toContain(`${supportEnv().baseUrl}/settings/preferences`)
       const headers = await getMailHeaders(mail.ID)
-      expect(header(headers, 'Reply-To')).toBe(ticketReplyAddress(ticket.id))
+      expect(addressOf(header(headers, 'Reply-To'))).toBe(ticketReplyAddress(ticket.id))
       expect(header(headers, 'Message-ID')).toMatch(/^<ticket-[a-z0-9]+@acme\.test>$/)
       expect(header(headers, 'In-Reply-To')).toBeUndefined()
 
@@ -865,7 +868,7 @@ test.describe('ticket emails to the requester', () => {
       expect(text).toContain('View conversation')
       expect(linksIn(mail)).toContain(`${supportEnv().baseUrl}/support/${conversationId}`)
       const headers = await getMailHeaders(mail.ID)
-      expect(header(headers, 'Reply-To')).toBe(conversationReplyAddress(conversationId))
+      expect(addressOf(header(headers, 'Reply-To'))).toBe(conversationReplyAddress(conversationId))
 
       // A watching teammate still gets the ticket reply email, threaded on the ticket.
       const watcherMail = await waitForMailMatching({
@@ -1157,7 +1160,7 @@ test.describe('auto-acknowledgement mail', () => {
       expect(header(headers, 'Precedence')).toBe('auto_reply')
       expect(header(headers, 'In-Reply-To')).toBe(first.messageId)
       expect(header(headers, 'References')).toBe(first.messageId)
-      expect(header(headers, 'Reply-To')).toBe(conversationReplyAddress(first.id))
+      expect(addressOf(header(headers, 'Reply-To'))).toBe(conversationReplyAddress(first.id))
 
       // At most two acks per sender per hour: the third thread gets none.
       await coldThread(request, customerEmail, `${marker}-2`, `Second ${marker}`)
