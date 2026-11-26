@@ -33,7 +33,7 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 **Help center on a custom domain**
 
 - Paths from a previous documentation site are redirected into the help center
-  (`/` to `/hc`, `/<category>` to the category, `/<category>/<article>` to
+  (`/index` to the help center home, `/<category>` to the category, `/<category>/<article>` to
   `/hc/...`).
 - A category URL whose category was merged or deleted falls back to the
   configured redirect rules instead of a 404.
