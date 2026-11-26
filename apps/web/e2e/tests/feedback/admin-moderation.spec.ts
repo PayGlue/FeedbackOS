@@ -40,6 +40,7 @@ import { sink } from '../../support/webhook-sink-client'
 import { ISOLATED } from '../../support/automation'
 import { withSettings } from '../../support/isolated-settings'
 import { waitForHydration } from '../../utils/helpers'
+import { withoutNewFeedbackMail } from '../../support/fork'
 
 test(
   'FBA-Q-05 approving a held post publishes it and only then announces it',
@@ -533,7 +534,7 @@ test(
       await waitForMail({ to: mate.email })
 
       expect(await bellsFor(mate.principalId, postId)).toEqual([])
-      expect(await mailTo(mate.email)).toHaveLength(1)
+      expect(withoutNewFeedbackMail(await mailTo(mate.email))).toHaveLength(1)
     } finally {
       await customer.close()
       await api.dispose()

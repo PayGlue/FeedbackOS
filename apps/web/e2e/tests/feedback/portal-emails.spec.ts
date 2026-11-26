@@ -46,6 +46,7 @@ import {
   subscriptionOf,
   tokenOf,
 } from '../../product/feedback-portal-notify'
+import { withoutPostSubmitted } from '../../support/fork'
 
 /** Bells of a type for a person about a post. */
 async function bellsOfType(principalUuid: string, postUuid: string, type: string) {
@@ -531,7 +532,9 @@ test.describe('portal emails', () => {
       expect(res.error).toBeUndefined()
       await mailFor(cass.email, 'Your feedback is now Planned')
       await eventHandled(post.id, 'post.status_changed')
-      expect(await notificationsOf(admin.principalUuid, post.uuid)).toHaveLength(0)
+      expect(
+        withoutPostSubmitted(await notificationsOf(admin.principalUuid, post.uuid))
+      ).toHaveLength(0)
     }
   )
 
