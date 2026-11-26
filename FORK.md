@@ -19,7 +19,6 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 - Emails use the PayGlue look: logo and wordmark above a dark card, indigo
   buttons and links. Conversation emails to customers (replies, acknowledgement,
   closed) use the same layout with the subject as heading.
-- The widget launcher reads hex brand colours as well as oklch.
 - The launcher greeting uses the waving hand with a skin tone (👋🏻) in every
   language.
 - Once a teammate replies in a conversation, the messenger header shows that
@@ -36,6 +35,8 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
   `/hc/...`).
 - A category URL whose category was merged or deleted falls back to the
   configured redirect rules instead of a 404.
+- This redirect runs before Quackback's section host routing, which would
+  otherwise send a path no section owns away from the help center domain.
 - Clicking an image in an article opens it at full size in the file viewer,
   with the article's other images one arrow key away.
 - The file viewer leaves the size out of its header when it is unknown

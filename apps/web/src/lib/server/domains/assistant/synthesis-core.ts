@@ -36,9 +36,11 @@ import {
   reasoningExcludeProviderOptions,
   reasoningEffortProviderOptions,
 } from '@/lib/server/domains/ai/config'
+import { outputBudgetOptions } from '@/lib/server/domains/ai/output-budget'
 import { withRetry } from '@/lib/server/domains/ai/retry'
 import { withUsageLogging, type AiAnswerKind } from '@/lib/server/domains/ai/usage-log'
 import { isWireForwardable } from './agui'
+import { oneShotThreadId } from '@/lib/server/domains/ai/thread-id'
 
 /** Output budget default: constrained decoding on small models needs headroom. */
 export const DEFAULT_MAX_OUTPUT_TOKENS = 1024
@@ -260,7 +262,7 @@ async function streamOnce<TContext>(
   }
 
   const modelOptions = {
-    max_tokens: opts.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    ...outputBudgetOptions(opts.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS),
     // NOTE: do not add sampling params (e.g. temperature) here. The provider
     // options gate routing on providers advertising EVERY param in the
     // request (require_parameters), so a param many providers don't
@@ -283,6 +285,7 @@ async function streamOnce<TContext>(
   const tools = opts.tools
   const stream = tools
     ? chat({
+        threadId: oneShotThreadId(),
         adapter,
         messages: opts.messages,
         systemPrompts: opts.systemPrompts,
@@ -296,6 +299,7 @@ async function streamOnce<TContext>(
         ...(opts.middleware ? { middleware: opts.middleware } : {}),
       })
     : chat({
+        threadId: oneShotThreadId(),
         adapter,
         messages: opts.messages,
         systemPrompts: opts.systemPrompts,

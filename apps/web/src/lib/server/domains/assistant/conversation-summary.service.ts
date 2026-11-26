@@ -33,6 +33,7 @@ import {
   isAiClientConfigured,
   structuredOutputProviderOptions,
 } from '@/lib/server/domains/ai/config'
+import { outputBudgetOptions } from '@/lib/server/domains/ai/output-budget'
 import { abortControllerFor } from '@/lib/server/domains/ai/abort'
 import { createUsageLoggingMiddleware } from '@/lib/server/domains/ai/usage-middleware'
 import { getChatModel, getEmbeddingModel } from '@/lib/server/domains/ai/models'
@@ -48,6 +49,7 @@ import {
 import { buildConversationTranscript, GROUNDING_CHAR_BUDGET } from './transcript'
 import { createId, type ConversationId } from '@quackback/ids'
 import { logger } from '@/lib/server/logger'
+import { oneShotThreadId } from '@/lib/server/domains/ai/thread-id'
 
 const log = logger.child({ component: 'conversation-summary' })
 
@@ -140,6 +142,7 @@ export async function summarizeConversationOnClose(
     // counts as on-demand Summarize-chip calls; this fire-and-forget path
     // must meter against aiTokensPerMonth without inflating that report.
     const object = await chat({
+      threadId: oneShotThreadId(),
       adapter: openaiCompatibleText(model, {
         baseURL: config.openaiBaseUrl!,
         apiKey: config.openaiApiKey!,
@@ -149,7 +152,7 @@ export async function summarizeConversationOnClose(
       outputSchema: ConversationSummarySchema,
       stream: false,
       abortController: abortControllerFor(opts.signal),
-      modelOptions: { max_tokens: 400, ...structuredOutputProviderOptions() },
+      modelOptions: { ...outputBudgetOptions(400), ...structuredOutputProviderOptions() },
       middleware: [
         createUsageLoggingMiddleware({
           pipelineStep: 'conversation_summary',

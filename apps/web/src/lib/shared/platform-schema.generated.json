@@ -1,5 +1,5 @@
 {
-  "workspaceVersion": "0.15.0",
+  "workspaceVersion": "0.16.1",
   "ai": {
     "keys": [
       {
@@ -112,6 +112,12 @@
       },
       {
         "key": "AI_REASONING_EFFORT",
+        "kind": "text",
+        "group": "connection",
+        "sensitive": false
+      },
+      {
+        "key": "AI_MAX_TOKENS_PARAM",
         "kind": "text",
         "group": "connection",
         "sensitive": false

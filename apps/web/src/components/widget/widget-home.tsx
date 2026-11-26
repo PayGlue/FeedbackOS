@@ -3,9 +3,9 @@ import { useIntl } from 'react-intl'
 import { PencilIcon } from '@heroicons/react/24/solid'
 import type { WidgetHomeProps } from './widget-home-animated'
 
-// Defer framer-motion (~360KB minified) to a client-only chunk. The widget
-// home form is interactive — it expands on input — so SSR only needs a
-// static collapsed shell that matches the animated version's layout.
+// Defer the interactive form to a client-only chunk. The widget home form
+// expands on input, so SSR only needs a static collapsed shell that matches
+// the animated version's layout.
 const WidgetHomeAnimated = lazy(() =>
   import('./widget-home-animated').then((m) => ({ default: m.WidgetHomeAnimated }))
 )
@@ -19,7 +19,7 @@ function WidgetHomeFallback() {
           <div className="rounded-lg border border-border bg-card overflow-hidden">
             <div className="flex items-center gap-2.5 px-3 py-2.5">
               <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
-                <PencilIcon className="w-3.5 h-3.5 text-primary" />
+                <PencilIcon className="w-3.5 h-3.5 text-primary-ink" />
               </div>
               <input
                 type="text"
