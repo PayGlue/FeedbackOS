@@ -26,10 +26,12 @@ import {
   isAiClientConfigured,
   structuredOutputProviderOptions,
 } from '@/lib/server/domains/ai/config'
+import { outputBudgetOptions } from '@/lib/server/domains/ai/output-budget'
 import { createUsageLoggingMiddleware } from '@/lib/server/domains/ai/usage-middleware'
 import { getChatModel } from '@/lib/server/domains/ai/models'
 import { enforceAiTokenBudget } from '@/lib/server/domains/settings/tier-enforce'
 import { ValidationError } from '@/lib/shared/errors'
+import { oneShotThreadId } from '@/lib/server/domains/ai/thread-id'
 
 const DRAFT_SYSTEM_PROMPT = `You help an admin write descriptions for a customer-support conversation attribute that an AI classifier will use to categorize conversations.
 
@@ -105,6 +107,7 @@ export async function draftAttributeDescriptions(
   ].join('\n')
 
   const object = await chat({
+    threadId: oneShotThreadId(),
     adapter: openaiCompatibleText(model, {
       baseURL: config.openaiBaseUrl!,
       apiKey: config.openaiApiKey!,
@@ -113,7 +116,7 @@ export async function draftAttributeDescriptions(
     messages: [{ role: 'user', content: userContent }],
     outputSchema: DraftDescriptionsSchema,
     stream: false,
-    modelOptions: { max_tokens: 1500, ...structuredOutputProviderOptions() },
+    modelOptions: { ...outputBudgetOptions(1500), ...structuredOutputProviderOptions() },
     middleware: [
       createUsageLoggingMiddleware({
         pipelineStep: 'classification',

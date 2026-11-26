@@ -16,9 +16,8 @@
  * from 'pending' to 'chosen' mid-interaction (the rating tap's own SSE echo
  * lands while the visitor is still filling out the optional comment).
  */
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
-import { motion, useReducedMotion } from 'framer-motion'
 import { CSAT_FACES } from '@/lib/shared/db-types'
 import type { WorkflowBlockPayload } from '@/lib/shared/db-types'
 import type { BlockState } from './conversation-rows'
@@ -31,6 +30,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/shared/utils'
+
+// Animated with CSS (tw-animate-css `animate-in`) and the Web Animations API,
+// not framer-motion: the widget preloads the messenger thread these render in,
+// so one framer-motion import here would load the library into every open
+// widget (see components/widget/__tests__/lazy-motion.test.ts).
 
 const optionButtonClass =
   'w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-start text-sm font-medium text-foreground shadow-xs transition-colors'
@@ -55,34 +59,31 @@ export function BlockButtonsRow({
   submitting: boolean
   onTap: (buttonKey: string, label: string) => void
 }) {
-  const reduceMotion = useReducedMotion()
   if (state === 'chosen') return null
   const inert = state === 'superseded'
   return (
     <div className="mt-1.5 flex w-full max-w-[85%] flex-col gap-1.5" role="group">
       {block.options.map((option, i) => (
-        <motion.button
+        // Rises 6px and fades in, staggered 40 ms apart. The opacity is
+        // inline, so a superseded block dims to 0.45 whatever the disabled
+        // styles say, and fades there when it is superseded.
+        <button
           key={option.key}
           type="button"
           disabled={inert || submitting}
           aria-disabled={inert}
           onClick={() => !inert && !submitting && onTap(option.key, option.label)}
-          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-          animate={{ opacity: inert ? 0.45 : 1, y: 0 }}
-          transition={{
-            duration: 0.18,
-            ease: [0.32, 0.72, 0, 1],
-            delay: reduceMotion ? 0 : i * 0.04,
-          }}
+          style={{ opacity: inert ? 0.45 : 1, animationDelay: `${i * 40}ms` }}
           className={cn(
             optionButtonClass,
+            'transition-[color,background-color,border-color,opacity] animate-in fade-in slide-in-from-bottom-[6px] fill-mode-backwards [animation-duration:180ms] [animation-timing-function:cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none',
             inert
               ? 'cursor-default grayscale'
               : 'cursor-pointer hover:border-primary/50 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60'
           )}
         >
           {option.label}
-        </motion.button>
+        </button>
       ))}
     </div>
   )
@@ -254,44 +255,55 @@ function WriteOnceExplainer() {
 }
 
 /**
- * Five-emoji CSAT row. The in-session interaction phase ('ask' -> 'rated' ->
- * 'done') is derived from two flat pieces of local state — `pickedRating`
- * (null until tapped) and `done` (the comment step closed out) — rather than
- * tracked as its own enum, since the triple is fully determined by them:
- * `pickedRating == null ? 'ask' : done ? 'done' : 'rated'`. This tracks
- * independently of the server-derived `state`, because the rating tap's own
- * SSE echo flips `state` to 'chosen' WHILE the visitor may still be filling
- * out the optional comment — collapsing the row at that instant would yank
- * the thank-you flow out from under them. A fresh mount that finds `state`
- * already 'chosen' or 'superseded' (a refresh, or a block answered in an
- * earlier session) has never advanced past 'ask' locally, so it collapses
+ * What a rating or comment submit came back with: stored, refused because the
+ * conversation is open (a rating only counts once it is closed), or failed.
+ */
+export type CsatSubmitOutcome = 'recorded' | 'refused' | 'failed'
+
+/**
+ * Five-emoji CSAT row. The in-session interaction phase ('ask' -> 'sending'
+ * -> 'rated' -> 'done') is local state, tracked independently of the
+ * server-derived `state`, because the rating tap's own SSE echo flips `state`
+ * to 'chosen' WHILE the visitor may still be filling out the optional comment
+ * (or before the send has even answered) — collapsing the row at that instant
+ * would yank the thank-you flow out from under them. A fresh mount that finds
+ * `state` already 'chosen' or 'superseded' (a refresh, or a block answered in
+ * an earlier session) has never advanced past 'ask' locally, so it collapses
  * exactly like a chosen/superseded button stack — the echoed rating already
  * renders as its own message bubble elsewhere.
+ *
+ * A tap moves on only once the server has taken the rating. A refusal (the
+ * conversation is open) puts the faces back with a short line saying why, so
+ * the visitor can rate once it is closed; a failure puts them back for a retry.
  */
 export function BlockCsatRow({
   block,
   state,
   submitting,
+  closed,
   onRate,
   onComment,
 }: {
   block: Extract<WorkflowBlockPayload, { kind: 'csat' }>
   state: BlockState
   submitting: boolean
-  onRate: (rating: number) => void
+  /** Whether the conversation is closed now: a refusal line from while it was
+   *  open goes away once it closes, since a tap then counts. */
+  closed: boolean
+  onRate: (rating: number) => Promise<CsatSubmitOutcome>
   /** `rating` is the face the visitor picked earlier THIS session (tracked
    *  locally — `row.message` for a csat block is the prompt itself, never
    *  the visitor's reply, so the call site has no other way to know it). */
-  onComment: (rating: number, comment: string) => void
+  onComment: (rating: number, comment: string) => Promise<CsatSubmitOutcome>
 }) {
   const intl = useIntl()
-  const reduceMotion = useReducedMotion()
   const [pickedRating, setPickedRating] = useState<number | null>(null)
-  const [done, setDone] = useState(false)
+  const [phase, setPhase] = useState<'ask' | 'sending' | 'rated' | 'done'>('ask')
+  const [refused, setRefused] = useState(false)
+  const showRefusal = refused && !closed
   const [comment, setComment] = useState('')
-  const localPhase = pickedRating == null ? 'ask' : done ? 'done' : 'rated'
 
-  if (localPhase === 'ask' && (state === 'chosen' || state === 'superseded')) {
+  if (phase === 'ask' && (state === 'chosen' || state === 'superseded')) {
     return state === 'superseded' ? (
       <div className="mt-1.5 flex max-w-[85%] justify-start gap-1 opacity-45 grayscale" aria-hidden>
         {CSAT_FACES.map((face) => (
@@ -303,6 +315,31 @@ export function BlockCsatRow({
     ) : null
   }
 
+  const rate = (rating: number) => {
+    setPickedRating(rating)
+    setRefused(false)
+    setPhase('sending')
+    void onRate(rating).then((outcome) => {
+      if (outcome === 'recorded') {
+        setPhase('rated')
+        return
+      }
+      setPickedRating(null)
+      setRefused(outcome === 'refused')
+      setPhase('ask')
+    })
+  }
+
+  const sendComment = () => {
+    if (pickedRating == null) return
+    setPhase('done')
+    void onComment(pickedRating, comment.trim()).then((outcome) => {
+      if (outcome === 'refused') setRefused(true)
+      // A failed comment reopens the box for a retry.
+      if (outcome === 'failed') setPhase('rated')
+    })
+  }
+
   const commentPrompt =
     block.commentPrompt ||
     intl.formatMessage({
@@ -310,33 +347,37 @@ export function BlockCsatRow({
       defaultMessage: 'Thanks! Anything we could improve?',
     })
 
+  const notClosed = (
+    <p className="text-xs text-muted-foreground" role="status">
+      <FormattedMessage
+        id="widget.messenger.csat.notClosed"
+        defaultMessage="You can rate once this conversation is closed."
+      />
+    </p>
+  )
+
   return (
     <div className="mt-1.5 flex max-w-[85%] flex-col gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5">
-      {localPhase === 'ask' ? (
-        <div className="flex justify-start gap-1">
-          {CSAT_FACES.map((face, i) => (
-            <button
-              key={face}
-              type="button"
-              disabled={submitting}
-              onClick={() => {
-                setPickedRating(i + 1)
-                onRate(i + 1)
-              }}
-              aria-label={`${i + 1} of 5`}
-              className="text-lg leading-none transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {face}
-            </button>
-          ))}
-        </div>
-      ) : localPhase === 'rated' ? (
-        <motion.div
-          initial={reduceMotion ? false : { opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-          className="flex flex-col gap-2 overflow-hidden"
-        >
+      {phase === 'ask' || phase === 'sending' ? (
+        <>
+          <div className="flex justify-start gap-1">
+            {CSAT_FACES.map((face, i) => (
+              <button
+                key={face}
+                type="button"
+                disabled={submitting || phase === 'sending'}
+                onClick={() => rate(i + 1)}
+                aria-label={`${i + 1} of 5`}
+                className="text-lg leading-none transition-transform hover:scale-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {face}
+              </button>
+            ))}
+          </div>
+          {showRefusal && notClosed}
+        </>
+      ) : phase === 'rated' ? (
+        <GrowOpen className="flex flex-col gap-2 overflow-hidden">
           <p className="text-xs text-muted-foreground">{commentPrompt}</p>
           <textarea
             value={comment}
@@ -355,15 +396,14 @@ export function BlockCsatRow({
           />
           <button
             type="button"
-            onClick={() => {
-              setDone(true)
-              if (pickedRating != null) onComment(pickedRating, comment.trim())
-            }}
+            onClick={sendComment}
             className="self-start rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <FormattedMessage id="widget.messenger.csat.send" defaultMessage="Send feedback" />
           </button>
-        </motion.div>
+        </GrowOpen>
+      ) : showRefusal ? (
+        notClosed
       ) : (
         <p className="text-xs text-muted-foreground">
           <FormattedMessage
@@ -372,6 +412,30 @@ export function BlockCsatRow({
           />
         </p>
       )}
+    </div>
+  )
+}
+
+/** Opens from height 0 to its natural height as it mounts, fading in over
+ *  200 ms on the push curve, then hands the height back to CSS. Runs before
+ *  paint; skipped under reduced motion or without the Web Animations API. */
+function GrowOpen({ className, children }: { className: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || typeof el.animate !== 'function') return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    el.animate(
+      [
+        { height: '0px', opacity: 0 },
+        { height: `${el.scrollHeight}px`, opacity: 1 },
+      ],
+      { duration: 200, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' }
+    )
+  }, [])
+  return (
+    <div ref={ref} className={className}>
+      {children}
     </div>
   )
 }

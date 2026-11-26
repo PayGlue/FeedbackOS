@@ -182,15 +182,13 @@ async function seedMinimalPost(principalId: PrincipalId) {
 function githubWebhookRequest(
   action: 'closed' | 'reopened',
   issueNumber: number,
-  repository = 'acme/widgets'
+  repository = 'acme/widgets',
+  updatedAt = action === 'closed' ? olderRevision : newerRevision
 ): Request {
   const body = JSON.stringify({
     action,
     repository: { full_name: repository },
-    issue: {
-      number: issueNumber,
-      updated_at: action === 'closed' ? olderRevision : newerRevision,
-    },
+    issue: { number: issueNumber, updated_at: updatedAt },
   })
   const signature = 'sha256=' + createHmac('sha256', WEBHOOK_SECRET).update(body).digest('hex')
   return new Request('http://localhost/api/integrations/github/webhook', {
@@ -294,7 +292,8 @@ describe.skipIf(!fixture.available)('inbound webhook ticket branch (real DB, rol
           id: ticketId,
           status: expect.objectContaining({ id: closed }),
         }),
-      })
+      }),
+      expect.objectContaining({ teamId: null })
     )
 
     // Close-the-loop: a team-only system note lands on the thread with the
@@ -327,6 +326,28 @@ describe.skipIf(!fixture.available)('inbound webhook ticket branch (real DB, rol
     expect((await readSyncHealth(integ)).lastInboundAt).not.toBeNull()
   })
 
+  it('does not re-apply a remote status that has not changed since it was last applied', async () => {
+    await seedSettings()
+    const { open, closed } = await seedStatuses()
+    await seedGitHubIntegration({ ticketStatusMappings: { Closed: closed } })
+    const actor = await seedActor()
+    const ticketId = await seedLinkedTicket(actor, '79')
+
+    await receiveAndDrain(githubWebhookRequest('closed', 79), 'github')
+    expect((await ticketState(ticketId)).statusId).toBe(closed)
+
+    // A teammate reopens the ticket in Quackback, then a later event reports the same remote status.
+    await testDb.update(tickets).set({ statusId: open }).where(eq(tickets.id, ticketId))
+    const response = await receiveAndDrain(
+      githubWebhookRequest('closed', 79, 'acme/widgets', newerRevision),
+      'github'
+    )
+    expect(response.status).toBe(200)
+    expect((await ticketState(ticketId)).statusId).toBe(open)
+    expect(await systemNotes(ticketId, 'external_status_changed')).toHaveLength(1)
+    expect(await externalEvents()).toHaveLength(1)
+  })
+
   it('publishes tracker and cascaded customer status changes, without duplicate delivery', async () => {
     await seedSettings()
     const { closed } = await seedStatuses()
@@ -348,7 +369,8 @@ describe.skipIf(!fixture.available)('inbound webhook ticket branch (real DB, rol
         expect.objectContaining({
           kind: 'ticket_updated',
           ticket: expect.objectContaining({ id, status: expect.objectContaining({ id: closed }) }),
-        })
+        }),
+        expect.objectContaining({ teamId: null })
       )
     await receiveAndDrain(githubWebhookRequest('closed', 88), 'github')
     expect(publishTicketEvent).toHaveBeenCalledTimes(2)

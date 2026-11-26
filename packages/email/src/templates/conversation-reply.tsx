@@ -16,8 +16,9 @@ export interface ConversationReplyEmailProps {
   /** Plain fallback when there is no rendered body. */
   messagePreview: string
   agentName: string
-  /** Second signature line: team or workspace name. */
-  teamName: string
+  /** Second signature line: team or workspace name. Omitted when the first
+   *  line already names the team. */
+  teamName?: string
   /** Conversation subject, shown as the heading (without a leading "Re:"). */
   heading?: string
   logoUrl?: string
@@ -100,8 +101,8 @@ export function ConversationReplyEmail({
   const title = headingText(heading)
 
   return (
-    <EmailLayout preview={preview} logoUrl={logoUrl} logoAlt={teamName}>
-      <Text style={eyebrow}>{teamName} support</Text>
+    <EmailLayout preview={preview} logoUrl={logoUrl} logoAlt={teamName ?? ''}>
+      {teamName ? <Text style={eyebrow}>{teamName} support</Text> : null}
       {title ? <Heading style={typography.h1}>{title}</Heading> : null}
 
       {bodyHtml ? (

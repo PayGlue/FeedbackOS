@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { cn } from '@/lib/shared/utils'
+import type { BoardPermission } from '@/lib/shared/types/boards'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import {
@@ -11,7 +13,6 @@ import {
   useRef,
   type ReactNode,
 } from 'react'
-import { LazyMotion, domAnimation, m, useReducedMotion } from 'framer-motion'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { CheckCircleIcon } from '@heroicons/react/24/solid'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
@@ -38,6 +39,7 @@ import { widgetChangelogListQuery } from '@/components/widget/widget-changelog-q
 import { widgetHelpCategoriesQuery } from '@/components/widget/widget-help-query'
 import { widgetFetchBoardCapabilitiesFn } from '@/lib/server/functions/widget/posts'
 import { getShowPoweredByFn } from '@/lib/server/functions/powered-by'
+import { getWidgetPortalOriginFn } from '@/lib/server/functions/widget/portal-origin'
 import { widgetListPublicArticlesFn } from '@/lib/server/functions/widget/help'
 import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { sendToHost } from '@/lib/client/widget-bridge'
@@ -153,14 +155,14 @@ export const Route = createFileRoute('/widget/')({
       posts: { items: [], hasMore: false },
       statuses: [],
       votedPostIds: [],
-      boardPermissions: {} as Record<string, { canSubmit: boolean; canVote: boolean }>,
+      boardPermissions: {} as Record<string, BoardPermission>,
     }
     let topArticles: { slug: string; title: string }[] = []
     // Teammate-avatar cluster for the Home header. Workspace-global and public-safe
     // (name + image only), so the anonymous SSR baseline is correct for everyone.
     let team: { name: string; avatarUrl: string | null }[] = []
     let showPoweredBy = true
-    const [portalData, { getBaseUrl }] = await Promise.all([
+    const [portalData, portalOrigin] = await Promise.all([
       feedbackProductEnabled
         ? queryClient.ensureQueryData(
             portalQueries.portalData({
@@ -170,8 +172,7 @@ export const Route = createFileRoute('/widget/')({
             })
           )
         : Promise.resolve(emptyPortalData),
-      // oxlint-disable-next-line no-restricted-imports -- server-loader dynamic import; stripped from the client graph
-      import('@/lib/server/config'),
+      getWidgetPortalOriginFn(),
       // Presence is workspace-global (not visitor-specific), so the anonymous SSR
       // baseline value is exactly correct for every visitor — seed the shared
       // presence query so the Messenger online/offline strip paints right
@@ -263,6 +264,9 @@ export const Route = createFileRoute('/widget/')({
         id: b.id as string,
         name: b.name,
         slug: b.slug,
+        // The fields the composer asks for on this board (same as the live
+        // capabilities list), sent only when the board declares some.
+        ...(b.settings.customFields?.length ? { customFields: b.settings.customFields } : {}),
       })),
       orgSlug: settings?.slug ?? '',
       // Per-board submit/vote capability for the request actor, server-computed
@@ -315,28 +319,17 @@ export const Route = createFileRoute('/widget/')({
       // The portal's own origin (BASE_URL env), resolved server-side so the
       // widget handoff URL always points at the portal host — not at the widget
       // iframe origin, which may differ in self-hosted deployments.
-      portalOrigin: getBaseUrl(),
+      portalOrigin,
       showPoweredBy,
     }
   },
   component: WidgetRoute,
 })
 
-/**
- * Loads the "dom" animation engine (fades, slides, transforms), not the
- * larger "dom-max" build's drag/layout/3d support the widget never uses. `m`
- * components read it from context; `motion` components would ignore it and
- * bundle their own copy, which is why every framer-motion usage under this
- * root uses `m`.
- */
 function WidgetRoute() {
   const { tabs } = Route.useLoaderData()
   if (contentSurfaceCount(tabs) === 0) return null
-  return (
-    <LazyMotion features={domAnimation}>
-      <WidgetPage />
-    </LazyMotion>
-  )
+  return <WidgetPage />
 }
 
 interface SuccessPost {
@@ -345,7 +338,17 @@ interface SuccessPost {
   voteCount: number
   statusId: string | null
   board: { id: string; name: string; slug: string }
+  /** Held for review: only its author sees it until the team approves it. */
+  pendingReview?: boolean
 }
+
+/**
+ * The view entrance, in CSS (tw-animate-css `animate-in`) so the embeddable
+ * widget ships no animation library: 220 ms on the widget's push curve, from
+ * transparent and offset (the slide class sets the direction and distance).
+ */
+const VIEW_ENTRANCE =
+  'animate-in fade-in duration-[220ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none'
 
 /**
  * Entry transition for a widget view. Root views (tab switches) rise and fade
@@ -378,7 +381,6 @@ function ViewTransition({
   focusOnMount?: boolean
   children: ReactNode
 }) {
-  const reduceMotion = useReducedMotion()
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (focusOnMount) ref.current?.focus({ preventScroll: true })
@@ -387,19 +389,18 @@ function ViewTransition({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return (
-    <m.div
+    <div
       key={id}
       ref={ref}
       tabIndex={-1}
-      initial={
-        reduceMotion ? false : kind === 'push' ? { x: 28, opacity: 0 } : { y: 10, opacity: 0 }
-      }
-      animate={{ x: 0, y: 0, opacity: 1 }}
-      transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-      className="h-full outline-none"
+      className={cn(
+        VIEW_ENTRANCE,
+        kind === 'push' ? 'slide-in-from-right-[28px]' : 'slide-in-from-bottom-[10px]',
+        'h-full outline-none'
+      )}
     >
       <Suspense fallback={fallback}>{children}</Suspense>
-    </m.div>
+    </div>
   )
 }
 
@@ -463,6 +464,10 @@ function WidgetPage() {
   const [view, setView] = useState<WidgetView>(
     resumeConversationId && threadTab ? 'messenger' : resolveInitialView(tabs)
   )
+  // The feedback view's entrance plays each time it is shown again, never on
+  // the first paint: false while it has been visible since mount.
+  const [feedbackEntrance, setFeedbackEntrance] = useState(view !== 'feedback')
+  if (view !== 'feedback' && !feedbackEntrance) setFeedbackEntrance(true)
   const [activeTab, setActiveTab] = useState<WidgetTab>(
     resumeConversationId && threadTab ? threadTab : initialTab
   )
@@ -480,6 +485,9 @@ function WidgetPage() {
       setMessengerAgent({ threadKey: conversationTarget ?? 'active', agent }),
     [conversationTarget]
   )
+  // Whether a reply can reach this visitor by email, as the open thread
+  // reports it. The header's away badge promises email only then.
+  const [canReplyByEmail, setCanReplyByEmail] = useState(false)
   // A host's `open({ view: 'chat', body })`. The nonce remounts the messenger
   // so a draft sent while it is already open still lands in the composer.
   const [messengerDraft, setMessengerDraft] = useState<{ nonce: number; body: string } | null>(null)
@@ -890,6 +898,7 @@ function WidgetPage() {
         <div className="min-w-0 ps-1">
           <ConversationPresenceBadge
             available={conversationAvailable(presence.agentsOnline, presence.withinOfficeHours)}
+            canReplyByEmail={canReplyByEmail}
             // When office hours are configured, the badge tells the visitor up
             // front when the team is back; the thread body only says so once
             // they have typed.
@@ -990,6 +999,7 @@ function WidgetPage() {
             // Mobile hosts skip it — the software keyboard would cover the thread.
             autofocusComposer={conversationTarget === 'new' && !hostIsMobile}
             onHumanAgentChange={handleHumanAgentChange}
+            onReplyByEmailChange={setCanReplyByEmail}
           />
         </ViewTransition>
       )}
@@ -1106,12 +1116,14 @@ function WidgetPage() {
         }
       >
         {/* Kept mounted, so it can't use the remount-keyed ViewTransition;
-            instead the same root entrance replays whenever it becomes visible. */}
-        <m.div
-          initial={false}
-          animate={view === 'feedback' ? { y: 0, opacity: 1 } : { y: 10, opacity: 0 }}
-          transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-          className="flex flex-col h-full"
+            instead the same root entrance replays whenever it becomes visible:
+            a CSS animation restarts when its hidden (display: none) wrapper
+            shows again. Not on first paint, only once it has been hidden. */}
+        <div
+          className={cn(
+            feedbackEntrance && [VIEW_ENTRANCE, 'slide-in-from-bottom-[10px]'],
+            'flex flex-col h-full'
+          )}
         >
           <WidgetHome
             initialPosts={allPosts}
@@ -1126,7 +1138,7 @@ function WidgetPage() {
             onPostSelect={handlePostSelect}
             onPostCreated={handlePostCreated}
           />
-        </m.div>
+        </div>
       </div>
 
       {view === 'post-detail' && selectedPostId && (
@@ -1192,7 +1204,7 @@ function SuccessView({
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2.5 px-4 pt-5 pb-3">
         <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/15 shrink-0">
-          <CheckCircleIcon className="w-4.5 h-4.5 text-primary" />
+          <CheckCircleIcon className="w-4.5 h-4.5 text-primary-ink" />
         </div>
         <div>
           <p className="text-sm font-semibold text-foreground">
@@ -1202,10 +1214,17 @@ function SuccessView({
             />
           </p>
           <p className="text-[11px] text-muted-foreground">
-            <FormattedMessage
-              id="widget.success.subtitle"
-              defaultMessage="Your post has been submitted."
-            />
+            {post.pendingReview ? (
+              <FormattedMessage
+                id="widget.success.pendingSubtitle"
+                defaultMessage="Your post is waiting for review. Others will see it once the team approves it."
+              />
+            ) : (
+              <FormattedMessage
+                id="widget.success.subtitle"
+                defaultMessage="Your post has been submitted."
+              />
+            )}
           </p>
         </div>
       </div>
