@@ -229,3 +229,13 @@ describe('error pages in the reader’s language', () => {
     expect(screen.getByText('Page not found')).toBeTruthy()
   })
 })
+
+describe('FeedbackOS: error page branding', () => {
+  afterEach(() => cleanup())
+
+  it('shows no upstream logo when no workspace settings are available', () => {
+    render(<NotFoundPage />)
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(document.querySelector('img[src="/logo.png"]')).toBeNull()
+  })
+})

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useContext, useState } from 'react'
+import { useRouter } from '@tanstack/react-router'
 import { IntlContext, useIntl, type MessageDescriptor } from 'react-intl'
 import { DocumentLocaleContext } from '@/components/shared/document-locale-context'
 import { CheckIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline'
@@ -8,6 +9,8 @@ import { isSeatPausedError } from '@/lib/shared/billing/seat-paused'
 import { errorReferenceOf } from '@/lib/shared/error-reference'
 import { DEFAULT_LOCALE, messageArea, normalizeLocale } from '@/lib/shared/i18n'
 import { cn } from '@/lib/shared/utils'
+import { generateWorkspaceThemeCSS } from '@/lib/shared/theme/generator'
+import type { WorkspaceSettings } from '@/lib/server/domains/settings/settings.types'
 
 interface ErrorPageProps {
   error: unknown
@@ -66,7 +69,29 @@ function PageLanguage({ children }: { children: (copy: Copy) => React.ReactNode 
   return children((message) => intl.formatMessage(message))
 }
 
+/**
+ * FeedbackOS: the workspace's settings when a router is mounted. The router's
+ * error and not-found pages can render outside it (or before its context has
+ * loaded), so this never throws and falls back to no branding.
+ */
+function useErrorPageSettings(): WorkspaceSettings | null {
+  const router = useRouter({ warn: false }) as ReturnType<typeof useRouter> | undefined
+  const context = router?.state?.matches?.[0]?.context as
+    { settings?: WorkspaceSettings | null } | undefined
+  return context?.settings ?? null
+}
+
 export function FriendlyShell({ children, fullPage = true }: FriendlyShellProps) {
+  // FeedbackOS: the workspace's logo and colours instead of the upstream duck
+  // and palette. A full page carries the workspace theme, as the portal does;
+  // an error inside the admin keeps the admin's look around it.
+  const settings = useErrorPageSettings()
+  const logo =
+    settings?.brandingData?.logoUrl ||
+    settings?.brandingData?.faviconUrl ||
+    settings?.faviconData?.url ||
+    null
+  const themeCss = fullPage && settings ? generateWorkspaceThemeCSS(settings.brandingConfig) : ''
   return (
     <div
       className={cn(
@@ -74,8 +99,15 @@ export function FriendlyShell({ children, fullPage = true }: FriendlyShellProps)
         fullPage ? 'min-h-screen' : 'min-h-[400px]'
       )}
     >
+      {themeCss ? <style dangerouslySetInnerHTML={{ __html: themeCss }} /> : null}
       <div className="w-full max-w-md text-center">
-        <img src="/logo.png" alt="Quackback" className="mx-auto mb-6 h-16 w-16" />
+        {logo ? (
+          <img
+            src={logo}
+            alt={settings?.name ?? ''}
+            className="mx-auto mb-6 h-16 w-16 rounded-xl object-contain"
+          />
+        ) : null}
         {children}
       </div>
     </div>

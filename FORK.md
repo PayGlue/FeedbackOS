@@ -16,6 +16,8 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 
 - No "Powered by Quackback" footer in the portal, widget or emails.
 - The admin uses the workspace name and favicon in the browser tab.
+- Error and not-found pages show the workspace logo and, as full pages, the
+  workspace theme instead of the Quackback duck and palette.
 - Emails use the PayGlue look: logo and wordmark above a dark card, indigo
   buttons and links. Conversation emails to customers (replies, acknowledgement,
   closed) use the same layout with the subject as heading.
