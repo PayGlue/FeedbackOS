@@ -41,7 +41,7 @@ interface EmailLayoutProps {
 export function EmailLayout({
   preview,
   logoUrl,
-  logoAlt = 'Quackback',
+  logoAlt = process.env.EMAIL_APP_NAME || 'Quackback',
   children,
   footer,
   showPoweredBy: showPoweredByOverride,
