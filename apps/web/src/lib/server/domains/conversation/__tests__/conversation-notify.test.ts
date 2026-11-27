@@ -322,7 +322,7 @@ describe('notifyVisitorMessage', () => {
       conversation,
       content: 'urgent please help',
       authorName: 'Jane',
-      isFirstMessage: false,
+      isFirstMessage: true,
     })
 
     // The null-email teammate is filtered out of the email fan-out.
@@ -332,11 +332,27 @@ describe('notifyVisitorMessage', () => {
       to: 'a@x.com',
       direction: 'visitor_message',
       senderName: 'Jane',
-      isFirstMessage: false,
+      isFirstMessage: true,
       ctaUrl: `https://acme.example.com/admin/inbox?i=${conversationId}`,
       workspaceName: 'Acme',
       conversationId,
     })
+  })
+
+  it('sends no email for a follow-up message, even with nobody online', async () => {
+    isAnyAgentOnline.mockResolvedValue(false)
+    teamRows = [
+      { principalId: 'principal_admin', type: 'user', role: 'member', email: 'a@x.com', name: 'A' },
+    ]
+
+    await notifyVisitorMessage({
+      conversation,
+      content: 'and one more thing',
+      authorName: 'Jane',
+      isFirstMessage: false,
+    })
+
+    expect(sendConversationMessageEmail).not.toHaveBeenCalled()
   })
 
   it('is a no-op when there are no team members', async () => {
@@ -1286,7 +1302,7 @@ describe('threading headers (P4.6 regression guard)', () => {
         conversation,
         content: 'urgent please help',
         authorName: 'Jane',
-        isFirstMessage: false,
+        isFirstMessage: true,
       })
 
       const call = sendConversationMessageEmail.mock.calls[0][0]

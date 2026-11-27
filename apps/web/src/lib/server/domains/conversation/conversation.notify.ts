@@ -263,6 +263,11 @@ export async function notifyVisitorMessage(opts: {
   /** The visitor's own attachments, carried on the team alert too. */
   attachments?: ConversationAttachment[]
 }): Promise<void> {
+  // FeedbackOS: one email per conversation. The team is mailed when a
+  // conversation starts, not for every follow-up message, which otherwise sends
+  // a mail per sentence typed in the messenger. The in-app bell still arrives
+  // for each message, and assignment mails the assignee.
+  if (!opts.isFirstMessage) return
   try {
     // A test thread alerts only the teammate who owns its test customer.
     const testOwner = await testOwnerOf(opts.conversation.visitorPrincipalId)
