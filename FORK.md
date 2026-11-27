@@ -53,6 +53,13 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 - New contacts from inbound email take the display name from the From header.
 - The reply address carries a display name ("<Workspace> Support").
 
+**Team notifications**
+
+- The team gets one email when a customer starts a conversation, not one per
+  message. Follow-up messages ring the bell only.
+- Assigning a conversation emails the assignee, and the members of a newly
+  assigned team, as ticket assignment already did.
+
 **IMAP inbound**
 
 - The poll searches unseen and recent mail, because some servers (label

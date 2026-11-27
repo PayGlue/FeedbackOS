@@ -56,6 +56,7 @@ const MAIL_FROM_CLASS: Record<string, 'platform' | 'workspace-identity'> = {
   sendPostMentionEmail: 'platform',
   sendModerationDecisionEmail: 'platform',
   sendNoteMentionEmail: 'platform',
+  sendConversationAssignedEmail: 'platform',
   sendNewFeedbackEmail: 'platform',
   sendStatusIncidentPublishedEmail: 'platform',
   sendStatusMaintenanceScheduledEmail: 'platform',
