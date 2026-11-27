@@ -67,6 +67,10 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 - `POST /api/v1/tickets` accepts `descriptionFromRequester`, so a ticket an
   integration files on a customer's behalf opens with the customer's message.
 - Tickets created by an API key or integration are not assigned to it.
+- A customer sees their own ticket card in the messenger; the preview falls
+  back to the widget session when there is no portal session.
+- Saving one customer stage label (Settings > Ticket statuses) keeps the other
+  saved labels instead of resetting them to the defaults.
 
 **Dependencies**
 
