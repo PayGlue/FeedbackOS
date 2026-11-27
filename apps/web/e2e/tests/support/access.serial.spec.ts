@@ -190,17 +190,14 @@ test(
     })
     expect(moved.ok, moved.error).toBe(true)
 
-    // Nobody is online, so the follow-up rings and mails team B.
+    // Nobody is online, so the follow-up rings team B. FeedbackOS mails the
+    // team once per conversation, so a follow-up mails nobody at all.
     const since = new Date()
     const text = `${marker} follow-up for team B`
     await followUp(request, customerEmail, conv, text)
     await waitForBell(b1, conv, text)
-    // email_log records each address the app chose to mail, whatever the SMTP
-    // stand-in then did with it.
-    await pollFor('team B mail for the follow-up', async () =>
-      (await mailSince(b1.email, conv, since)).length > 0 ? true : null
-    )
     await waitForNotificationHook(text)
+    expect(await mailSince(b1.email, conv, since)).toEqual([])
 
     expect(await bellsWith(s, conv, text)).toEqual([])
     expect(await mailSince(s.email, conv, since)).toEqual([])

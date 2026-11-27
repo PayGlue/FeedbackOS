@@ -901,6 +901,9 @@ describe('the requester of a ticket', () => {
 // The presence gate on a follow-up message
 // ============================================================================
 
+// FeedbackOS emails the team for the first message of a conversation only, so
+// the email half of each case below runs through a first message; the bell
+// half still checks the follow-up.
 describe('presence gate on a follow-up visitor message', () => {
   function followUp(conversationId: ConversationId): EventData {
     return {
@@ -940,7 +943,7 @@ describe('presence gate on a follow-up visitor message', () => {
       conversation,
       content: 'Anyone there?',
       authorName: 'Visitor',
-      isFirstMessage: false,
+      isFirstMessage: true,
     })
     const emailed = sendEmail.mock.calls.map(([options]) => options.to as string)
     expect(emailed).toContain(w.onTeam.email)
@@ -957,7 +960,7 @@ describe('presence gate on a follow-up visitor message', () => {
       conversation,
       content: 'Anyone there?',
       authorName: 'Visitor',
-      isFirstMessage: false,
+      isFirstMessage: true,
     })
     expect(sendEmail).not.toHaveBeenCalled()
 
@@ -973,7 +976,7 @@ describe('presence gate on a follow-up visitor message', () => {
       conversation,
       content: 'Anyone there?',
       authorName: 'Visitor',
-      isFirstMessage: false,
+      isFirstMessage: true,
     })
     expect(sendEmail).not.toHaveBeenCalled()
 
@@ -989,7 +992,7 @@ describe('presence gate on a follow-up visitor message', () => {
       conversation,
       content: 'Anyone there?',
       authorName: 'Visitor',
-      isFirstMessage: false,
+      isFirstMessage: true,
     })
     expect(sendEmail).not.toHaveBeenCalled()
 
@@ -1005,7 +1008,7 @@ describe('presence gate on a follow-up visitor message', () => {
       conversation,
       content: 'Anyone there?',
       authorName: 'Visitor',
-      isFirstMessage: false,
+      isFirstMessage: true,
     })
     const emailed = sendEmail.mock.calls.map(([options]) => options.to as string)
     expect(emailed).toContain(w.solo.email)
@@ -1026,7 +1029,7 @@ describe('presence gate on a follow-up visitor message', () => {
       conversation,
       content: 'Anyone there?',
       authorName: 'Visitor',
-      isFirstMessage: false,
+      isFirstMessage: true,
     })
     const emailed = sendEmail.mock.calls.map(([options]) => options.to as string)
     expect(emailed).toContain(w.onTeam.email)
