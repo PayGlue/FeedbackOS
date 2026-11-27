@@ -76,10 +76,11 @@ and logos "FeedbackOS" and "PayGlue" are not part of the AGPL licensing.
 
 ## Configuration added by this fork
 
-| Variable              | Purpose                                                     |
-| --------------------- | ----------------------------------------------------------- |
-| `EMAIL_LOGO_URL`      | Logo for emails sent without a workspace logo               |
-| `IMAP_MARK_SEEN_ALSO` | Further mailboxes in which a handled message is marked seen |
+| Variable              | Purpose                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `EMAIL_APP_NAME`      | Name in the logo text and wordmark of sign-in and account emails, which carry no workspace name |
+| `EMAIL_LOGO_URL`      | Logo for emails sent without a workspace logo                                                   |
+| `IMAP_MARK_SEEN_ALSO` | Further mailboxes in which a handled message is marked seen                                     |
 
 ## Maintaining the fork
 
